@@ -1,0 +1,549 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ========== Container ========== */
+
+.claude-chat-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	background-color: var(--vscode-panel-background);
+	position: relative;
+}
+
+/* ========== Welcome Screen ========== */
+
+.claude-welcome {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 24px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-welcome-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-welcome-title {
+	font-size: 20px;
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: var(--vscode-foreground);
+}
+
+.claude-welcome-description {
+	font-size: 13px;
+	max-width: 400px;
+	line-height: 1.6;
+	margin-bottom: 24px;
+}
+
+.claude-welcome-hints {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: center;
+	max-width: 500px;
+}
+
+.claude-welcome-hint {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 6px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-welcome-hint:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-welcome-hint-icon {
+	color: var(--vscode-textLink-foreground);
+}
+
+/* ========== Messages Area ========== */
+
+.claude-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.claude-message-wrapper {
+	display: flex;
+	flex-direction: column;
+}
+
+.claude-message {
+	padding: 12px 16px;
+	border-radius: 12px;
+	max-width: 95%;
+	animation: claude-message-appear 0.2s ease-out;
+}
+
+@keyframes claude-message-appear {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.claude-message-user {
+	background-color: var(--vscode-input-background);
+	align-self: flex-end;
+	border: 1px solid var(--vscode-input-border);
+	border-bottom-right-radius: 4px;
+}
+
+.claude-message-assistant {
+	background-color: var(--vscode-editor-background);
+	align-self: flex-start;
+	border: 1px solid var(--vscode-widget-border);
+	border-bottom-left-radius: 4px;
+}
+
+.claude-message-error {
+	background-color: var(--vscode-inputValidation-errorBackground);
+	border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+.claude-message-error .claude-message-content {
+	color: var(--vscode-errorForeground);
+}
+
+/* ========== Message Header ========== */
+
+.claude-message-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.claude-message-icon {
+	font-size: 14px;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-message-role {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.claude-message-time {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	margin-left: auto;
+}
+
+/* ========== Message Content ========== */
+
+.claude-message-content {
+	font-size: 13px;
+	line-height: 1.6;
+	word-wrap: break-word;
+}
+
+.claude-message-content p {
+	margin: 0 0 12px 0;
+}
+
+.claude-message-content p:last-child {
+	margin-bottom: 0;
+}
+
+.claude-message-content ul,
+.claude-message-content ol {
+	margin: 8px 0;
+	padding-left: 24px;
+}
+
+.claude-message-content li {
+	margin: 4px 0;
+}
+
+.claude-message-content a {
+	color: var(--vscode-textLink-foreground);
+	text-decoration: none;
+}
+
+.claude-message-content a:hover {
+	text-decoration: underline;
+}
+
+/* ========== Inline Code ========== */
+
+.claude-message-content code:not(.claude-code-block-content code) {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+	background-color: var(--vscode-textCodeBlock-background);
+	padding: 2px 6px;
+	border-radius: 4px;
+}
+
+/* ========== Code Block ========== */
+
+.claude-code-block {
+	margin: 12px 0;
+	border-radius: 8px;
+	overflow: hidden;
+	border: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-textCodeBlock-background);
+}
+
+.claude-code-block-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 12px;
+	background-color: var(--vscode-titleBar-activeBackground);
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.claude-code-block-language {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.claude-code-block-buttons {
+	display: flex;
+	gap: 4px;
+}
+
+.claude-code-block-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 12px;
+	transition: background-color 0.1s;
+}
+
+.claude-code-block-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-code-block-apply {
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.claude-code-block-apply:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.claude-code-block-content {
+	overflow-x: auto;
+}
+
+.claude-code-block-content pre {
+	margin: 0;
+	padding: 12px;
+	overflow-x: auto;
+}
+
+.claude-code-block-content code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size, 13px);
+	line-height: 1.5;
+	white-space: pre;
+	tab-size: 4;
+}
+
+/* ========== Context Tags ========== */
+
+.claude-message-context {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.claude-context-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-radius: 4px;
+	font-size: 11px;
+}
+
+/* ========== Loading State ========== */
+
+.claude-loading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 16px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 13px;
+}
+
+.claude-loading-spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--vscode-progressBar-background);
+	border-top-color: transparent;
+	border-radius: 50%;
+	animation: claude-spin 0.8s linear infinite;
+}
+
+@keyframes claude-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ========== Input Area ========== */
+
+.claude-input-container {
+	border-top: 1px solid var(--vscode-widget-border);
+	padding: 12px;
+	background-color: var(--vscode-panel-background);
+}
+
+.claude-input-wrapper {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 8px;
+	background-color: var(--vscode-input-background);
+	transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+.claude-input-wrapper.focused {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.claude-input-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding-bottom: 4px;
+}
+
+.claude-toolbar-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: 4px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: opacity 0.1s, background-color 0.1s;
+}
+
+.claude-toolbar-button:hover {
+	opacity: 1;
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-input-editor-wrapper {
+	flex: 1;
+	position: relative;
+	min-height: 36px;
+}
+
+.claude-input-editor {
+	width: 100%;
+	min-height: 36px;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.claude-input-placeholder {
+	position: absolute;
+	top: 8px;
+	left: 4px;
+	color: var(--vscode-input-placeholderForeground);
+	pointer-events: none;
+	font-size: 13px;
+}
+
+.claude-send-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border: none;
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-send-button:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+.claude-send-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* ========== Scrollbar ========== */
+
+.claude-messages::-webkit-scrollbar {
+	width: 8px;
+}
+
+.claude-messages::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.claude-messages::-webkit-scrollbar-thumb {
+	background-color: var(--vscode-scrollbarSlider-background);
+	border-radius: 4px;
+}
+
+.claude-messages::-webkit-scrollbar-thumb:hover {
+	background-color: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* ========== Drop Overlay ========== */
+
+.claude-drop-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--vscode-editor-background);
+	border: 3px dashed var(--vscode-focusBorder);
+	border-radius: 8px;
+	margin: 8px;
+	z-index: 1000;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s;
+	font-size: 16px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.claude-drop-overlay.visible {
+	opacity: 0.95;
+	pointer-events: auto;
+}
+
+/* ========== Attachments ========== */
+
+.claude-attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 8px 0 8px;
+}
+
+.claude-attachment-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 8px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-radius: 4px;
+	font-size: 12px;
+	max-width: 200px;
+	animation: claude-attachment-appear 0.15s ease-out;
+}
+
+@keyframes claude-attachment-appear {
+	from {
+		opacity: 0;
+		transform: scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+.claude-attachment-icon {
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.claude-attachment-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.claude-attachment-remove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: opacity 0.1s, background-color 0.1s;
+	flex-shrink: 0;
+}
+
+.claude-attachment-remove:hover {
+	opacity: 1;
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ========== Responsive ========== */
+
+@media (max-width: 400px) {
+	.claude-message {
+		max-width: 100%;
+	}
+
+	.claude-welcome-hints {
+		flex-direction: column;
+	}
+}

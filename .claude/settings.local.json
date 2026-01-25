@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run compile:*)",
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm install:*)",
+      "Bash(node node_modules/gulp/bin/gulp.js:*)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(where:*)",
+      "Bash(winget:*)",
+      "Bash(choco:*)",
+      "Bash(npm cache clean:*)",
+      "Bash(timeout /t 30 /nobreak)",
+      "Bash(node --version:*)",
+      "Bash(nvm:*)",
+      "Bash(\"C:\\\\Users\\\\kent\\\\AppData\\\\Roaming\\\\nvm\\\\nvm.exe\" install 22.21.1)",
+      "Bash(cmd.exe /c \"nvm version\")",
+      "Bash(powershell:*)",
+      "Bash(\"C:/Program Files/nodejs/node.exe\" --version)",
+      "Bash(cmd.exe /c \"node --version\")",
+      "Bash(export PATH:*)",
+      "Bash(npm --version:*)",
+      "Bash(dir \"C:\\\\Program Files\\\\Microsoft Visual Studio\")",
+      "Bash(dir \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\")",
+      "Bash(dir \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\")",
+      "Bash(dir \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2019\\\\BuildTools\")",
+      "Bash(dir \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\\\\VC\\\\Tools\\\\MSVC\")",
+      "Bash(npm config set:*)",
+      "Bash(set \"GYP_MSVS_VERSION=2022\")",
+      "Bash(dir:*)",
+      "Bash(node:*)",
+      "Bash(scripts/code.bat)",
+      "Bash(npm run build:*)",
+      "Bash(node-gyp rebuild:*)",
+      "Bash(npx node-gyp rebuild)",
+      "Bash(npx node-gyp:*)",
+      "Bash(set \"VCTargetsPath=C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\\\\MSBuild\\\\Microsoft\\\\VC\\\\v170\")"
+    ]
+  }
+}
