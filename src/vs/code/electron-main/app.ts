@@ -122,6 +122,8 @@ import { ICSSDevelopmentService, CSSDevelopmentService } from '../../platform/cs
 import { INativeMcpDiscoveryHelperService, NativeMcpDiscoveryHelperChannelName } from '../../platform/mcp/common/nativeMcpDiscoveryHelper.js';
 import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeMcpDiscoveryHelperService.js';
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
+import { ClaudeCLIService } from '../../platform/claude/electron-main/claudeCLIService.js';
+import { CLAUDE_CLI_CHANNEL_NAME } from '../../platform/claude/common/claudeCLIChannel.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
@@ -1202,6 +1204,34 @@ export class CodeApplication extends Disposable {
 		// Workspaces
 		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);
 		mainProcessElectronServer.registerChannel('workspaces', workspacesChannel);
+
+		// Claude CLI
+		const claudeCLIService = disposables.add(new ClaudeCLIService());
+		mainProcessElectronServer.registerChannel(CLAUDE_CLI_CHANNEL_NAME, {
+			listen<T>(_ctx: string, event: string): Event<T> {
+				switch (event) {
+					case 'onDidReceiveData': return claudeCLIService.onDidReceiveData as Event<T>;
+					case 'onDidComplete': return claudeCLIService.onDidComplete as Event<T>;
+					case 'onDidError': return claudeCLIService.onDidError as Event<T>;
+				}
+				throw new Error(`Event not found: ${event}`);
+			},
+			call<T>(_ctx: string, command: string, args?: unknown[]): Promise<T> {
+				console.log('[ClaudeCLI Channel] call received:', command);
+				switch (command) {
+					case 'sendPrompt': {
+						const [prompt, options] = args as [string, unknown];
+						return claudeCLIService.sendPrompt(prompt, options as any) as Promise<T>;
+					}
+					case 'cancelRequest':
+						claudeCLIService.cancelRequest();
+						return Promise.resolve() as Promise<T>;
+					case 'isRunning':
+						return Promise.resolve(claudeCLIService.isRunning()) as Promise<T>;
+				}
+				throw new Error(`Call not found: ${command}`);
+			}
+		});
 
 		// Menubar
 		const menubarChannel = ProxyChannel.fromService(accessor.get(IMenubarMainService), disposables);

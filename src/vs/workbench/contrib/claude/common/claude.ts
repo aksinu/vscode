@@ -23,6 +23,11 @@ export interface IClaudeService {
 	readonly onDidReceiveMessage: Event<IClaudeMessage>;
 
 	/**
+	 * 스트리밍 메시지 업데이트 이벤트
+	 */
+	readonly onDidUpdateMessage: Event<IClaudeMessage>;
+
+	/**
 	 * 상태 변경 이벤트
 	 */
 	readonly onDidChangeState: Event<ClaudeServiceState>;

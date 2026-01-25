@@ -35,7 +35,8 @@
       "Bash(node-gyp rebuild:*)",
       "Bash(npx node-gyp rebuild)",
       "Bash(npx node-gyp:*)",
-      "Bash(set \"VCTargetsPath=C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\\\\MSBuild\\\\Microsoft\\\\VC\\\\v170\")"
+      "Bash(set \"VCTargetsPath=C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\\\\MSBuild\\\\Microsoft\\\\VC\\\\v170\")",
+      "Bash(claude:*)"
     ]
   }
 }

@@ -8,19 +8,19 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 1 - 채팅창 구현 |
+| **Phase** | Phase 1.5 - 기능 개선 |
 | **Sprint** | Sprint_001 |
-| **Status** | ✅ TypeScript 타입 체크 통과, 빌드 환경 설정 필요 |
-| **Updated** | 2025-01-25 |
+| **Status** | ✅ 빌드 환경 완료, UI 동작 확인 |
+| **Updated** | 2026-01-25 |
 
 ---
 
 ## Now Working On
 
 ```
-Task: Phase 1 - 코드 구현 완료
-Progress: 100%
-Next: 빌드 환경 설정 (Visual Studio C++ Build Tools 필요)
+Task: Phase 1.5 - 추가 기능 구현
+Progress: 20%
+Next: 스트리밍 응답 또는 @ 멘션 시스템
 ```
 
 ### Done (Phase 1)
@@ -37,14 +37,42 @@ Next: 빌드 환경 설정 (Visual Studio C++ Build Tools 필요)
 - [x] 로딩 인디케이터
 - [x] 컨텍스트 태그 표시
 - [x] 향상된 CSS 스타일
-- [x] **TypeScript 타입 체크 통과 (Claude 모듈 에러 없음)**
+- [x] **TypeScript 타입 체크 통과**
+- [x] **빌드 환경 구성 (VS 2022)**
+- [x] **UI 동작 확인**
+- [x] **채팅창 위치 변경 (AuxiliaryBar - Copilot 스타일)**
+- [x] **드래그/드롭 파일 첨부 기능**
 
-### Remaining (환경 설정)
-- [ ] Visual Studio C++ Build Tools 설치
-- [ ] npm install (full - without --ignore-scripts)
-- [ ] npm run compile
-- [ ] 실제 UI 동작 확인
-- [ ] 스트리밍 응답 지원 (Phase 1.5)
+### Remaining (Phase 1.5+)
+- [~] 스트리밍 응답 지원 - **CLI 연동 방식으로 변경 중**
+- [ ] @ 멘션 시스템 (@file, @workspace)
+- [ ] /슬래시 커맨드
+- [ ] Diff 뷰 Apply
+
+---
+
+## Architecture Decision
+
+### Claude 백엔드 연동 방식
+
+**결정: Claude CLI 사용 (API 키 직접 사용 안 함)**
+
+```
+┌─────────────────┐     IPC      ┌─────────────────┐     spawn     ┌─────────────┐
+│  Renderer       │ ──────────▶  │  Main Process   │ ──────────▶   │  Claude CLI │
+│  (ClaudeService)│              │  (IPC Handler)  │               │  (claude -p)│
+└─────────────────┘              └─────────────────┘               └─────────────┘
+```
+
+**이유:**
+- 사용자가 이미 Claude CLI로 로그인되어 있음
+- API 키 별도 관리 불필요
+- CLI의 모든 기능(MCP, tools 등) 활용 가능
+
+**구현 방식:**
+- Main process에 IPC handler 등록
+- `claude -p "prompt" --output-format stream-json` 실행
+- 스트리밍 JSON 응답 파싱
 
 ---
 

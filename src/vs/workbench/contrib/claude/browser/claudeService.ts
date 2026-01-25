@@ -6,9 +6,13 @@
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IClaudeService } from '../common/claude.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession } from '../common/claudeTypes.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../../platform/claude/common/claudeCLI.js';
+import { CLAUDE_CLI_CHANNEL_NAME } from '../../../../platform/claude/common/claudeCLIChannel.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -16,10 +20,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _state: ClaudeServiceState = 'idle';
 	private _currentSession: IClaudeSession | undefined;
 	private _sessions: IClaudeSession[] = [];
-	private _abortController: AbortController | undefined;
+	private _currentMessageId: string | undefined;
+	private _accumulatedContent: string = '';
+
+	private readonly channel: IChannel;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
 	readonly onDidReceiveMessage: Event<IClaudeMessage> = this._onDidReceiveMessage.event;
+
+	private readonly _onDidUpdateMessage = this._register(new Emitter<IClaudeMessage>());
+	readonly onDidUpdateMessage: Event<IClaudeMessage> = this._onDidUpdateMessage.event;
 
 	private readonly _onDidChangeState = this._register(new Emitter<ClaudeServiceState>());
 	readonly onDidChangeState: Event<ClaudeServiceState> = this._onDidChangeState.event;
@@ -28,12 +38,140 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	readonly onDidChangeSession: Event<IClaudeSession | undefined> = this._onDidChangeSession.event;
 
 	constructor(
-		@IConfigurationService private readonly configurationService: IConfigurationService
+		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IMainProcessService mainProcessService: IMainProcessService
 	) {
 		super();
 
+		// Main Process의 Claude CLI 채널에 연결
+		this.channel = mainProcessService.getChannel(CLAUDE_CLI_CHANNEL_NAME);
+		console.log('[ClaudeService] Channel obtained:', CLAUDE_CLI_CHANNEL_NAME);
+
+		// CLI 이벤트 구독
+		this._register(this.channel.listen<IClaudeCLIStreamEvent>('onDidReceiveData')(event => {
+			console.log('[ClaudeService] Received CLI data:', event.type, event);
+			this.handleCLIData(event);
+		}));
+		this._register(this.channel.listen<void>('onDidComplete')(() => {
+			console.log('[ClaudeService] CLI complete');
+			this.handleCLIComplete();
+		}));
+		this._register(this.channel.listen<string>('onDidError')(error => {
+			console.log('[ClaudeService] CLI error:', error);
+			this.handleCLIError(error);
+		}));
+
 		// 초기 세션 생성
 		this.startNewSession();
+	}
+
+	// ========== CLI Event Handlers ==========
+
+	private handleCLIData(event: IClaudeCLIStreamEvent): void {
+		if (!this._currentMessageId || !this._currentSession) {
+			return;
+		}
+
+		// 텍스트 컨텐츠 추출
+		let text = '';
+
+		if (event.type === 'assistant' && event.message) {
+			// CLI의 assistant 타입: message.content 배열에서 텍스트 추출
+			if (typeof event.message === 'object' && event.message.content) {
+				for (const block of event.message.content) {
+					if (block.type === 'text' && block.text) {
+						text += block.text;
+					}
+				}
+			} else if (typeof event.message === 'string') {
+				text = event.message;
+			}
+		} else if (event.type === 'result' && event.result) {
+			// result 타입: 최종 결과
+			text = event.result;
+		} else if (event.type === 'content_block_delta' && event.delta?.text) {
+			text = event.delta.text;
+		} else if (event.type === 'text' && event.content) {
+			text = event.content;
+		}
+
+		if (text) {
+			this._accumulatedContent = text; // 누적이 아닌 교체 (CLI는 전체 응답을 한번에 줌)
+
+			// 메시지 업데이트
+			const updatedMessage: IClaudeMessage = {
+				id: this._currentMessageId,
+				role: 'assistant',
+				content: this._accumulatedContent,
+				timestamp: Date.now(),
+				isStreaming: true
+			};
+
+			// 세션의 메시지 업데이트
+			const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+			if (msgIndex !== -1) {
+				(this._currentSession.messages as IClaudeMessage[])[msgIndex] = updatedMessage;
+			}
+
+			this._onDidUpdateMessage.fire(updatedMessage);
+		}
+	}
+
+	private handleCLIComplete(): void {
+		if (!this._currentMessageId || !this._currentSession) {
+			return;
+		}
+
+		// 최종 메시지
+		const finalMessage: IClaudeMessage = {
+			id: this._currentMessageId,
+			role: 'assistant',
+			content: this._accumulatedContent,
+			timestamp: Date.now(),
+			isStreaming: false
+		};
+
+		// 세션의 메시지 업데이트
+		const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+		if (msgIndex !== -1) {
+			(this._currentSession.messages as IClaudeMessage[])[msgIndex] = finalMessage;
+		}
+
+		this._onDidUpdateMessage.fire(finalMessage);
+		this.setState('idle');
+
+		this._currentMessageId = undefined;
+		this._accumulatedContent = '';
+	}
+
+	private handleCLIError(error: string): void {
+		if (!this._currentSession) {
+			return;
+		}
+
+		const errorMessage: IClaudeMessage = {
+			id: this._currentMessageId || generateUuid(),
+			role: 'assistant',
+			content: `Error: ${error}`,
+			timestamp: Date.now(),
+			isError: true
+		};
+
+		// 기존 스트리밍 메시지가 있으면 업데이트, 없으면 추가
+		if (this._currentMessageId) {
+			const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+			if (msgIndex !== -1) {
+				(this._currentSession.messages as IClaudeMessage[])[msgIndex] = errorMessage;
+				this._onDidUpdateMessage.fire(errorMessage);
+			}
+		} else {
+			this._currentSession.messages.push(errorMessage);
+			this._onDidReceiveMessage.fire(errorMessage);
+		}
+
+		this.setState('error');
+		this._currentMessageId = undefined;
+		this._accumulatedContent = '';
 	}
 
 	// ========== State ==========
@@ -72,55 +210,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._currentSession!.messages.push(userMessage);
 		this._onDidReceiveMessage.fire(userMessage);
 
-		// API 호출
-		this.setState('sending');
-		this._abortController = new AbortController();
+		// 프롬프트 구성
+		let prompt = content;
 
-		try {
-			const assistantMessage = await this.callClaudeAPI(content, options);
-
-			this._currentSession!.messages.push(assistantMessage);
-			this._onDidReceiveMessage.fire(assistantMessage);
-
-			this.setState('idle');
-			return assistantMessage;
-		} catch (error) {
-			this.setState('error');
-
-			const errorMessage: IClaudeMessage = {
-				id: generateUuid(),
-				role: 'assistant',
-				content: error instanceof Error ? error.message : 'An error occurred',
-				timestamp: Date.now(),
-				isError: true
-			};
-
-			this._currentSession!.messages.push(errorMessage);
-			this._onDidReceiveMessage.fire(errorMessage);
-
-			throw error;
-		}
-	}
-
-	private async callClaudeAPI(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		const apiKey = this.configurationService.getValue<string>('claude.apiKey');
-		const model = options?.model || this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4-20250514';
-		const maxTokens = options?.maxTokens || this.configurationService.getValue<number>('claude.maxTokens') || 4096;
-
-		if (!apiKey) {
-			throw new Error('Claude API key is not configured. Please set "claude.apiKey" in settings.');
-		}
-
-		// 메시지 히스토리 구성
-		const messages = this._currentSession!.messages
-			.filter(m => !m.isError)
-			.map(m => ({
-				role: m.role,
-				content: m.content
-			}));
-
-		// 컨텍스트가 있으면 시스템 프롬프트에 추가
-		let systemPrompt = options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt');
+		// 컨텍스트 추가
 		if (options?.context) {
 			const contextParts: string[] = [];
 			if (options.context.selection) {
@@ -129,48 +222,72 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			if (options.context.filePath) {
 				contextParts.push(`Current file: ${options.context.filePath.fsPath}`);
 			}
+			if (options.context.attachments && options.context.attachments.length > 0) {
+				for (const attachment of options.context.attachments) {
+					if (attachment.content) {
+						contextParts.push(`File: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``);
+					} else {
+						contextParts.push(`Attached: ${attachment.name} (${attachment.type})`);
+					}
+				}
+			}
 			if (contextParts.length > 0) {
-				systemPrompt = (systemPrompt || '') + '\n\nContext:\n' + contextParts.join('\n');
+				prompt = contextParts.join('\n\n') + '\n\n' + content;
 			}
 		}
 
-		const response = await fetch('https://api.anthropic.com/v1/messages', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'x-api-key': apiKey,
-				'anthropic-version': '2023-06-01'
-			},
-			body: JSON.stringify({
-				model,
-				max_tokens: maxTokens,
-				system: systemPrompt,
-				messages
-			}),
-			signal: this._abortController?.signal
-		});
+		// 스트리밍 메시지 생성
+		this._currentMessageId = generateUuid();
+		this._accumulatedContent = '';
 
-		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}));
-			throw new Error(errorData.error?.message || `API request failed: ${response.status}`);
-		}
-
-		const data = await response.json();
-
-		return {
-			id: generateUuid(),
+		const assistantMessage: IClaudeMessage = {
+			id: this._currentMessageId,
 			role: 'assistant',
-			content: data.content[0]?.text || '',
-			timestamp: Date.now()
+			content: '',
+			timestamp: Date.now(),
+			isStreaming: true
 		};
+
+		this._currentSession!.messages.push(assistantMessage);
+		this._onDidReceiveMessage.fire(assistantMessage);
+
+		// CLI 호출
+		this.setState('streaming');
+		console.log('[ClaudeService] Sending prompt to CLI:', prompt.substring(0, 100));
+
+		try {
+			console.log('[ClaudeService] Calling channel.call sendPrompt...');
+
+			const cliOptions: IClaudeCLIRequestOptions = {
+				model: options?.model || this.configurationService.getValue<string>('claude.model'),
+				systemPrompt: options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt')
+			};
+
+			await this.channel.call('sendPrompt', [prompt, cliOptions]);
+			console.log('[ClaudeService] sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
+
+			// 완료 후 최종 메시지 반환
+			const finalMessage: IClaudeMessage = {
+				id: this._currentMessageId,
+				role: 'assistant',
+				content: this._accumulatedContent,
+				timestamp: Date.now(),
+				isStreaming: false
+			};
+
+			return finalMessage;
+		} catch (error) {
+			console.error('[ClaudeService] sendPrompt error:', error);
+			// 에러는 handleCLIError에서 처리됨
+			throw error;
+		}
 	}
 
 	cancelRequest(): void {
-		if (this._abortController) {
-			this._abortController.abort();
-			this._abortController = undefined;
-			this.setState('idle');
-		}
+		this.channel.call('cancelRequest');
+		this.setState('idle');
+		this._currentMessageId = undefined;
+		this._accumulatedContent = '';
 	}
 
 	// ========== History ==========

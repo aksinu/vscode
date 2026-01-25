@@ -88,10 +88,14 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.updateWelcomeVisibility();
 		}));
 
+		this._register(this.claudeService.onDidUpdateMessage(message => {
+			this.updateMessage(message);
+		}));
+
 		this._register(this.claudeService.onDidChangeState(state => {
 			const inProgress = state === 'sending' || state === 'streaming';
 			this.requestInProgressKey.set(inProgress);
-			this.updateLoadingState(inProgress);
+			this.updateLoadingState(state === 'sending'); // 스트리밍 중에는 로딩 숨김
 		}));
 
 		this._register(this.claudeService.onDidChangeSession(() => {
@@ -373,6 +377,34 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 로딩 인디케이터 앞에 삽입
 		this.messagesContainer.insertBefore(messageContainer, this.loadingElement);
 		this.scrollToBottom();
+	}
+
+	private updateMessage(message: IClaudeMessage): void {
+		// 기존 메시지 컨테이너 찾기
+		const existingContainer = this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`);
+		if (!existingContainer) {
+			return;
+		}
+
+		// 기존 disposables 정리
+		const oldDisposables = this.messageDisposables.get(message.id);
+		if (oldDisposables) {
+			oldDisposables.dispose();
+		}
+
+		// 컨테이너 내용 초기화
+		while (existingContainer.firstChild) {
+			existingContainer.removeChild(existingContainer.firstChild);
+		}
+
+		// 새로운 내용 렌더링
+		const disposables = this.messageRenderer.renderMessage(message, existingContainer as HTMLElement);
+		this.messageDisposables.set(message.id, disposables);
+
+		// 스트리밍 중이면 스크롤
+		if (message.isStreaming) {
+			this.scrollToBottom();
+		}
 	}
 
 	private clearMessages(): void {
