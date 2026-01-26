@@ -25,7 +25,7 @@ import { IThemeService } from '../../../../platform/theme/common/themeService.js
 import { IViewPaneOptions, ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../common/views.js';
 import { IClaudeService } from '../common/claude.js';
-import { IClaudeMessage, IClaudeAttachment } from '../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage } from '../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../common/claudeContextKeys.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
@@ -47,6 +47,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private inputEditor!: ICodeEditor;
 	private loadingElement!: HTMLElement;
 	private attachmentsContainer!: HTMLElement;
+	private queueContainer!: HTMLElement;
 	private dropOverlay!: HTMLElement;
 
 	private messageRenderer!: ClaudeMessageRenderer;
@@ -79,7 +80,8 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 메시지 렌더러 생성
 		this.messageRenderer = this._register(this.instantiationService.createInstance(ClaudeMessageRenderer, {
-			onApplyCode: (code, language) => this.applyCode(code, language)
+			onApplyCode: (code, language) => this.applyCode(code, language),
+			onRespondToAskUser: (responses) => this.claudeService.respondToAskUser(responses)
 		}));
 
 		// 서비스 이벤트 구독
@@ -101,6 +103,10 @@ export class ClaudeChatViewPane extends ViewPane {
 		this._register(this.claudeService.onDidChangeSession(() => {
 			this.clearMessages();
 			this.updateWelcomeVisibility();
+		}));
+
+		this._register(this.claudeService.onDidChangeQueue(queue => {
+			this.updateQueueUI(queue);
 		}));
 	}
 
@@ -128,9 +134,21 @@ export class ClaudeChatViewPane extends ViewPane {
 		loadingText.textContent = localize('claudeThinking', "Claude is thinking...");
 
 		// 기존 메시지 렌더링
-		for (const message of this.claudeService.getMessages()) {
-			this.appendMessage(message);
+		const messages = this.claudeService.getMessages();
+		const session = this.claudeService.getCurrentSession();
+		const previousMessageCount = session?.previousMessageCount || 0;
+
+		for (let i = 0; i < messages.length; i++) {
+			// 이전 세션과 현재 세션 구분선
+			if (previousMessageCount > 0 && i === previousMessageCount) {
+				this.appendSessionDivider();
+			}
+			this.appendMessage(messages[i]);
 		}
+
+		// 큐 표시 영역 (입력창 위)
+		this.queueContainer = append(this.container, $('.claude-queue-container'));
+		this.queueContainer.style.display = 'none';
 
 		// 입력 영역
 		this.inputContainer = append(this.container, $('.claude-input-container'));
@@ -191,6 +209,56 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.loadingElement.style.display = loading ? 'flex' : 'none';
 		if (loading) {
 			this.scrollToBottom();
+		}
+	}
+
+	private updateQueueUI(queue: IClaudeQueuedMessage[]): void {
+		// 기존 내용 초기화
+		while (this.queueContainer.firstChild) {
+			this.queueContainer.removeChild(this.queueContainer.firstChild);
+		}
+
+		if (queue.length === 0) {
+			this.queueContainer.style.display = 'none';
+			return;
+		}
+
+		this.queueContainer.style.display = 'block';
+
+		// 헤더
+		const header = append(this.queueContainer, $('.claude-queue-header'));
+		const headerText = append(header, $('span'));
+		headerText.textContent = localize('queuedMessages', "Queued ({0}):", queue.length);
+
+		// 전체 취소 버튼
+		const clearButton = append(header, $('button.claude-queue-clear'));
+		clearButton.title = localize('clearQueue', "Clear queue");
+		append(clearButton, $('.codicon.codicon-close-all'));
+
+		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
+			this.claudeService.clearQueue();
+		}));
+
+		// 큐 아이템들
+		const list = append(this.queueContainer, $('.claude-queue-list'));
+
+		for (const item of queue) {
+			const itemElement = append(list, $('.claude-queue-item'));
+
+			// 메시지 내용 (요약)
+			const content = append(itemElement, $('.claude-queue-item-content'));
+			const preview = item.content.length > 50 ? item.content.substring(0, 50) + '...' : item.content;
+			content.textContent = preview;
+			content.title = item.content;
+
+			// 개별 삭제 버튼
+			const removeButton = append(itemElement, $('button.claude-queue-item-remove'));
+			removeButton.title = localize('removeFromQueue', "Remove from queue");
+			append(removeButton, $('.codicon.codicon-close'));
+
+			this._register(addDisposableListener(removeButton, EventType.CLICK, () => {
+				this.claudeService.removeFromQueue(item.id);
+			}));
 		}
 	}
 
@@ -377,6 +445,18 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 로딩 인디케이터 앞에 삽입
 		this.messagesContainer.insertBefore(messageContainer, this.loadingElement);
 		this.scrollToBottom();
+	}
+
+	private appendSessionDivider(): void {
+		const divider = $('.claude-session-divider');
+
+		const line1 = append(divider, $('.claude-session-divider-line'));
+		const text = append(divider, $('.claude-session-divider-text'));
+		text.textContent = localize('previousSession', "Previous Session");
+		const line2 = append(divider, $('.claude-session-divider-line'));
+
+		// 로딩 인디케이터 앞에 삽입
+		this.messagesContainer.insertBefore(divider, this.loadingElement);
 	}
 
 	private updateMessage(message: IClaudeMessage): void {

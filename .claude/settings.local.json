@@ -45,7 +45,9 @@
       "Bash(yarn -v:*)",
       "Bash(npm i)",
       "Bash(npm run watch:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(yarn tsc:*)"
     ]
   }
 }

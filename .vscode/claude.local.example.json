@@ -1,0 +1,26 @@
+{
+  "$schema": "./claude.local.schema.json",
+  "// comment": "이 파일을 claude.local.json으로 복사하여 사용하세요.",
+  "// gitignore": ".vscode/claude.local.json을 .gitignore에 추가하세요.",
+
+  "executable": {
+    "// type options": "command | script",
+    "type": "command",
+    "command": "claude"
+  },
+
+  "// executable script example (Windows)": {
+    "type": "script",
+    "script": "./scripts/claude.bat",
+    "scriptType": "bat"
+  },
+
+  "// executable script example (Unix)": {
+    "type": "script",
+    "script": "./scripts/claude.sh",
+    "scriptType": "sh"
+  },
+
+  "autoAccept": false,
+  "workingDirectory": "."
+}

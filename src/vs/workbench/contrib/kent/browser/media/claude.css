@@ -159,12 +159,38 @@
 	margin-left: auto;
 }
 
+/* ========== Message Copy Button ========== */
+
+.claude-message-copy {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 4px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.15s, background-color 0.1s;
+}
+
+.claude-message:hover .claude-message-copy {
+	opacity: 1;
+}
+
+.claude-message-copy:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
 /* ========== Message Content ========== */
 
 .claude-message-content {
 	font-size: 13px;
 	line-height: 1.6;
 	word-wrap: break-word;
+	user-select: text; /* 텍스트 선택 허용 */
 }
 
 .claude-message-content p {
@@ -534,6 +560,359 @@
 .claude-attachment-remove:hover {
 	opacity: 1;
 	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ========== Tool Actions ========== */
+
+.claude-tool-status {
+	margin-bottom: 12px;
+	padding: 8px 12px;
+	background-color: var(--vscode-textBlockQuote-background);
+	border-left: 3px solid var(--vscode-textLink-foreground);
+	border-radius: 0 6px 6px 0;
+}
+
+.claude-tool-status-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.claude-tool-status-item.running {
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-tool-status-item.completed {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.claude-tool-spinner {
+	font-size: 16px;
+}
+
+.claude-tool-check {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.claude-tool-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.claude-tool-name {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.claude-tool-input {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-editor-font-family);
+}
+
+/* Tool Summary (collapsed) */
+
+.claude-tool-summary {
+	margin-top: 12px;
+	border-top: 1px solid var(--vscode-widget-border);
+	padding-top: 8px;
+}
+
+.claude-tool-summary-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	transition: background-color 0.1s;
+}
+
+.claude-tool-summary-header:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-tool-summary-list {
+	margin-top: 8px;
+	padding-left: 8px;
+}
+
+.claude-tool-summary-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0;
+	font-size: 12px;
+}
+
+.claude-tool-status-icon {
+	font-size: 14px;
+}
+
+.claude-tool-status-icon.codicon-check {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.claude-tool-status-icon.codicon-error {
+	color: var(--vscode-testing-iconFailed);
+}
+
+.claude-tool-summary-name {
+	font-weight: 500;
+}
+
+.claude-tool-summary-desc {
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+}
+
+/* Waiting message */
+
+.claude-message-waiting {
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+}
+
+/* ========== AskUser ========== */
+
+.claude-ask-user {
+	margin-top: 16px;
+	padding: 16px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-focusBorder);
+	border-radius: 8px;
+}
+
+.claude-ask-user-question {
+	margin-bottom: 16px;
+}
+
+.claude-ask-user-question:last-child {
+	margin-bottom: 0;
+}
+
+.claude-ask-user-header {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vscode-textLink-foreground);
+	margin-bottom: 6px;
+}
+
+.claude-ask-user-text {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	margin-bottom: 12px;
+}
+
+.claude-ask-user-options {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.claude-ask-user-option {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	padding: 12px 16px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	cursor: pointer;
+	text-align: left;
+	transition: background-color 0.1s, border-color 0.1s;
+}
+
+.claude-ask-user-option:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.claude-ask-user-option:active {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.claude-ask-user-option-label {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.claude-ask-user-option-desc {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-ask-user-other {
+	margin-top: 12px;
+	display: flex;
+	gap: 8px;
+}
+
+.claude-ask-user-other-input {
+	flex: 1;
+	padding: 8px 12px;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	font-size: 13px;
+}
+
+.claude-ask-user-other-input:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder);
+}
+
+/* ========== Message Queue ========== */
+
+.claude-queue-container {
+	padding: 8px 12px;
+	background-color: var(--vscode-inputValidation-warningBackground);
+	border-top: 1px solid var(--vscode-inputValidation-warningBorder);
+}
+
+.claude-queue-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.claude-queue-clear {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 2px 4px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.claude-queue-clear:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.claude-queue-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.claude-queue-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 8px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	font-size: 12px;
+}
+
+.claude-queue-item-content {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground);
+}
+
+.claude-queue-item-remove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 2px;
+	margin-left: 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 3px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.1s;
+}
+
+.claude-queue-item:hover .claude-queue-item-remove {
+	opacity: 1;
+}
+
+.claude-queue-item-remove:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-errorForeground);
+}
+
+/* ========== Session Divider ========== */
+
+.claude-session-divider {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 16px 0;
+	padding: 0 8px;
+}
+
+.claude-session-divider-line {
+	flex: 1;
+	height: 1px;
+	background: linear-gradient(
+		to right,
+		transparent,
+		var(--vscode-panel-border) 20%,
+		var(--vscode-panel-border) 80%,
+		transparent
+	);
+}
+
+.claude-session-divider-text {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	white-space: nowrap;
+}
+
+/* ========== Auto Accept ========== */
+
+.claude-ask-user.auto-accepted {
+	padding: 12px;
+	background-color: var(--vscode-inputValidation-infoBackground);
+	border: 1px solid var(--vscode-inputValidation-infoBorder);
+	border-radius: 6px;
+}
+
+.claude-ask-user-auto-accepted {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
+	font-weight: 500;
+}
+
+.claude-auto-accept-icon {
+	color: var(--vscode-terminal-ansiGreen);
+}
+
+.claude-ask-user-auto-hint {
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
 }
 
 /* ========== Responsive ========== */

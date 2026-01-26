@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession } from './claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage } from './claudeTypes.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
@@ -37,6 +37,11 @@ export interface IClaudeService {
 	 */
 	readonly onDidChangeSession: Event<IClaudeSession | undefined>;
 
+	/**
+	 * 메시지 큐 변경 이벤트
+	 */
+	readonly onDidChangeQueue: Event<IClaudeQueuedMessage[]>;
+
 	// ========== State ==========
 
 	/**
@@ -61,6 +66,11 @@ export interface IClaudeService {
 	 */
 	cancelRequest(): void;
 
+	/**
+	 * AskUser 질문에 응답
+	 */
+	respondToAskUser(responses: string[]): Promise<void>;
+
 	// ========== History ==========
 
 	/**
@@ -84,4 +94,21 @@ export interface IClaudeService {
 	 * 세션 목록 가져오기
 	 */
 	getSessions(): IClaudeSession[];
+
+	// ========== Queue ==========
+
+	/**
+	 * 큐에 대기 중인 메시지 가져오기
+	 */
+	getQueuedMessages(): IClaudeQueuedMessage[];
+
+	/**
+	 * 큐에서 메시지 제거
+	 */
+	removeFromQueue(id: string): void;
+
+	/**
+	 * 큐 전체 비우기
+	 */
+	clearQueue(): void;
 }

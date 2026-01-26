@@ -11,6 +11,48 @@ import { URI } from '../../../../base/common/uri.js';
 export type ClaudeMessageRole = 'user' | 'assistant';
 
 /**
+ * Claude 도구 액션 (파일 읽기, 검색 등)
+ */
+export interface IClaudeToolAction {
+	readonly id: string;
+	readonly tool: string;
+	readonly status: 'running' | 'completed' | 'error';
+	readonly input?: Record<string, unknown>;
+	readonly output?: string;
+	readonly error?: string;
+}
+
+/**
+ * AskUser 질문 옵션
+ */
+export interface IClaudeAskUserOption {
+	readonly label: string;
+	readonly description?: string;
+}
+
+/**
+ * AskUser 질문
+ */
+export interface IClaudeAskUserQuestion {
+	readonly question: string;
+	readonly header?: string;
+	readonly options: IClaudeAskUserOption[];
+	readonly multiSelect?: boolean;
+}
+
+/**
+ * AskUser 요청
+ */
+export interface IClaudeAskUserRequest {
+	readonly id: string;
+	readonly questions: IClaudeAskUserQuestion[];
+	/** 자동 승인되었는지 여부 */
+	readonly autoAccepted?: boolean;
+	/** 자동 선택된 옵션 */
+	readonly autoAcceptedOption?: string;
+}
+
+/**
  * Claude 메시지
  */
 export interface IClaudeMessage {
@@ -21,6 +63,10 @@ export interface IClaudeMessage {
 	readonly context?: IClaudeContext;
 	readonly isStreaming?: boolean;
 	readonly isError?: boolean;
+	readonly toolActions?: IClaudeToolAction[];
+	readonly currentToolAction?: IClaudeToolAction;
+	readonly askUserRequest?: IClaudeAskUserRequest;
+	readonly isWaitingForUser?: boolean;
 }
 
 /**
@@ -83,6 +129,8 @@ export interface IClaudeSession {
 	readonly title?: string;
 	readonly createdAt: number;
 	readonly messages: IClaudeMessage[];
+	/** 이전 세션에서 로드된 메시지 개수 (구분선 표시용) */
+	readonly previousMessageCount?: number;
 }
 
 /**
@@ -92,4 +140,14 @@ export const enum ClaudeChatMode {
 	Ask = 'ask',
 	Edit = 'edit',
 	Agent = 'agent'
+}
+
+/**
+ * 큐에 대기 중인 메시지
+ */
+export interface IClaudeQueuedMessage {
+	readonly id: string;
+	readonly content: string;
+	readonly context?: IClaudeContext;
+	readonly timestamp: number;
 }

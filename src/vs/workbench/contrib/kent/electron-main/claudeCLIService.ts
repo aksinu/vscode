@@ -9,6 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
+import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType } from '../common/claudeLocalConfig.js';
 
 // 디버그용 파일 로그
 const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
@@ -18,11 +19,13 @@ function debugLog(...args: unknown[]) {
 	fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
 }
 
+
 export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 	declare readonly _serviceBrand: undefined;
 
 	private _process: ChildProcess | undefined;
 	private _isRunning = false;
+	private _stdinOpen = false;
 
 	private readonly _onDidReceiveData = this._register(new Emitter<IClaudeCLIStreamEvent>());
 	readonly onDidReceiveData: Event<IClaudeCLIStreamEvent> = this._onDidReceiveData.event;
@@ -38,6 +41,8 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		debugLog('ClaudeCLIService initialized');
 	}
 
+	private _promptFile: string | undefined;
+
 	async sendPrompt(prompt: string, options?: IClaudeCLIRequestOptions): Promise<void> {
 		if (this._isRunning) {
 			throw new Error('A request is already in progress');
@@ -47,28 +52,36 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 		debugLog(`Starting with prompt length: ${prompt.length}, first 100 chars: ${prompt.substring(0, 100)}`);
 
-		// stdin을 통해 프롬프트를 전달 (명령줄 길이 제한 회피)
-		const args: string[] = [
+		// Claude CLI 인자 구성
+		const claudeArgs: string[] = [
 			'--output-format', 'stream-json',
 			'--verbose'
 		];
 
-		// 옵션 추가
-		if (options?.model) {
-			args.push('--model', options.model);
-		}
-		if (options?.systemPrompt) {
-			args.push('--system-prompt', options.systemPrompt);
-		}
-		if (options?.allowedTools && options.allowedTools.length > 0) {
-			args.push('--allowedTools', ...options.allowedTools);
+		// 세션 재개 옵션
+		if (options?.resumeSessionId) {
+			claudeArgs.push('--resume', options.resumeSessionId);
+			debugLog(' Resuming session:', options.resumeSessionId);
 		}
 
-		debugLog(' Spawning process with args:', args.join(' '));
+		// 옵션 추가
+		if (options?.model) {
+			claudeArgs.push('--model', options.model);
+		}
+		if (options?.systemPrompt && !options?.resumeSessionId) {
+			// 세션 재개 시에는 시스템 프롬프트 무시
+			claudeArgs.push('--system-prompt', options.systemPrompt);
+		}
+		if (options?.allowedTools && options.allowedTools.length > 0) {
+			claudeArgs.push('--allowedTools', ...options.allowedTools);
+		}
+
+		// 실행 명령어 및 인자 결정
+		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
+		debugLog(' Spawning:', spawnCommand, spawnArgs.join(' '));
 
 		return new Promise((resolve, reject) => {
 			debugLog(' Platform:', process.platform);
-			debugLog(' Args:', JSON.stringify(args.slice(0, 3)));
 
 			try {
 				// 디버거가 자식 프로세스에 붙지 않도록 환경 변수 정리
@@ -77,8 +90,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 				delete cleanEnv.ELECTRON_RUN_AS_NODE;
 				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
 
-				// shell: true로 실행하면 인자가 올바르게 처리됨
-				this._process = spawn('claude', args, {
+				this._process = spawn(spawnCommand, spawnArgs, {
 					cwd: options?.workingDir || process.cwd(),
 					shell: true,
 					env: cleanEnv,
@@ -90,6 +102,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			} catch (spawnError) {
 				debugLog('ERROR: Spawn failed:', spawnError);
 				this._isRunning = false;
+				this.cleanupPromptFile();
 				this._onDidError.fire(`Spawn failed: ${spawnError}`);
 				reject(spawnError);
 				return;
@@ -99,6 +112,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 				const error = 'Failed to spawn claude process - no PID';
 				debugLog('ERROR:', error);
 				this._isRunning = false;
+				this.cleanupPromptFile();
 				this._onDidError.fire(error);
 				reject(new Error(error));
 				return;
@@ -148,7 +162,9 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			this._process.on('close', (code) => {
 				debugLog(' Process closed with code:', code);
 				this._isRunning = false;
+				this._stdinOpen = false;
 				this._process = undefined;
+				this.cleanupPromptFile();
 
 				if (code === 0) {
 					this._onDidComplete.fire();
@@ -164,24 +180,114 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			this._process.on('error', (error) => {
 				debugLog('ERROR: Process error:', error.message);
 				this._isRunning = false;
+				this._stdinOpen = false;
 				this._process = undefined;
+				this.cleanupPromptFile();
 				this._onDidError.fire(error.message);
 				reject(error);
 			});
 
 			debugLog(' All handlers registered, waiting for process events...');
 
-			// stdin을 통해 프롬프트 전송 후 닫기
+			// stdin으로 프롬프트 전송 후 end() 호출
+			// AskUser가 필요하면 --resume 옵션으로 새 세션 시작
 			if (this._process.stdin) {
 				debugLog(' Writing prompt to stdin...');
-				this._process.stdin.write(prompt, 'utf8', (err) => {
+				this._stdinOpen = true;
+				this._process.stdin.write(prompt + '\n', 'utf8', (err) => {
 					if (err) {
 						debugLog('ERROR: stdin write failed:', err.message);
+						this._stdinOpen = false;
 					} else {
-						debugLog(' Prompt written to stdin, closing...');
+						debugLog(' Prompt written to stdin, ending...');
+						this._process?.stdin?.end();
+						this._stdinOpen = false;
 					}
-					this._process?.stdin?.end();
 				});
+			}
+		});
+	}
+
+	/**
+	 * 실행 설정에 따라 spawn 명령어와 인자를 결정
+	 */
+	private resolveExecutable(
+		executable: IClaudeExecutableConfig | undefined,
+		claudeArgs: string[],
+		workingDir?: string
+	): { spawnCommand: string; spawnArgs: string[] } {
+		const isWindows = process.platform === 'win32';
+
+		// 기본값: 'claude' 명령어 직접 실행
+		if (!executable || executable.type === 'command') {
+			const command = executable?.command || 'claude';
+			return { spawnCommand: command, spawnArgs: claudeArgs };
+		}
+
+		// 스크립트 실행
+		if (executable.type === 'script' && executable.script) {
+			let scriptPath = executable.script;
+
+			// 상대 경로면 워크스페이스 기준으로 변환
+			if (!path.isAbsolute(scriptPath) && workingDir) {
+				scriptPath = path.join(workingDir, scriptPath);
+			}
+
+			// 스크립트 타입 결정 (명시 또는 자동 감지)
+			const scriptType: ClaudeScriptType = executable.scriptType || detectScriptType(scriptPath) || 'sh';
+
+			debugLog(' Script path:', scriptPath);
+			debugLog(' Script type:', scriptType);
+
+			// 인터프리터 정보
+			const interpreter = getScriptInterpreter(scriptType, isWindows);
+
+			if (interpreter.command) {
+				// 인터프리터로 스크립트 실행: interpreter script claudeArgs
+				return {
+					spawnCommand: interpreter.command,
+					spawnArgs: [...interpreter.args, scriptPath, ...claudeArgs]
+				};
+			} else {
+				// 직접 실행 (bat/sh with shell:true)
+				return {
+					spawnCommand: scriptPath,
+					spawnArgs: claudeArgs
+				};
+			}
+		}
+
+		// 폴백: 기본 'claude' 명령어
+		return { spawnCommand: 'claude', spawnArgs: claudeArgs };
+	}
+
+	private cleanupPromptFile(): void {
+		if (this._promptFile) {
+			try {
+				if (fs.existsSync(this._promptFile)) {
+					fs.unlinkSync(this._promptFile);
+					debugLog(` Cleaned up prompt file: ${this._promptFile}`);
+				}
+			} catch (e) {
+				debugLog('ERROR: Failed to cleanup prompt file:', e);
+			}
+			this._promptFile = undefined;
+		}
+	}
+
+	sendUserInput(input: string): void {
+		if (!this._process || !this._process.stdin || !this._stdinOpen) {
+			debugLog('ERROR: Cannot send user input - no active process or stdin closed');
+			return;
+		}
+
+		debugLog(' Sending user input:', input.substring(0, 100));
+
+		this._process.stdin.write(input + '\n', 'utf8', (err) => {
+			if (err) {
+				debugLog('ERROR: Failed to send user input:', err.message);
+			} else {
+				debugLog(' User input sent successfully');
 			}
 		});
 	}
@@ -191,6 +297,8 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			this._process.kill('SIGTERM');
 			this._process = undefined;
 			this._isRunning = false;
+			this._stdinOpen = false;
+			this.cleanupPromptFile();
 		}
 	}
 
@@ -200,6 +308,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 	override dispose(): void {
 		this.cancelRequest();
+		this.cleanupPromptFile();
 		super.dispose();
 	}
 }

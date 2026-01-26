@@ -5,6 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IClaudeExecutableConfig } from './claudeLocalConfig.js';
 
 export const IClaudeCLIService = createDecorator<IClaudeCLIService>('claudeCLIService');
 
@@ -12,16 +13,28 @@ export const IClaudeCLIService = createDecorator<IClaudeCLIService>('claudeCLISe
  * Claude CLI 스트리밍 응답 타입
  */
 export interface IClaudeCLIStreamEvent {
-	readonly type: 'system' | 'assistant' | 'text' | 'result' | 'error' | 'tool_use' | 'content_block_start' | 'content_block_delta' | 'content_block_stop' | 'message_start' | 'message_delta' | 'message_stop';
+	readonly type: 'system' | 'assistant' | 'text' | 'result' | 'error' | 'tool_use' | 'tool_result' | 'content_block_start' | 'content_block_delta' | 'content_block_stop' | 'message_start' | 'message_delta' | 'message_stop' | 'input_request';
 	readonly subtype?: string;
 	readonly content?: string;
 	readonly message?: {
-		readonly content?: Array<{ type: string; text?: string }>;
+		readonly content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
 	} | string;
 	readonly result?: string;
 	readonly delta?: { text?: string };
 	readonly index?: number;
 	readonly is_error?: boolean;
+	// Tool use fields
+	readonly tool_use_id?: string;
+	readonly tool_name?: string;
+	readonly tool_input?: Record<string, unknown>;
+	readonly tool_result?: string;
+	// Input request fields (AskUser)
+	readonly questions?: Array<{
+		readonly question: string;
+		readonly header?: string;
+		readonly options: Array<{ label: string; description?: string }>;
+		readonly multiSelect?: boolean;
+	}>;
 }
 
 /**
@@ -33,6 +46,9 @@ export interface IClaudeCLIRequestOptions {
 	readonly systemPrompt?: string;
 	readonly maxTokens?: number;
 	readonly allowedTools?: string[];
+	readonly resumeSessionId?: string; // 세션 재개용
+	/** 실행 설정 (로컬 설정에서 로드) */
+	readonly executable?: IClaudeExecutableConfig;
 }
 
 /**
@@ -70,4 +86,9 @@ export interface IClaudeCLIService {
 	 * 요청 진행 중 여부
 	 */
 	isRunning(): boolean;
+
+	/**
+	 * 사용자 입력 전송 (AskUser 응답용)
+	 */
+	sendUserInput(input: string): void;
 }

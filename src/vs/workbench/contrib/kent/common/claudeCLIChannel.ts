@@ -39,6 +39,12 @@ export class ClaudeCLIChannel implements IServerChannel<string> {
 				console.log('[ClaudeCLIChannel] Forwarding sendPrompt to service');
 				return this.service.sendPrompt(prompt, options) as Promise<T>;
 			}
+			case 'sendUserInput': {
+				const [input] = args as [string];
+				console.log('[ClaudeCLIChannel] Forwarding sendUserInput to service');
+				this.service.sendUserInput(input);
+				return Promise.resolve() as Promise<T>;
+			}
 			case 'cancelRequest':
 				this.service.cancelRequest();
 				return Promise.resolve() as Promise<T>;
@@ -84,5 +90,10 @@ export class ClaudeCLIChannelClient implements IClaudeCLIService {
 	isRunning(): boolean {
 		// 동기 호출이 필요하므로 캐시된 값 반환 또는 false
 		return false;
+	}
+
+	sendUserInput(input: string): void {
+		console.log('[ClaudeCLIChannelClient] Sending user input via channel');
+		this.channel.call('sendUserInput', [input]);
 	}
 }
