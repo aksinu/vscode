@@ -9,6 +9,7 @@
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	min-height: 0; /* flex child가 overflow 되지 않도록 */
 	overflow: hidden;
 	background-color: var(--vscode-panel-background);
 	position: relative;
@@ -21,10 +22,12 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	height: 100%;
+	flex: 1;
+	min-height: 0;
 	padding: 24px;
 	text-align: center;
 	color: var(--vscode-descriptionForeground);
+	overflow-y: auto;
 }
 
 .claude-welcome-icon {
@@ -80,6 +83,7 @@
 
 .claude-messages {
 	flex: 1;
+	min-height: 0; /* flex child가 overflow 되지 않도록 */
 	overflow-y: auto;
 	padding: 16px;
 	display: flex;
@@ -359,9 +363,13 @@
 /* ========== Input Area ========== */
 
 .claude-input-container {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
 	border-top: 1px solid var(--vscode-widget-border);
-	padding: 12px;
+	padding: 8px;
 	background-color: var(--vscode-panel-background);
+	gap: 4px;
 }
 
 .claude-input-wrapper {
@@ -373,6 +381,7 @@
 	border-radius: 8px;
 	background-color: var(--vscode-input-background);
 	transition: border-color 0.1s, box-shadow 0.1s;
+	min-height: 48px;
 }
 
 .claude-input-wrapper.focused {
@@ -380,42 +389,17 @@
 	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
-.claude-input-toolbar {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	padding-bottom: 4px;
-}
-
-.claude-toolbar-button {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border: none;
-	background: transparent;
-	color: var(--vscode-foreground);
-	border-radius: 4px;
-	cursor: pointer;
-	opacity: 0.7;
-	transition: opacity 0.1s, background-color 0.1s;
-}
-
-.claude-toolbar-button:hover {
-	opacity: 1;
-	background-color: var(--vscode-toolbar-hoverBackground);
-}
-
 .claude-input-editor-wrapper {
 	flex: 1;
 	position: relative;
-	min-height: 36px;
+	min-height: 32px;
+	max-height: 120px;
 }
 
 .claude-input-editor {
 	width: 100%;
-	min-height: 36px;
+	height: 100%;
+	min-height: 32px;
 	border-radius: 4px;
 	overflow: hidden;
 }
@@ -433,8 +417,9 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
+	flex-shrink: 0;
 	border: none;
 	background-color: var(--vscode-button-background);
 	color: var(--vscode-button-foreground);
@@ -450,6 +435,41 @@
 .claude-send-button:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+/* ========== Input Footer (하단 버튼들) ========== */
+
+.claude-input-footer {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 2px;
+	padding: 0 4px;
+}
+
+.claude-footer-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	background-color: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 4px;
+	cursor: pointer;
+	opacity: 0.5;
+	transition: opacity 0.15s, background-color 0.15s;
+}
+
+.claude-footer-button .codicon {
+	font-size: 14px;
+}
+
+.claude-footer-button:hover {
+	opacity: 1;
+	background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* ========== Scrollbar ========== */

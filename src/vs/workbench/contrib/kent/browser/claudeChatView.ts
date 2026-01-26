@@ -298,37 +298,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 입력 wrapper
 		const inputWrapper = append(this.inputContainer, $('.claude-input-wrapper'));
 
-		// 툴바 (왼쪽)
-		const toolbar = append(inputWrapper, $('.claude-input-toolbar'));
-
-		// 첨부 버튼
-		const attachButton = append(toolbar, $('button.claude-toolbar-button'));
-		attachButton.title = localize('attachContext', "Attach context (drag & drop files or click)");
-		append(attachButton, $('.codicon.codicon-attach'));
-
-		// 첨부 버튼 클릭 - 현재 에디터 파일 첨부
-		this._register(addDisposableListener(attachButton, EventType.CLICK, () => {
-			this.attachCurrentEditorFile();
-		}));
-
-		// 세션 관리 버튼
-		const sessionButton = append(toolbar, $('button.claude-toolbar-button'));
-		sessionButton.title = localize('manageSessions', "Manage sessions");
-		append(sessionButton, $('.codicon.codicon-layers'));
-
-		this._register(addDisposableListener(sessionButton, EventType.CLICK, () => {
-			this.showSessionManager();
-		}));
-
-		// 설정 버튼
-		const settingsButton = append(toolbar, $('button.claude-toolbar-button'));
-		settingsButton.title = localize('openLocalSettings', "Open local settings (.vscode/claude.local.json)");
-		append(settingsButton, $('.codicon.codicon-settings-gear'));
-
-		this._register(addDisposableListener(settingsButton, EventType.CLICK, () => {
-			this.openLocalSettings();
-		}));
-
 		// 에디터 영역
 		const editorWrapper = append(inputWrapper, $('.claude-input-editor-wrapper'));
 		const editorContainer = append(editorWrapper, $('.claude-input-editor'));
@@ -456,6 +425,36 @@ export class ClaudeChatViewPane extends ViewPane {
 			dispose: () => sendButton.removeEventListener('click', () => this.submitInput())
 		});
 		sendButton.addEventListener('click', () => this.submitInput());
+
+		// 하단 툴바 (입력창 아래, 오른쪽 정렬)
+		const inputFooter = append(this.inputContainer, $('.claude-input-footer'));
+
+		// 첨부 버튼
+		const attachButton = append(inputFooter, $('button.claude-footer-button'));
+		attachButton.title = localize('attachContext', "Attach context (drag & drop files or click)");
+		append(attachButton, $('.codicon.codicon-attach'));
+
+		this._register(addDisposableListener(attachButton, EventType.CLICK, () => {
+			this.attachCurrentEditorFile();
+		}));
+
+		// 세션 관리 버튼
+		const sessionButton = append(inputFooter, $('button.claude-footer-button'));
+		sessionButton.title = localize('manageSessions', "Manage sessions");
+		append(sessionButton, $('.codicon.codicon-layers'));
+
+		this._register(addDisposableListener(sessionButton, EventType.CLICK, () => {
+			this.showSessionManager();
+		}));
+
+		// 설정 버튼
+		const settingsButton = append(inputFooter, $('button.claude-footer-button'));
+		settingsButton.title = localize('openLocalSettings', "Open local settings (.vscode/claude.local.json)");
+		append(settingsButton, $('.codicon.codicon-settings-gear'));
+
+		this._register(addDisposableListener(settingsButton, EventType.CLICK, () => {
+			this.openLocalSettings();
+		}));
 	}
 
 	private async submitInput(): Promise<void> {
@@ -1332,14 +1331,19 @@ export class ClaudeChatViewPane extends ViewPane {
 	protected override layoutBody(height: number, width: number): void {
 		super.layoutBody(height, width);
 
-		const inputHeight = Math.min(150, Math.max(80, height * 0.2)); // 동적 입력 높이
-		const messagesHeight = height - inputHeight;
+		// CSS flexbox가 레이아웃을 처리하도록 컨테이너 높이만 설정
+		this.container.style.height = `${height}px`;
 
-		this.welcomeContainer.style.height = `${messagesHeight}px`;
-		this.messagesContainer.style.height = `${messagesHeight}px`;
-		this.inputContainer.style.height = `${inputHeight}px`;
-
-		this.inputEditor?.layout({ width: width - 100, height: inputHeight - 24 });
+		// 에디터 레이아웃은 DOM 렌더링 후 계산
+		requestAnimationFrame(() => {
+			const editorWrapper = this.inputContainer.querySelector('.claude-input-editor-wrapper') as HTMLElement;
+			if (editorWrapper && this.inputEditor) {
+				const rect = editorWrapper.getBoundingClientRect();
+				if (rect.width > 0 && rect.height > 0) {
+					this.inputEditor.layout({ width: rect.width, height: rect.height });
+				}
+			}
+		});
 	}
 
 	override dispose(): void {
