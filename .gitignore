@@ -25,3 +25,5 @@ product.overrides.json
 vscode-telemetry-docs/
 test-output.json
 nul
+/vx-claude.sh
+/vx-claude.bat
