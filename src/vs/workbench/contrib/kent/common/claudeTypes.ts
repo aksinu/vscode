@@ -90,10 +90,14 @@ export interface IClaudeContext {
  */
 export interface IClaudeAttachment {
 	readonly id: string;
-	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics';
+	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics' | 'workspace' | 'image';
 	readonly uri?: URI;
 	readonly name: string;
 	readonly content?: string;
+	/** 이미지 base64 데이터 (type === 'image'일 때) */
+	readonly imageData?: string;
+	/** 이미지 MIME 타입 (type === 'image'일 때) */
+	readonly mimeType?: string;
 }
 
 /**

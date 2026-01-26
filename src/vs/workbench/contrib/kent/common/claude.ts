@@ -42,6 +42,11 @@ export interface IClaudeService {
 	 */
 	readonly onDidChangeQueue: Event<IClaudeQueuedMessage[]>;
 
+	/**
+	 * Rate limit 상태 변경 이벤트
+	 */
+	readonly onDidChangeRateLimitStatus: Event<{ waiting: boolean; countdown: number; message?: string }>;
+
 	// ========== State ==========
 
 	/**
@@ -95,6 +100,21 @@ export interface IClaudeService {
 	 */
 	getSessions(): IClaudeSession[];
 
+	/**
+	 * 특정 세션으로 전환
+	 */
+	switchSession?(sessionId: string): IClaudeSession | undefined;
+
+	/**
+	 * 세션 삭제
+	 */
+	deleteSession?(sessionId: string): boolean;
+
+	/**
+	 * 세션 제목 변경
+	 */
+	renameSession?(sessionId: string, title: string): boolean;
+
 	// ========== Queue ==========
 
 	/**
@@ -118,4 +138,16 @@ export interface IClaudeService {
 	 * 로컬 설정 다시 로드
 	 */
 	reloadLocalConfig?(): Promise<void>;
+
+	// ========== Rate Limit ==========
+
+	/**
+	 * Rate limit 대기 취소
+	 */
+	cancelRateLimitWait?(): void;
+
+	/**
+	 * Rate limit 상태 조회
+	 */
+	getRateLimitStatus?(): { waiting: boolean; countdown: number; message?: string };
 }

@@ -35,6 +35,19 @@ export interface IClaudeCLIStreamEvent {
 		readonly options: Array<{ label: string; description?: string }>;
 		readonly multiSelect?: boolean;
 	}>;
+	// Error fields (rate limit, etc.)
+	readonly error_type?: 'rate_limit' | 'api_error' | 'network_error' | 'unknown';
+	readonly retry_after?: number; // 초 단위 대기 시간
+}
+
+/**
+ * Rate limit 정보
+ */
+export interface IClaudeRateLimitInfo {
+	readonly isRateLimited: boolean;
+	readonly retryAfterSeconds: number;
+	readonly resetTime?: Date;
+	readonly message?: string;
 }
 
 /**

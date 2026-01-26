@@ -8,8 +8,72 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
-import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
+import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
 import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType } from '../common/claudeLocalConfig.js';
+
+/**
+ * Rate limit 에러 메시지 파싱
+ * Claude CLI/API는 다양한 형태로 rate limit을 알려줄 수 있음
+ */
+function parseRateLimitError(errorText: string): IClaudeRateLimitInfo | null {
+	debugLog('[RateLimit] Parsing error text:', errorText.substring(0, 500));
+
+	// 패턴 1: "rate limit" 또는 "rate_limit" 포함
+	const isRateLimited = /rate[_\s]?limit/i.test(errorText) ||
+		/too many requests/i.test(errorText) ||
+		/429/i.test(errorText) ||
+		/quota exceeded/i.test(errorText) ||
+		/token.*exhaust/i.test(errorText);
+
+	if (!isRateLimited) {
+		debugLog('[RateLimit] Not a rate limit error');
+		return null;
+	}
+
+	debugLog('[RateLimit] Rate limit detected!');
+
+	// 대기 시간 파싱 시도
+	let retryAfterSeconds = 60; // 기본값 1분
+
+	// 패턴: "retry after X seconds" 또는 "try again in X seconds/minutes"
+	const retryMatch = errorText.match(/(?:retry|try again|wait).*?(\d+)\s*(second|minute|hour|sec|min|hr)/i);
+	if (retryMatch) {
+		const value = parseInt(retryMatch[1], 10);
+		const unit = retryMatch[2].toLowerCase();
+		if (unit.startsWith('min')) {
+			retryAfterSeconds = value * 60;
+		} else if (unit.startsWith('hour') || unit.startsWith('hr')) {
+			retryAfterSeconds = value * 3600;
+		} else {
+			retryAfterSeconds = value;
+		}
+		debugLog('[RateLimit] Parsed retry after:', retryAfterSeconds, 'seconds');
+	}
+
+	// 패턴: "resets at" 또는 시간 형식
+	const resetMatch = errorText.match(/reset.*?(\d{1,2}:\d{2}(?::\d{2})?)/i);
+	let resetTime: Date | undefined;
+	if (resetMatch) {
+		const now = new Date();
+		const [hours, minutes] = resetMatch[1].split(':').map(Number);
+		resetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+		if (resetTime < now) {
+			resetTime.setDate(resetTime.getDate() + 1); // 다음 날
+		}
+		retryAfterSeconds = Math.ceil((resetTime.getTime() - now.getTime()) / 1000);
+		debugLog('[RateLimit] Parsed reset time:', resetTime.toISOString());
+	}
+
+	const result: IClaudeRateLimitInfo = {
+		isRateLimited: true,
+		retryAfterSeconds,
+		resetTime,
+		message: errorText.substring(0, 200)
+	};
+
+	debugLog('[RateLimit] Result:', JSON.stringify(result));
+	return result;
+}
 
 // 디버그용 파일 로그
 const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
@@ -153,9 +217,23 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			});
 
 			debugLog(' Registering stderr handler...');
+			let stderrBuffer = '';
 			this._process.stderr?.on('data', (data: Buffer) => {
 				const errorText = data.toString();
+				stderrBuffer += errorText;
 				debugLog('stderr:', errorText);
+
+				// Rate limit 에러 감지
+				const rateLimitInfo = parseRateLimitError(stderrBuffer);
+				if (rateLimitInfo) {
+					debugLog('[RateLimit] Firing rate limit event');
+					this._onDidReceiveData.fire({
+						type: 'error',
+						error_type: 'rate_limit',
+						retry_after: rateLimitInfo.retryAfterSeconds,
+						content: rateLimitInfo.message
+					});
+				}
 			});
 
 			debugLog(' Registering close handler...');

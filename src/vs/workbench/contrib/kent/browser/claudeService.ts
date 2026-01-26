@@ -11,7 +11,7 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { IClaudeService } from '../common/claude.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeQueuedMessage } from '../common/claudeTypes.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
 import { CLAUDE_CLI_CHANNEL_NAME } from '../common/claudeCLIChannel.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
@@ -36,6 +36,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _messageQueue: IClaudeQueuedMessage[] = [];
 	private _isProcessingQueue = false;
 
+	// Rate limit 재시도 관련
+	private _rateLimitInfo: IClaudeRateLimitInfo | undefined;
+	private _retryTimer: ReturnType<typeof setTimeout> | undefined;
+	private _retryCountdown = 0;
+	private _pendingRetryRequest: { prompt: string; options?: IClaudeCLIRequestOptions } | undefined;
+	private _retryCountdownInterval: ReturnType<typeof setInterval> | undefined;
+
 	private readonly channel: IChannel;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
@@ -52,6 +59,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	private readonly _onDidChangeQueue = this._register(new Emitter<IClaudeQueuedMessage[]>());
 	readonly onDidChangeQueue: Event<IClaudeQueuedMessage[]> = this._onDidChangeQueue.event;
+
+	private readonly _onDidChangeRateLimitStatus = this._register(new Emitter<{ waiting: boolean; countdown: number; message?: string }>());
+	readonly onDidChangeRateLimitStatus: Event<{ waiting: boolean; countdown: number; message?: string }> = this._onDidChangeRateLimitStatus.event;
 
 	private static readonly STORAGE_KEY = 'claude.sessions';
 
@@ -187,6 +197,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	private handleCLIData(event: IClaudeCLIStreamEvent): void {
 		console.log('[ClaudeService] handleCLIData:', event.type, event.subtype || '');
+
+		// Rate limit 에러 처리
+		if (event.type === 'error' && event.error_type === 'rate_limit') {
+			console.log('[ClaudeService] Rate limit detected! Retry after:', event.retry_after, 'seconds');
+			this.handleRateLimitError(event.retry_after || 60, event.content);
+			return;
+		}
 
 		// system 이벤트 처리 (초기화)
 		if (event.type === 'system') {
@@ -586,6 +603,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	private handleCLIError(error: string): void {
+		console.log('[ClaudeService] handleCLIError:', error);
+
+		// Rate limit 에러인지 확인 (stderr에서 못 잡은 경우)
+		if (this.isRateLimitError(error)) {
+			console.log('[ClaudeService] Rate limit detected in error message');
+			const retrySeconds = this.parseRetrySeconds(error) || 60;
+			this.handleRateLimitError(retrySeconds, error);
+			return;
+		}
+
 		if (!this._currentSession) {
 			return;
 		}
@@ -613,6 +640,249 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this.setState('error');
 		this._currentMessageId = undefined;
 		this._accumulatedContent = '';
+	}
+
+	// ========== Rate Limit Handling ==========
+
+	private isRateLimitError(error: string): boolean {
+		return /rate[_\s]?limit/i.test(error) ||
+			/too many requests/i.test(error) ||
+			/429/i.test(error) ||
+			/quota exceeded/i.test(error) ||
+			/token.*exhaust/i.test(error);
+	}
+
+	private parseRetrySeconds(error: string): number | null {
+		const match = error.match(/(?:retry|try again|wait).*?(\d+)\s*(second|minute|hour|sec|min|hr)/i);
+		if (match) {
+			const value = parseInt(match[1], 10);
+			const unit = match[2].toLowerCase();
+			if (unit.startsWith('min')) {
+				return value * 60;
+			} else if (unit.startsWith('hour') || unit.startsWith('hr')) {
+				return value * 3600;
+			}
+			return value;
+		}
+		return null;
+	}
+
+	private handleRateLimitError(retryAfterSeconds: number, message?: string): void {
+		console.log('[ClaudeService][RateLimit] Starting retry timer:', retryAfterSeconds, 'seconds');
+		console.log('[ClaudeService][RateLimit] Message:', message);
+
+		// 현재 진행 중인 요청 정보 저장
+		if (this._currentMessageId && this._currentSession) {
+			// 마지막 사용자 메시지 찾기
+			const messages = this._currentSession.messages;
+			let lastUserMessage: IClaudeMessage | undefined;
+			for (let i = messages.length - 1; i >= 0; i--) {
+				if (messages[i].role === 'user') {
+					lastUserMessage = messages[i];
+					break;
+				}
+			}
+
+			if (lastUserMessage) {
+				console.log('[ClaudeService][RateLimit] Saving pending request for retry');
+				this._pendingRetryRequest = {
+					prompt: lastUserMessage.content,
+					options: {
+						model: this.configurationService.getValue<string>('claude.model'),
+						systemPrompt: this.configurationService.getValue<string>('claude.systemPrompt'),
+						workingDir: this.getWorkspaceRoot(),
+						executable: this._localConfig.executable
+					}
+				};
+			}
+
+			// 현재 메시지를 대기 상태로 업데이트
+			const waitingMessage: IClaudeMessage = {
+				id: this._currentMessageId,
+				role: 'assistant',
+				content: `⏳ Rate limit reached. Waiting ${this.formatWaitTime(retryAfterSeconds)} before retrying...\n\n${message || ''}`,
+				timestamp: Date.now(),
+				isStreaming: true
+			};
+
+			const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+			if (msgIndex !== -1) {
+				(this._currentSession.messages as IClaudeMessage[])[msgIndex] = waitingMessage;
+				this._onDidUpdateMessage.fire(waitingMessage);
+			}
+		}
+
+		// 카운트다운 시작
+		this._retryCountdown = retryAfterSeconds;
+		this._rateLimitInfo = {
+			isRateLimited: true,
+			retryAfterSeconds,
+			message
+		};
+
+		this._onDidChangeRateLimitStatus.fire({
+			waiting: true,
+			countdown: this._retryCountdown,
+			message
+		});
+
+		// 기존 타이머 정리
+		if (this._retryTimer) {
+			clearTimeout(this._retryTimer);
+		}
+		if (this._retryCountdownInterval) {
+			clearInterval(this._retryCountdownInterval);
+		}
+
+		// 카운트다운 인터벌 (1초마다)
+		this._retryCountdownInterval = setInterval(() => {
+			this._retryCountdown--;
+			console.log('[ClaudeService][RateLimit] Countdown:', this._retryCountdown);
+
+			// 메시지 업데이트
+			if (this._currentMessageId && this._currentSession) {
+				const countdownMessage: IClaudeMessage = {
+					id: this._currentMessageId,
+					role: 'assistant',
+					content: `⏳ Rate limit reached. Retrying in ${this.formatWaitTime(this._retryCountdown)}...\n\n${message || ''}`,
+					timestamp: Date.now(),
+					isStreaming: true
+				};
+
+				const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+				if (msgIndex !== -1) {
+					(this._currentSession.messages as IClaudeMessage[])[msgIndex] = countdownMessage;
+					this._onDidUpdateMessage.fire(countdownMessage);
+				}
+			}
+
+			this._onDidChangeRateLimitStatus.fire({
+				waiting: true,
+				countdown: this._retryCountdown,
+				message
+			});
+
+			if (this._retryCountdown <= 0) {
+				if (this._retryCountdownInterval) {
+					clearInterval(this._retryCountdownInterval);
+					this._retryCountdownInterval = undefined;
+				}
+			}
+		}, 1000);
+
+		// 재시도 타이머
+		this._retryTimer = setTimeout(() => {
+			console.log('[ClaudeService][RateLimit] Timer expired, attempting retry...');
+			this.retryAfterRateLimit();
+		}, retryAfterSeconds * 1000);
+	}
+
+	private formatWaitTime(seconds: number): string {
+		if (seconds < 60) {
+			return `${seconds} seconds`;
+		} else if (seconds < 3600) {
+			const mins = Math.floor(seconds / 60);
+			const secs = seconds % 60;
+			return secs > 0 ? `${mins}m ${secs}s` : `${mins} minutes`;
+		} else {
+			const hours = Math.floor(seconds / 3600);
+			const mins = Math.floor((seconds % 3600) / 60);
+			return mins > 0 ? `${hours}h ${mins}m` : `${hours} hours`;
+		}
+	}
+
+	private async retryAfterRateLimit(): Promise<void> {
+		console.log('[ClaudeService][RateLimit] Retrying...');
+
+		// 타이머 정리
+		this._rateLimitInfo = undefined;
+		if (this._retryCountdownInterval) {
+			clearInterval(this._retryCountdownInterval);
+			this._retryCountdownInterval = undefined;
+		}
+
+		this._onDidChangeRateLimitStatus.fire({
+			waiting: false,
+			countdown: 0
+		});
+
+		if (!this._pendingRetryRequest) {
+			console.log('[ClaudeService][RateLimit] No pending request to retry');
+			this.setState('idle');
+			return;
+		}
+
+		const { prompt, options } = this._pendingRetryRequest;
+		this._pendingRetryRequest = undefined;
+
+		console.log('[ClaudeService][RateLimit] Retrying prompt:', prompt.substring(0, 100));
+
+		// 메시지 업데이트 (재시도 중)
+		if (this._currentMessageId && this._currentSession) {
+			const retryingMessage: IClaudeMessage = {
+				id: this._currentMessageId,
+				role: 'assistant',
+				content: '🔄 Retrying request...',
+				timestamp: Date.now(),
+				isStreaming: true
+			};
+
+			const msgIndex = this._currentSession.messages.findIndex(m => m.id === this._currentMessageId);
+			if (msgIndex !== -1) {
+				(this._currentSession.messages as IClaudeMessage[])[msgIndex] = retryingMessage;
+				this._onDidUpdateMessage.fire(retryingMessage);
+			}
+		}
+
+		// 상태 초기화
+		this._accumulatedContent = '';
+		this._toolActions = [];
+		this._currentToolAction = undefined;
+
+		try {
+			await this.channel.call('sendPrompt', [prompt, options]);
+			console.log('[ClaudeService][RateLimit] Retry successful');
+		} catch (error) {
+			console.error('[ClaudeService][RateLimit] Retry failed:', error);
+		}
+	}
+
+	/**
+	 * Rate limit 대기 취소
+	 */
+	cancelRateLimitWait(): void {
+		console.log('[ClaudeService][RateLimit] Cancelling wait');
+
+		if (this._retryTimer) {
+			clearTimeout(this._retryTimer);
+			this._retryTimer = undefined;
+		}
+		if (this._retryCountdownInterval) {
+			clearInterval(this._retryCountdownInterval);
+			this._retryCountdownInterval = undefined;
+		}
+
+		this._rateLimitInfo = undefined;
+		this._pendingRetryRequest = undefined;
+		this._retryCountdown = 0;
+
+		this._onDidChangeRateLimitStatus.fire({
+			waiting: false,
+			countdown: 0
+		});
+
+		this.setState('idle');
+	}
+
+	/**
+	 * Rate limit 상태 조회
+	 */
+	getRateLimitStatus(): { waiting: boolean; countdown: number; message?: string } {
+		return {
+			waiting: !!this._rateLimitInfo,
+			countdown: this._retryCountdown,
+			message: this._rateLimitInfo?.message
+		};
 	}
 
 	// ========== State ==========
@@ -809,7 +1079,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			}
 			if (context.attachments && context.attachments.length > 0) {
 				for (const attachment of context.attachments) {
-					if (attachment.content) {
+					if (attachment.type === 'image' && attachment.imageData) {
+						// 이미지 첨부 - base64 데이터 포함
+						// Note: Claude CLI가 이미지를 지원하는 경우 별도 처리 필요
+						parts.push(`[Image attached: ${attachment.name}]`);
+						parts.push(`Image data (base64, ${attachment.mimeType || 'image/png'}):`);
+						parts.push(`data:${attachment.mimeType || 'image/png'};base64,${attachment.imageData}`);
+					} else if (attachment.content) {
 						parts.push(`File: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``);
 					} else {
 						parts.push(`Attached: ${attachment.name} (${attachment.type})`);
@@ -859,6 +1135,97 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	getSessions(): IClaudeSession[] {
 		return [...this._sessions];
+	}
+
+	/**
+	 * 특정 세션으로 전환
+	 */
+	switchSession(sessionId: string): IClaudeSession | undefined {
+		const session = this._sessions.find(s => s.id === sessionId);
+		if (!session) {
+			console.error('[ClaudeService] Session not found:', sessionId);
+			return undefined;
+		}
+
+		if (this._currentSession?.id === sessionId) {
+			console.log('[ClaudeService] Already on this session');
+			return session;
+		}
+
+		console.log('[ClaudeService] Switching to session:', sessionId);
+
+		// 진행 중인 요청이 있으면 취소
+		if (this._state !== 'idle') {
+			this.cancelRequest();
+		}
+
+		// 세션 전환
+		this._currentSession = session;
+
+		// 상태 초기화
+		this._currentMessageId = undefined;
+		this._accumulatedContent = '';
+		this._toolActions = [];
+		this._currentToolAction = undefined;
+		this._currentAskUserRequest = undefined;
+		this._isWaitingForUser = false;
+		this._cliSessionId = undefined;
+
+		// 세션 저장 및 이벤트 발생
+		this.saveSessions();
+		this._onDidChangeSession.fire(session);
+
+		return session;
+	}
+
+	/**
+	 * 세션 삭제
+	 */
+	deleteSession(sessionId: string): boolean {
+		const index = this._sessions.findIndex(s => s.id === sessionId);
+		if (index === -1) {
+			return false;
+		}
+
+		// 현재 세션이면 다른 세션으로 전환
+		if (this._currentSession?.id === sessionId) {
+			const otherSession = this._sessions.find(s => s.id !== sessionId);
+			if (otherSession) {
+				this.switchSession(otherSession.id);
+			} else {
+				// 마지막 세션이면 새 세션 생성
+				this._sessions.splice(index, 1);
+				this.startNewSession();
+				this.saveSessions();
+				return true;
+			}
+		}
+
+		// 세션 삭제
+		this._sessions.splice(index, 1);
+		this.saveSessions();
+
+		console.log('[ClaudeService] Session deleted:', sessionId);
+		return true;
+	}
+
+	/**
+	 * 세션 제목 변경
+	 */
+	renameSession(sessionId: string, title: string): boolean {
+		const session = this._sessions.find(s => s.id === sessionId);
+		if (!session) {
+			return false;
+		}
+
+		(session as { title?: string }).title = title;
+		this.saveSessions();
+
+		if (this._currentSession?.id === sessionId) {
+			this._onDidChangeSession.fire(session);
+		}
+
+		return true;
 	}
 
 	// ========== Queue ==========

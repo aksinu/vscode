@@ -8,20 +8,20 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 3 완료 - UX 개선 & 로컬 설정 |
-| **Sprint** | Sprint_002 ✅ |
-| **Status** | ✅ Sprint 2 전체 완료, 빌드 성공 |
-| **Updated** | 2026-01-26 15:28 |
-| **Build** | ✅ `yarn compile` 성공 (15:28) |
+| **Phase** | Phase 4 - 고급 UX 기능 |
+| **Sprint** | Sprint_003 ✅ |
+| **Status** | ✅ Sprint 3 전체 완료 |
+| **Updated** | 2026-01-26 16:50 |
+| **Build** | 타입체크 성공 |
 
 ---
 
 ## Now Working On
 
 ```
-Task: Sprint 2 완료 - 테스트 중
+Task: Sprint 3 완료
 Progress: 100%
-Next: 테스트 후 Sprint 3 계획
+Next: 테스트 후 Sprint 4 계획
 ```
 
 ### 빌드 & 실행
@@ -32,7 +32,18 @@ yarn compile          # 빌드 (약 5분)
 ./scripts/code.bat    # 실행
 ```
 
-### Sprint 2 Tasks
+### Sprint 3 Tasks
+
+| # | Task | Priority | Status | Difficulty |
+|---|------|----------|--------|------------|
+| 1 | [@ 멘션 시스템](Tasks/Sprint_003/TASK_001_AtMention.md) | P1 | [x] | Medium |
+| 2 | [/슬래시 커맨드](Tasks/Sprint_003/TASK_002_SlashCommand.md) | P1 | [x] | Low |
+| 3 | [Diff 뷰 Apply](Tasks/Sprint_003/TASK_003_DiffApply.md) | P1 | [x] | Medium |
+| 4 | [토큰 소진 시 자동 대기/재시도](Tasks/Sprint_003/TASK_004_RateLimitRetry.md) | P1 | [x] | Medium |
+| 5 | [이미지 붙여넣기](Tasks/Sprint_003/TASK_005_ImagePaste.md) | P1 | [x] | Low |
+| 6 | [다중 세션 관리](Tasks/Sprint_003/TASK_006_MultiSession.md) | P2 | [x] | Medium |
+
+### Sprint 2 Tasks (완료)
 
 | # | Task | Priority | Status | Difficulty |
 |---|------|----------|--------|------------|
@@ -72,11 +83,15 @@ yarn compile          # 빌드 (약 5분)
 - [x] **대화 컨텍스트 전달** - 이전 메시지를 프롬프트에 포함
 - [x] **input_request 이벤트 처리** - CLI 직접 형식 지원
 
-### Remaining (Phase 3+)
+### Done (Phase 4 - 고급 UX)
+- [x] @ 멘션 시스템 (@file, @workspace, 열린 파일 목록)
+- [x] /슬래시 커맨드 (/explain, /fix, /test, /refactor, /docs, /optimize)
+- [x] Diff 뷰 Apply (코드 적용 전 미리보기)
+
+### Remaining (Phase 4+)
 - [ ] 실시간 글자별 스트리밍 (CLI 제한으로 현재 불가)
-- [ ] @ 멘션 시스템 (@file, @workspace)
-- [ ] /슬래시 커맨드
-- [ ] Diff 뷰 Apply
+- [ ] 파일 탐색기에서 파일 선택 (@file 개선)
+- [ ] 컨텍스트 메뉴 통합 (우클릭 → Claude에게 물어보기)
 
 ---
 
@@ -241,7 +256,40 @@ Claude CLI `--output-format stream-json` 응답:
 
 ## Activity Log
 
-### 2026-01-26 (밤)
+### 2026-01-26 (밤2)
+- **Sprint 3 완료! (6개 태스크)**
+- **TASK_001: @ 멘션 시스템**
+  - `@` 입력 시 자동완성 팝업 표시
+  - `@file` - 현재 에디터 파일 첨부
+  - `@workspace` - 워크스페이스 컨텍스트 첨부
+  - 열린 에디터 파일 목록 표시
+  - 키보드 네비게이션 (↑↓, Enter, Esc)
+- **TASK_002: /슬래시 커맨드**
+  - `/` 입력 시 커맨드 목록 팝업
+  - `/explain`, `/fix`, `/test`, `/refactor`, `/docs`, `/optimize`
+  - 선택 시 해당 프롬프트로 입력창 교체
+- **TASK_003: Diff 뷰 Apply**
+  - Apply 버튼 클릭 시 QuickPick 표시
+  - "Preview Diff" - Diff 에디터로 미리보기
+  - "Apply Directly" - 바로 적용
+  - Accept/Reject 알림으로 확인
+- **TASK_004: 토큰 소진 시 자동 대기/재시도**
+  - Rate limit 에러 감지 (429, quota exceeded, token exhausted)
+  - 대기 시간 파싱 (seconds/minutes/hours)
+  - 카운트다운 UI 표시
+  - 자동 재시도
+  - 상세 디버그 로그 (`debugLog()`)
+- **TASK_005: 이미지 붙여넣기**
+  - Ctrl+V로 클립보드 이미지 붙여넣기
+  - Win+Shift+S 캡처 후 바로 첨부 가능
+  - Base64 변환 및 프롬프트에 포함
+- **TASK_006: 다중 세션 관리**
+  - 세션 관리 버튼 (레이어 아이콘)
+  - QuickPick으로 세션 목록 표시
+  - 새 세션 생성 / 세션 전환
+  - 세션별 대화 기록 유지
+
+### 2026-01-26 (밤1)
 - **Sprint 2 완료!**
 - **TASK_001: 로컬 설정 시스템 구현**
   - `.vscode/claude.local.json` 설정 파일 지원
@@ -359,15 +407,22 @@ Claude CLI `--output-format stream-json` 응답:
 
 2. ~~**대화 컨텍스트 전달**~~ ✅ 완료
 
-3. **@ 멘션 시스템** (Phase 3)
+3. ~~**@ 멘션 시스템**~~ ✅ 완료 (Sprint 3)
    - `@file`, `@workspace` 파싱
    - 자동완성 UI
+   - 열린 파일 목록 표시
 
-4. **/슬래시 커맨드** (Phase 3)
-   - `/explain`, `/fix`, `/test` 등
+4. ~~**/슬래시 커맨드**~~ ✅ 완료 (Sprint 3)
+   - `/explain`, `/fix`, `/test`, `/refactor`, `/docs`, `/optimize`
 
-5. **Diff 뷰 Apply** (Phase 3)
+5. ~~**Diff 뷰 Apply**~~ ✅ 완료 (Sprint 3)
    - 코드 적용 전 변경사항 미리보기
+   - Accept/Reject 선택
+
+6. **향후 개선 사항** (Phase 4+)
+   - 파일 탐색기 통합 (파일 선택 다이얼로그)
+   - 컨텍스트 메뉴 통합
+   - 인라인 코드 제안
 
 ---
 

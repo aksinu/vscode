@@ -38,6 +38,17 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { VSBuffer } from '../../../../base/common/buffer.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import { IClaudeLocalConfig } from '../common/claudeLocalConfig.js';
+import { ITextModelService } from '../../../../editor/common/services/resolverService.js';
+import { Range } from '../../../../editor/common/core/range.js';
+
+interface IAutocompleteItem {
+	id: string;
+	icon: string;
+	label: string;
+	description?: string;
+	type: 'mention' | 'command' | 'file';
+	data?: unknown;
+}
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -53,6 +64,12 @@ export class ClaudeChatViewPane extends ViewPane {
 	private attachmentsContainer!: HTMLElement;
 	private queueContainer!: HTMLElement;
 	private dropOverlay!: HTMLElement;
+	private autocompleteContainer!: HTMLElement;
+	private autocompleteItems: IAutocompleteItem[] = [];
+	private selectedAutocompleteIndex = 0;
+	private autocompleteVisible = false;
+	private autocompletePrefix = '';
+	private autocompleteTriggerChar = '';
 
 	private messageRenderer!: ClaudeMessageRenderer;
 	private messageDisposables = new Map<string, DisposableStore>();
@@ -80,7 +97,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
-		@IQuickInputService private readonly quickInputService: IQuickInputService
+		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@ITextModelService private readonly textModelService: ITextModelService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -273,6 +291,10 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.attachmentsContainer = append(this.inputContainer, $('.claude-attachments'));
 		this.updateAttachmentsUI();
 
+		// 자동완성 팝업 (입력창 위에)
+		this.autocompleteContainer = append(this.inputContainer, $('.claude-autocomplete'));
+		this.autocompleteContainer.style.display = 'none';
+
 		// 입력 wrapper
 		const inputWrapper = append(this.inputContainer, $('.claude-input-wrapper'));
 
@@ -287,6 +309,15 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 첨부 버튼 클릭 - 현재 에디터 파일 첨부
 		this._register(addDisposableListener(attachButton, EventType.CLICK, () => {
 			this.attachCurrentEditorFile();
+		}));
+
+		// 세션 관리 버튼
+		const sessionButton = append(toolbar, $('button.claude-toolbar-button'));
+		sessionButton.title = localize('manageSessions', "Manage sessions");
+		append(sessionButton, $('.codicon.codicon-layers'));
+
+		this._register(addDisposableListener(sessionButton, EventType.CLICK, () => {
+			this.showSessionManager();
 		}));
 
 		// 설정 버튼
@@ -356,7 +387,10 @@ export class ClaudeChatViewPane extends ViewPane {
 			const hasText = this.inputEditor.getValue().length > 0;
 			placeholder.style.display = hasText ? 'none' : 'block';
 		};
-		this._register(this.inputEditor.onDidChangeModelContent(updatePlaceholder));
+		this._register(this.inputEditor.onDidChangeModelContent(() => {
+			updatePlaceholder();
+			this.checkAutocomplete();
+		}));
 		updatePlaceholder();
 
 		// 포커스 이벤트
@@ -370,8 +404,42 @@ export class ClaudeChatViewPane extends ViewPane {
 			inputWrapper.classList.remove('focused');
 		}));
 
-		// Enter 키 처리 (Shift+Enter는 줄바꿈)
+		// 클립보드 붙여넣기 이벤트 (이미지 지원)
+		this._register(addDisposableListener(editorContainer, EventType.PASTE, (e: ClipboardEvent) => {
+			this.handlePaste(e);
+		}));
+
+		// 키보드 이벤트 처리
 		this._register(this.inputEditor.onKeyDown(e => {
+			// 자동완성 팝업이 열려있을 때
+			if (this.autocompleteVisible) {
+				if (e.keyCode === 9 /* Escape */) {
+					e.preventDefault();
+					e.stopPropagation();
+					this.hideAutocomplete();
+					return;
+				}
+				if (e.keyCode === 16 /* UpArrow */) {
+					e.preventDefault();
+					e.stopPropagation();
+					this.selectAutocompleteItem(this.selectedAutocompleteIndex - 1);
+					return;
+				}
+				if (e.keyCode === 18 /* DownArrow */) {
+					e.preventDefault();
+					e.stopPropagation();
+					this.selectAutocompleteItem(this.selectedAutocompleteIndex + 1);
+					return;
+				}
+				if (e.keyCode === 3 /* Enter */ || e.keyCode === 2 /* Tab */) {
+					e.preventDefault();
+					e.stopPropagation();
+					this.acceptAutocompleteItem();
+					return;
+				}
+			}
+
+			// Enter 키 처리 (Shift+Enter는 줄바꿈)
 			if (e.keyCode === 3 /* Enter */ && !e.shiftKey && !e.ctrlKey && !e.altKey) {
 				e.preventDefault();
 				e.stopPropagation();
@@ -518,32 +586,241 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 	}
 
-	private applyCode(code: string, language: string): void {
+	private async applyCode(code: string, _language: string): Promise<void> {
 		const editor = this.editorService.activeTextEditorControl;
 		if (!editor || !('getModel' in editor)) {
 			this.notificationService.info(localize('noActiveEditor', "No active editor to apply code"));
 			return;
 		}
 
-		// TODO: Diff 뷰로 변경사항 표시 후 Apply/Reject 선택
-		// 현재는 단순 삽입
 		const codeEditor = editor as ICodeEditor;
+		const model = codeEditor.getModel();
 		const selection = codeEditor.getSelection();
 
-		if (selection) {
-			codeEditor.executeEdits('claude-apply', [{
-				range: selection,
-				text: code,
-				forceMoveMarkers: true
-			}]);
-			codeEditor.focus();
-			this.notificationService.info(localize('codeApplied', "Code applied to editor"));
+		if (!model || !selection) {
+			return;
+		}
+
+		// 선택 영역이 없으면 전체 파일로 처리
+		const hasSelection = !selection.isEmpty();
+		const targetRange = hasSelection ? selection : model.getFullModelRange();
+		const originalText = model.getValueInRange(targetRange);
+
+		// 변경사항이 없으면 알림
+		if (originalText === code) {
+			this.notificationService.info(localize('noChanges', "No changes to apply"));
+			return;
+		}
+
+		// QuickPick으로 적용 방식 선택
+		interface IApplyQuickPickItem extends IQuickPickItem {
+			id: string;
+		}
+
+		const items: IApplyQuickPickItem[] = [
+			{
+				id: 'preview',
+				label: '$(diff) ' + localize('previewDiff', "Preview Diff"),
+				description: localize('previewDiffDesc', "Review changes before applying")
+			},
+			{
+				id: 'apply',
+				label: '$(check) ' + localize('applyDirectly', "Apply Directly"),
+				description: localize('applyDirectlyDesc', "Apply changes immediately")
+			}
+		];
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: localize('selectApplyMethod', "How would you like to apply the code?")
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		const selectedItem = selected as IApplyQuickPickItem;
+
+		if (selectedItem.id === 'apply') {
+			// 바로 적용
+			this.executeCodeApply(codeEditor, targetRange, code);
+		} else {
+			// Diff 미리보기
+			await this.showDiffPreview(model.uri, targetRange, originalText, code);
+		}
+	}
+
+	private executeCodeApply(editor: ICodeEditor, range: Range, code: string): void {
+		editor.executeEdits('claude-apply', [{
+			range,
+			text: code,
+			forceMoveMarkers: true
+		}]);
+		editor.focus();
+		this.notificationService.info(localize('codeApplied', "Code applied to editor"));
+	}
+
+	private async showDiffPreview(uri: URI, range: Range, originalText: string, modifiedText: string): Promise<void> {
+		// 임시 URI 생성
+		const originalUri = uri.with({ scheme: 'claude-diff-original', query: `range=${range.startLineNumber}-${range.endLineNumber}` });
+		const modifiedUri = uri.with({ scheme: 'claude-diff-modified', query: `range=${range.startLineNumber}-${range.endLineNumber}` });
+
+		// 텍스트 콘텐츠 프로바이더에 등록
+		const originalDisposable = this.textModelService.registerTextModelContentProvider('claude-diff-original', {
+			provideTextContent: async () => {
+				return this.modelService.createModel(originalText, null, originalUri);
+			}
+		});
+
+		const modifiedDisposable = this.textModelService.registerTextModelContentProvider('claude-diff-modified', {
+			provideTextContent: async () => {
+				return this.modelService.createModel(modifiedText, null, modifiedUri);
+			}
+		});
+
+		this._register(originalDisposable);
+		this._register(modifiedDisposable);
+
+		// Diff 에디터 열기
+		const fileName = basename(uri);
+		await this.editorService.openEditor({
+			original: { resource: originalUri },
+			modified: { resource: modifiedUri },
+			label: localize('diffLabel', "Claude: {0} (Preview)", fileName),
+			description: localize('diffDescription', "Review changes and use 'Accept' to apply")
+		});
+
+		// Accept/Reject 버튼을 위한 알림 표시
+		await this.notificationService.prompt(
+			2, // Info severity
+			localize('diffPreviewPrompt', "Review the changes in the diff editor. Do you want to apply them?"),
+			[
+				{
+					label: localize('accept', "Accept"),
+					run: () => {
+						// 원본 파일에 적용
+						this.applyDiffChanges(uri, range, modifiedText);
+					}
+				},
+				{
+					label: localize('reject', "Reject"),
+					run: () => {
+						this.notificationService.info(localize('changesRejected', "Changes rejected"));
+					}
+				}
+			]
+		);
+
+		// 정리
+		originalDisposable.dispose();
+		modifiedDisposable.dispose();
+	}
+
+	private async applyDiffChanges(uri: URI, range: Range, modifiedText: string): Promise<void> {
+		// 원본 파일 열기
+		const editor = await this.editorService.openEditor({ resource: uri });
+		if (!editor) {
+			return;
+		}
+
+		const control = editor.getControl();
+		if (control && 'getModel' in control) {
+			const codeEditor = control as ICodeEditor;
+			this.executeCodeApply(codeEditor, range, modifiedText);
 		}
 	}
 
 	private scrollToBottom(): void {
 		requestAnimationFrame(() => {
 			this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+		});
+	}
+
+	// ========== 클립보드 붙여넣기 ==========
+
+	private async handlePaste(e: ClipboardEvent): Promise<void> {
+		const clipboardData = e.clipboardData;
+		if (!clipboardData) {
+			return;
+		}
+
+		// 이미지 파일 확인
+		const items = clipboardData.items;
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+
+			// 이미지 타입 확인
+			if (item.type.startsWith('image/')) {
+				e.preventDefault();
+				e.stopPropagation();
+
+				const file = item.getAsFile();
+				if (file) {
+					await this.handlePastedImage(file);
+				}
+				return;
+			}
+		}
+
+		// 파일 확인 (일부 브라우저에서는 files로 제공)
+		const files = clipboardData.files;
+		if (files && files.length > 0) {
+			for (let i = 0; i < files.length; i++) {
+				const file = files[i];
+				if (file.type.startsWith('image/')) {
+					e.preventDefault();
+					e.stopPropagation();
+					await this.handlePastedImage(file);
+					return;
+				}
+			}
+		}
+
+		// 텍스트는 기본 동작 유지
+	}
+
+	private async handlePastedImage(file: File): Promise<void> {
+		try {
+			console.log('[ClaudeChatView] Pasted image:', file.name, file.type, file.size);
+
+			// 파일을 base64로 변환
+			const base64 = await this.fileToBase64(file);
+
+			// 파일명 생성
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const extension = file.type.split('/')[1] || 'png';
+			const fileName = `screenshot-${timestamp}.${extension}`;
+
+			// 첨부파일로 추가
+			const attachment: IClaudeAttachment = {
+				id: generateUuid(),
+				type: 'image',
+				name: fileName,
+				content: `[Image: ${fileName}] (${Math.round(file.size / 1024)}KB)`,
+				imageData: base64,
+				mimeType: file.type
+			};
+
+			this.attachments.push(attachment);
+			this.updateAttachmentsUI();
+
+			this.notificationService.info(localize('imagePasted', "Image pasted: {0}", fileName));
+		} catch (error) {
+			console.error('[ClaudeChatView] Failed to paste image:', error);
+			this.notificationService.error(localize('imagePasteError', "Failed to paste image: {0}", (error as Error).message));
+		}
+	}
+
+	private fileToBase64(file: File): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => {
+				const result = reader.result as string;
+				// data:image/png;base64, 부분 제거
+				const base64 = result.split(',')[1] || result;
+				resolve(base64);
+			};
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(file);
 		});
 	}
 
@@ -719,7 +996,14 @@ export class ClaudeChatViewPane extends ViewPane {
 
 			// 아이콘
 			const icon = append(tag, $('.claude-attachment-icon'));
-			const iconClass = attachment.type === 'folder' ? Codicon.folder : Codicon.file;
+			let iconClass = Codicon.file;
+			if (attachment.type === 'folder') {
+				iconClass = Codicon.folder;
+			} else if (attachment.type === 'workspace') {
+				iconClass = Codicon.folderLibrary;
+			} else if (attachment.type === 'image') {
+				iconClass = Codicon.fileMedia;
+			}
 			icon.classList.add(...ThemeIcon.asClassNameArray(iconClass));
 
 			// 파일명
@@ -946,6 +1230,105 @@ export class ClaudeChatViewPane extends ViewPane {
 		await this.editorService.openEditor({ resource: configUri });
 	}
 
+	// ========== 세션 관리 ==========
+
+	private async showSessionManager(): Promise<void> {
+		const sessions = this.claudeService.getSessions();
+		const currentSession = this.claudeService.getCurrentSession();
+
+		interface ISessionQuickPickItem extends IQuickPickItem {
+			id: string;
+			action?: 'switch' | 'new' | 'delete' | 'rename';
+		}
+
+		const items: ISessionQuickPickItem[] = [];
+
+		// 새 세션 옵션
+		items.push({
+			id: 'new',
+			label: '$(add) ' + localize('newSession', "New Session"),
+			description: localize('newSessionDesc', "Start a fresh conversation"),
+			action: 'new'
+		});
+
+		// 구분선
+		items.push({
+			id: 'separator-1',
+			label: '',
+			kind: 1 // separator
+		} as ISessionQuickPickItem);
+
+		// 세션 목록
+		for (const session of sessions) {
+			const isCurrent = currentSession?.id === session.id;
+			const messageCount = session.messages.length;
+			const lastMessage = session.messages[session.messages.length - 1];
+			const preview = lastMessage?.content.substring(0, 50) || localize('emptySession', "Empty session");
+
+			// 세션 제목 (없으면 첫 메시지 또는 생성 시간)
+			let title = session.title;
+			if (!title) {
+				const firstUserMsg = session.messages.find(m => m.role === 'user');
+				title = firstUserMsg?.content.substring(0, 30) || new Date(session.createdAt).toLocaleString();
+			}
+
+			items.push({
+				id: session.id,
+				label: (isCurrent ? '$(check) ' : '$(comment-discussion) ') + title,
+				description: isCurrent ? localize('currentSession', "(current)") : `${messageCount} messages`,
+				detail: preview + (preview.length >= 50 ? '...' : ''),
+				action: 'switch'
+			});
+		}
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: localize('selectSession', "Select a session or create new"),
+			canPickMany: false
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		const selectedItem = selected as ISessionQuickPickItem;
+
+		if (selectedItem.action === 'new') {
+			this.claudeService.startNewSession();
+			this.clearMessages();
+			this.updateWelcomeVisibility();
+			this.notificationService.info(localize('newSessionCreated', "New session created"));
+		} else if (selectedItem.action === 'switch') {
+			await this.switchToSession(selectedItem.id);
+		}
+	}
+
+	private async switchToSession(sessionId: string): Promise<void> {
+		const currentSession = this.claudeService.getCurrentSession();
+		if (currentSession?.id === sessionId) {
+			return;
+		}
+
+		// 세션 전환
+		const session = this.claudeService.switchSession?.(sessionId);
+		if (!session) {
+			this.notificationService.error(localize('sessionNotFound', "Session not found"));
+			return;
+		}
+
+		// UI 갱신
+		this.clearMessages();
+
+		// 세션의 메시지들 다시 렌더링
+		for (const message of session.messages) {
+			this.appendMessage(message);
+		}
+
+		this.updateWelcomeVisibility();
+
+		const title = session.title || localize('session', "Session");
+		this.notificationService.info(localize('switchedToSession', "Switched to: {0}", title));
+	}
+
 	protected override layoutBody(height: number, width: number): void {
 		super.layoutBody(height, width);
 
@@ -962,5 +1345,362 @@ export class ClaudeChatViewPane extends ViewPane {
 	override dispose(): void {
 		this.clearMessages();
 		super.dispose();
+	}
+
+	// ========== 자동완성 (@ 멘션, / 커맨드) ==========
+
+	private checkAutocomplete(): void {
+		const position = this.inputEditor.getPosition();
+		if (!position) {
+			this.hideAutocomplete();
+			return;
+		}
+
+		const model = this.inputEditor.getModel();
+		if (!model) {
+			this.hideAutocomplete();
+			return;
+		}
+
+		// 현재 커서 위치까지의 텍스트
+		const lineContent = model.getLineContent(position.lineNumber);
+		const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
+		// @ 또는 / 패턴 찾기 (단어 시작에서)
+		const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
+		const commandMatch = textBeforeCursor.match(/^\/(\w*)$/);
+
+		if (mentionMatch) {
+			this.autocompleteTriggerChar = '@';
+			this.autocompletePrefix = mentionMatch[1].toLowerCase();
+			this.showMentionAutocomplete();
+		} else if (commandMatch) {
+			this.autocompleteTriggerChar = '/';
+			this.autocompletePrefix = commandMatch[1].toLowerCase();
+			this.showCommandAutocomplete();
+		} else {
+			this.hideAutocomplete();
+		}
+	}
+
+	private showMentionAutocomplete(): void {
+		const items: IAutocompleteItem[] = [];
+		const prefix = this.autocompletePrefix;
+
+		// 고정 항목들
+		const staticItems: IAutocompleteItem[] = [
+			{
+				id: 'file',
+				icon: 'codicon-file-add',
+				label: '@file',
+				description: localize('mentionFile', "Browse and attach a file"),
+				type: 'mention'
+			},
+			{
+				id: 'workspace',
+				icon: 'codicon-folder-library',
+				label: '@workspace',
+				description: localize('mentionWorkspace', "Include workspace context"),
+				type: 'mention'
+			}
+		];
+
+		// 필터링된 고정 항목
+		for (const item of staticItems) {
+			if (!prefix || item.label.toLowerCase().includes(prefix)) {
+				items.push(item);
+			}
+		}
+
+		// 열린 에디터 파일 목록
+		const openEditors = this.editorService.editors;
+		for (const editor of openEditors) {
+			const resource = editor.resource;
+			if (resource) {
+				const fileName = basename(resource);
+				if (!prefix || fileName.toLowerCase().includes(prefix)) {
+					items.push({
+						id: `file:${resource.toString()}`,
+						icon: 'codicon-file',
+						label: `@${fileName}`,
+						description: resource.fsPath,
+						type: 'file',
+						data: resource
+					});
+				}
+			}
+		}
+
+		this.showAutocomplete(items, localize('mentionHeader', "Mention"));
+	}
+
+	private showCommandAutocomplete(): void {
+		const prefix = this.autocompletePrefix;
+
+		const commands: IAutocompleteItem[] = [
+			{
+				id: 'explain',
+				icon: 'codicon-lightbulb',
+				label: '/explain',
+				description: localize('cmdExplain', "Explain the selected code"),
+				type: 'command'
+			},
+			{
+				id: 'fix',
+				icon: 'codicon-bug',
+				label: '/fix',
+				description: localize('cmdFix', "Fix bugs in the selected code"),
+				type: 'command'
+			},
+			{
+				id: 'test',
+				icon: 'codicon-beaker',
+				label: '/test',
+				description: localize('cmdTest', "Generate tests for the code"),
+				type: 'command'
+			},
+			{
+				id: 'refactor',
+				icon: 'codicon-edit',
+				label: '/refactor',
+				description: localize('cmdRefactor', "Refactor the selected code"),
+				type: 'command'
+			},
+			{
+				id: 'docs',
+				icon: 'codicon-book',
+				label: '/docs',
+				description: localize('cmdDocs', "Generate documentation"),
+				type: 'command'
+			},
+			{
+				id: 'optimize',
+				icon: 'codicon-rocket',
+				label: '/optimize',
+				description: localize('cmdOptimize', "Optimize for performance"),
+				type: 'command'
+			}
+		];
+
+		const filtered = commands.filter(cmd =>
+			!prefix || cmd.label.toLowerCase().includes(prefix)
+		);
+
+		this.showAutocomplete(filtered, localize('commandHeader', "Commands"));
+	}
+
+	private showAutocomplete(items: IAutocompleteItem[], header: string): void {
+		if (items.length === 0) {
+			this.hideAutocomplete();
+			return;
+		}
+
+		this.autocompleteItems = items;
+		this.selectedAutocompleteIndex = 0;
+		this.autocompleteVisible = true;
+
+		// DOM 초기화
+		while (this.autocompleteContainer.firstChild) {
+			this.autocompleteContainer.removeChild(this.autocompleteContainer.firstChild);
+		}
+
+		// 헤더
+		const headerEl = append(this.autocompleteContainer, $('.claude-autocomplete-header'));
+		headerEl.textContent = header;
+
+		// 리스트
+		const list = append(this.autocompleteContainer, $('.claude-autocomplete-list'));
+
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+			const itemEl = append(list, $('.claude-autocomplete-item'));
+			itemEl.dataset.index = String(i);
+
+			if (i === 0) {
+				itemEl.classList.add('selected');
+			}
+
+			// 아이콘
+			const iconEl = append(itemEl, $('.claude-autocomplete-item-icon'));
+			append(iconEl, $(`.codicon.${item.icon}`));
+
+			// 내용
+			const contentEl = append(itemEl, $('.claude-autocomplete-item-content'));
+			const labelEl = append(contentEl, $('.claude-autocomplete-item-label'));
+			labelEl.textContent = item.label;
+
+			if (item.description) {
+				const descEl = append(contentEl, $('.claude-autocomplete-item-desc'));
+				descEl.textContent = item.description;
+			}
+
+			// 클릭 이벤트
+			this._register(addDisposableListener(itemEl, EventType.CLICK, () => {
+				this.selectedAutocompleteIndex = i;
+				this.acceptAutocompleteItem();
+			}));
+
+			// 호버 이벤트
+			this._register(addDisposableListener(itemEl, EventType.MOUSE_ENTER, () => {
+				this.selectAutocompleteItem(i);
+			}));
+		}
+
+		this.autocompleteContainer.style.display = 'block';
+	}
+
+	private hideAutocomplete(): void {
+		this.autocompleteVisible = false;
+		this.autocompleteContainer.style.display = 'none';
+		this.autocompleteItems = [];
+	}
+
+	private selectAutocompleteItem(index: number): void {
+		if (this.autocompleteItems.length === 0) {
+			return;
+		}
+
+		// 범위 제한
+		if (index < 0) {
+			index = this.autocompleteItems.length - 1;
+		} else if (index >= this.autocompleteItems.length) {
+			index = 0;
+		}
+
+		// 이전 선택 해제
+		const prevSelected = this.autocompleteContainer.querySelector('.claude-autocomplete-item.selected');
+		if (prevSelected) {
+			prevSelected.classList.remove('selected');
+		}
+
+		// 새 선택
+		const newSelected = this.autocompleteContainer.querySelector(`[data-index="${index}"]`);
+		if (newSelected) {
+			newSelected.classList.add('selected');
+			newSelected.scrollIntoView({ block: 'nearest' });
+		}
+
+		this.selectedAutocompleteIndex = index;
+	}
+
+	private async acceptAutocompleteItem(): Promise<void> {
+		const item = this.autocompleteItems[this.selectedAutocompleteIndex];
+		if (!item) {
+			this.hideAutocomplete();
+			return;
+		}
+
+		this.hideAutocomplete();
+
+		if (item.type === 'mention') {
+			await this.handleMentionItem(item);
+		} else if (item.type === 'command') {
+			this.handleCommandItem(item);
+		} else if (item.type === 'file') {
+			await this.handleFileItem(item);
+		}
+	}
+
+	private async handleMentionItem(item: IAutocompleteItem): Promise<void> {
+		// 입력창에서 @xxx 제거
+		this.removeAutocompleteText();
+
+		if (item.id === 'file') {
+			// 파일 선택기 열기
+			await this.attachCurrentEditorFile();
+		} else if (item.id === 'workspace') {
+			// 워크스페이스 컨텍스트 첨부
+			await this.attachWorkspaceContext();
+		}
+	}
+
+	private handleCommandItem(item: IAutocompleteItem): void {
+		// 입력창에서 /xxx를 커맨드 프롬프트로 교체
+		const model = this.inputEditor.getModel();
+		if (!model) {
+			return;
+		}
+
+		const commandPrompts: Record<string, string> = {
+			'explain': localize('promptExplain', "Explain this code in detail:"),
+			'fix': localize('promptFix', "Find and fix bugs in this code:"),
+			'test': localize('promptTest', "Write unit tests for this code:"),
+			'refactor': localize('promptRefactor', "Refactor this code to be cleaner and more maintainable:"),
+			'docs': localize('promptDocs', "Generate documentation for this code:"),
+			'optimize': localize('promptOptimize', "Optimize this code for better performance:")
+		};
+
+		const prompt = commandPrompts[item.id] || '';
+
+		// 전체 텍스트 교체
+		model.setValue(prompt + '\n');
+
+		// 커서를 끝으로
+		const lineCount = model.getLineCount();
+		const lastLineLength = model.getLineLength(lineCount);
+		this.inputEditor.setPosition({ lineNumber: lineCount, column: lastLineLength + 1 });
+		this.inputEditor.focus();
+	}
+
+	private async handleFileItem(item: IAutocompleteItem): Promise<void> {
+		// 입력창에서 @filename 제거
+		this.removeAutocompleteText();
+
+		// 파일 첨부
+		const uri = item.data as URI;
+		if (uri) {
+			await this.addFileAttachment(uri);
+		}
+	}
+
+	private removeAutocompleteText(): void {
+		const model = this.inputEditor.getModel();
+		const position = this.inputEditor.getPosition();
+		if (!model || !position) {
+			return;
+		}
+
+		const lineContent = model.getLineContent(position.lineNumber);
+		const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
+		// @ 또는 / 위치 찾기
+		let triggerIndex = textBeforeCursor.lastIndexOf(this.autocompleteTriggerChar);
+		if (triggerIndex === -1) {
+			return;
+		}
+
+		// @ 또는 / 부터 커서까지 삭제
+		const range = {
+			startLineNumber: position.lineNumber,
+			startColumn: triggerIndex + 1,
+			endLineNumber: position.lineNumber,
+			endColumn: position.column
+		};
+
+		model.pushEditOperations([], [{
+			range,
+			text: ''
+		}], () => null);
+	}
+
+	private async attachWorkspaceContext(): Promise<void> {
+		const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
+		if (!workspaceFolder) {
+			this.notificationService.warn(localize('noWorkspaceToAttach', "No workspace folder open"));
+			return;
+		}
+
+		// 워크스페이스 정보를 첨부로 추가
+		const attachment: IClaudeAttachment = {
+			id: generateUuid(),
+			type: 'workspace',
+			uri: workspaceFolder.uri,
+			name: `Workspace: ${workspaceFolder.name}`,
+			content: `Workspace: ${workspaceFolder.name}\nPath: ${workspaceFolder.uri.fsPath}`
+		};
+
+		this.attachments.push(attachment);
+		this.updateAttachmentsUI();
+		this.notificationService.info(localize('workspaceAttached', "Workspace context attached"));
 	}
 }
