@@ -10,17 +10,26 @@
 |------|-------|
 | **Phase** | Phase 3 완료 - UX 개선 & 로컬 설정 |
 | **Sprint** | Sprint_002 ✅ |
-| **Status** | ✅ Sprint 2 전체 완료! |
-| **Updated** | 2026-01-26 |
+| **Status** | ✅ Sprint 2 전체 완료, 빌드 성공 |
+| **Updated** | 2026-01-26 15:28 |
+| **Build** | ✅ `yarn compile` 성공 (15:28) |
 
 ---
 
 ## Now Working On
 
 ```
-Task: Sprint 2 완료
+Task: Sprint 2 완료 - 테스트 중
 Progress: 100%
-Next: 테스트 및 Sprint 3 계획
+Next: 테스트 후 Sprint 3 계획
+```
+
+### 빌드 & 실행
+
+```bash
+cd D:/_______________Kent/vscode
+yarn compile          # 빌드 (약 5분)
+./scripts/code.bat    # 실행
 ```
 
 ### Sprint 2 Tasks
@@ -184,10 +193,11 @@ Claude CLI `--output-format stream-json` 응답:
 | File | Description |
 |------|-------------|
 | `claude.ts` | IClaudeService 인터페이스 |
-| `claudeTypes.ts` | 타입 정의 (IClaudeMessage, IClaudeToolAction, IClaudeSession 등) |
+| `claudeTypes.ts` | 타입 정의 (IClaudeMessage, IClaudeToolAction, IClaudeSession, IClaudeQueuedMessage 등) |
 | `claudeContextKeys.ts` | 컨텍스트 키 |
 | `claudeCLI.ts` | IClaudeCLIService 인터페이스, IClaudeCLIStreamEvent |
 | `claudeCLIChannel.ts` | IPC 채널 (ClaudeCLIChannel, ClaudeCLIChannelClient) |
+| `claudeLocalConfig.ts` | **[Sprint2]** 로컬 설정 타입/유틸 (스크립트 실행 지원) |
 
 ### browser/
 | File | Description |

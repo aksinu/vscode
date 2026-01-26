@@ -111,4 +111,11 @@ export interface IClaudeService {
 	 * 큐 전체 비우기
 	 */
 	clearQueue(): void;
+
+	// ========== Config ==========
+
+	/**
+	 * 로컬 설정 다시 로드
+	 */
+	reloadLocalConfig?(): Promise<void>;
 }

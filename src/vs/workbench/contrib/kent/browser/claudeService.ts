@@ -33,7 +33,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _isWaitingForUser = false;
 	private _cliSessionId: string | undefined; // Claude CLI 세션 ID (--resume 용)
 	private _localConfig: IClaudeLocalConfig = DEFAULT_LOCAL_CONFIG;
-	private _localConfigLoaded = false;
 	private _messageQueue: IClaudeQueuedMessage[] = [];
 	private _isProcessingQueue = false;
 
@@ -142,7 +141,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
 			if (!workspaceFolder) {
 				console.log('[ClaudeService] No workspace folder, using default config');
-				this._localConfigLoaded = true;
 				return;
 			}
 
@@ -161,7 +159,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		} catch (e) {
 			console.error('[ClaudeService] Failed to load local config:', e);
 		}
-		this._localConfigLoaded = true;
 	}
 
 	/**
@@ -169,6 +166,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	getLocalConfig(): IClaudeLocalConfig {
 		return this._localConfig;
+	}
+
+	/**
+	 * 로컬 설정 다시 로드 (UI에서 설정 변경 후 호출)
+	 */
+	async reloadLocalConfig(): Promise<void> {
+		await this.loadLocalConfig();
 	}
 
 	/**

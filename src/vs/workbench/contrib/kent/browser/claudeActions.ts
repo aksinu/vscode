@@ -48,18 +48,8 @@ export class ClearClaudeChatAction extends Action2 {
 			id: ClearClaudeChatAction.ID,
 			title: localize2('clearClaudeChat', "Clear Claude Chat"),
 			category: localize2('claude', "Claude"),
-			f1: true,
-			keybinding: {
-				weight: KeybindingWeight.WorkbenchContrib,
-				primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyK,
-				when: CONTEXT_CLAUDE_PANEL_FOCUSED
-			},
-			menu: {
-				id: MenuId.ViewTitle,
-				when: ContextKeyExpr.equals('view', ClaudeChatViewPane.ID),
-				group: 'navigation',
-				order: 1
-			}
+			f1: true
+			// 메뉴에서 제거 - New Session과 기능 중복
 		});
 	}
 
@@ -102,14 +92,14 @@ export class NewClaudeSessionAction extends Action2 {
 	constructor() {
 		super({
 			id: NewClaudeSessionAction.ID,
-			title: localize2('newClaudeSession', "New Claude Session"),
+			title: localize2('newSession', "New Session"),
 			category: localize2('claude', "Claude"),
 			f1: true,
 			menu: {
 				id: MenuId.ViewTitle,
 				when: ContextKeyExpr.equals('view', ClaudeChatViewPane.ID),
 				group: 'navigation',
-				order: 2
+				order: 1
 			}
 		});
 	}

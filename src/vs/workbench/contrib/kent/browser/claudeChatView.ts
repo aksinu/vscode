@@ -34,6 +34,10 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { basename } from '../../../../base/common/resources.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { VSBuffer } from '../../../../base/common/buffer.js';
+import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
+import { IClaudeLocalConfig } from '../common/claudeLocalConfig.js';
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -74,7 +78,9 @@ export class ClaudeChatViewPane extends ViewPane {
 		@ILanguageService private readonly languageService: ILanguageService,
 		@IEditorService private readonly editorService: IEditorService,
 		@INotificationService private readonly notificationService: INotificationService,
-		@IFileService private readonly fileService: IFileService
+		@IFileService private readonly fileService: IFileService,
+		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+		@IQuickInputService private readonly quickInputService: IQuickInputService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -283,6 +289,15 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.attachCurrentEditorFile();
 		}));
 
+		// 설정 버튼
+		const settingsButton = append(toolbar, $('button.claude-toolbar-button'));
+		settingsButton.title = localize('openLocalSettings', "Open local settings (.vscode/claude.local.json)");
+		append(settingsButton, $('.codicon.codicon-settings-gear'));
+
+		this._register(addDisposableListener(settingsButton, EventType.CLICK, () => {
+			this.openLocalSettings();
+		}));
+
 		// 에디터 영역
 		const editorWrapper = append(inputWrapper, $('.claude-input-editor-wrapper'));
 		const editorContainer = append(editorWrapper, $('.claude-input-editor'));
@@ -450,10 +465,10 @@ export class ClaudeChatViewPane extends ViewPane {
 	private appendSessionDivider(): void {
 		const divider = $('.claude-session-divider');
 
-		const line1 = append(divider, $('.claude-session-divider-line'));
+		append(divider, $('.claude-session-divider-line'));
 		const text = append(divider, $('.claude-session-divider-text'));
 		text.textContent = localize('previousSession', "Previous Session");
-		const line2 = append(divider, $('.claude-session-divider-line'));
+		append(divider, $('.claude-session-divider-line'));
 
 		// 로딩 인디케이터 앞에 삽입
 		this.messagesContainer.insertBefore(divider, this.loadingElement);
@@ -727,6 +742,208 @@ export class ClaudeChatViewPane extends ViewPane {
 	override focus(): void {
 		super.focus();
 		this.inputEditor?.focus();
+	}
+
+	// ========== 로컬 설정 ==========
+
+	private async openLocalSettings(): Promise<void> {
+		const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
+		if (!workspaceFolder) {
+			this.notificationService.warn(localize('noWorkspace', "No workspace folder open. Please open a folder first."));
+			return;
+		}
+
+		const vscodeFolder = URI.joinPath(workspaceFolder.uri, '.vscode');
+		const configUri = URI.joinPath(vscodeFolder, 'claude.local.json');
+
+		// 현재 설정 로드
+		let config: IClaudeLocalConfig = {};
+		try {
+			const content = await this.fileService.readFile(configUri);
+			config = JSON.parse(content.value.toString());
+		} catch {
+			// 파일 없음 - 기본값 사용
+		}
+
+		// 현재 상태 표시용
+		const autoAcceptStatus = config.autoAccept ? '$(check) ON' : '$(close) OFF';
+		const scriptPath = config.executable?.type === 'script' ? config.executable.script : undefined;
+		const scriptStatus = scriptPath ? `$(file) ${scriptPath}` : '$(terminal) claude (default)';
+
+		interface ISettingsQuickPickItem extends IQuickPickItem {
+			id: string;
+		}
+
+		const items: ISettingsQuickPickItem[] = [
+			{
+				id: 'autoAccept',
+				label: `$(symbol-boolean) Auto Accept`,
+				description: autoAcceptStatus,
+				detail: localize('autoAcceptDetail', "Automatically accept Claude's questions (AskUser)")
+			},
+			{
+				id: 'script',
+				label: `$(file-code) Claude Script`,
+				description: scriptStatus,
+				detail: localize('scriptDetail', "Custom script to run Claude CLI (e.g., set API key)")
+			},
+			{
+				id: 'separator',
+				label: '',
+				kind: 1 // separator
+			} as ISettingsQuickPickItem,
+			{
+				id: 'editJson',
+				label: `$(json) Edit JSON directly`,
+				detail: localize('editJsonDetail', "Open claude.local.json in editor")
+			}
+		];
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: localize('selectSetting', "Claude Local Settings"),
+			canPickMany: false
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		const selectedItem = selected as ISettingsQuickPickItem;
+
+		switch (selectedItem.id) {
+			case 'autoAccept':
+				await this.toggleAutoAccept(configUri, config);
+				break;
+			case 'script':
+				await this.selectClaudeScript(configUri, config, workspaceFolder.uri);
+				break;
+			case 'editJson':
+				await this.openOrCreateConfigFile(configUri, vscodeFolder, config);
+				break;
+		}
+	}
+
+	private async toggleAutoAccept(configUri: URI, config: IClaudeLocalConfig): Promise<void> {
+		const newValue = !config.autoAccept;
+		const newConfig = { ...config, autoAccept: newValue };
+
+		await this.saveConfig(configUri, newConfig);
+
+		const status = newValue ? 'ON' : 'OFF';
+		this.notificationService.info(localize('autoAcceptChanged', "Auto Accept: {0}", status));
+
+		// 서비스에 알림 (설정 다시 로드하도록)
+		this.claudeService.reloadLocalConfig?.();
+	}
+
+	private async selectClaudeScript(configUri: URI, config: IClaudeLocalConfig, workspaceUri: URI): Promise<void> {
+		interface IScriptQuickPickItem extends IQuickPickItem {
+			id: string;
+		}
+
+		const items: IScriptQuickPickItem[] = [
+			{
+				id: 'default',
+				label: '$(terminal) Use default claude command',
+				description: config.executable?.type !== 'script' ? '(current)' : ''
+			},
+			{
+				id: 'browse',
+				label: '$(folder-opened) Browse for script file...',
+				detail: localize('browseDetail', "Select .bat, .sh, .ps1, .js, or .py file")
+			}
+		];
+
+		// 현재 스크립트가 있으면 표시
+		if (config.executable?.type === 'script' && config.executable.script) {
+			items.splice(1, 0, {
+				id: 'current',
+				label: `$(file) ${config.executable.script}`,
+				description: '(current)',
+				detail: localize('currentScript', "Currently configured script")
+			});
+		}
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: localize('selectScript', "Select Claude execution method")
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		const selectedItem = selected as IScriptQuickPickItem;
+
+		if (selectedItem.id === 'default') {
+			// 기본 명령어로 변경
+			const newConfig: IClaudeLocalConfig = {
+				...config,
+				executable: { type: 'command', command: 'claude' }
+			};
+			await this.saveConfig(configUri, newConfig);
+			this.notificationService.info(localize('usingDefaultClaude', "Using default 'claude' command"));
+			this.claudeService.reloadLocalConfig?.();
+
+		} else if (selectedItem.id === 'browse') {
+			// 파일 선택 다이얼로그
+			const result = await this.fileService.resolve(workspaceUri);
+			if (!result) {
+				return;
+			}
+
+			// QuickPick으로 파일 입력 받기 (간단한 방식)
+			const scriptPath = await this.quickInputService.input({
+				placeHolder: localize('enterScriptPath', "Enter script path (relative to workspace)"),
+				prompt: localize('scriptPathPrompt', "e.g., ./scripts/claude.bat or scripts/run-claude.sh"),
+				value: config.executable?.script || './scripts/claude.bat'
+			});
+
+			if (scriptPath) {
+				const newConfig: IClaudeLocalConfig = {
+					...config,
+					executable: { type: 'script', script: scriptPath }
+				};
+				await this.saveConfig(configUri, newConfig);
+				this.notificationService.info(localize('scriptConfigured', "Script configured: {0}", scriptPath));
+				this.claudeService.reloadLocalConfig?.();
+			}
+		}
+	}
+
+	private async saveConfig(configUri: URI, config: IClaudeLocalConfig): Promise<void> {
+		// .vscode 폴더 확인/생성
+		const vscodeFolder = URI.joinPath(configUri, '..');
+		try {
+			await this.fileService.stat(vscodeFolder);
+		} catch {
+			await this.fileService.createFolder(vscodeFolder);
+		}
+
+		const content = JSON.stringify(config, null, 2);
+		await this.fileService.writeFile(configUri, VSBuffer.fromString(content));
+	}
+
+	private async openOrCreateConfigFile(configUri: URI, vscodeFolder: URI, existingConfig: IClaudeLocalConfig): Promise<void> {
+		try {
+			await this.fileService.stat(configUri);
+		} catch {
+			// 파일 없으면 생성
+			try {
+				await this.fileService.stat(vscodeFolder);
+			} catch {
+				await this.fileService.createFolder(vscodeFolder);
+			}
+
+			const defaultConfig = {
+				...existingConfig,
+				executable: existingConfig.executable || { type: 'command', command: 'claude' },
+				autoAccept: existingConfig.autoAccept ?? false
+			};
+
+			await this.fileService.writeFile(configUri, VSBuffer.fromString(JSON.stringify(defaultConfig, null, 2)));
+		}
+
+		await this.editorService.openEditor({ resource: configUri });
 	}
 
 	protected override layoutBody(height: number, width: number): void {

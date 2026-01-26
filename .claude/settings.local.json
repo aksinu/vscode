@@ -47,7 +47,10 @@
       "Bash(npm run watch:*)",
       "Bash(grep:*)",
       "Bash(cat:*)",
-      "Bash(yarn tsc:*)"
+      "Bash(yarn tsc:*)",
+      "Bash(timeout 60 yarn compile:*)",
+      "Bash(yarn compile:*)",
+      "Bash(./scripts/code.bat)"
     ]
   }
 }
