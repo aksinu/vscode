@@ -155,3 +155,37 @@ export interface IClaudeQueuedMessage {
 	readonly context?: IClaudeContext;
 	readonly timestamp: number;
 }
+
+/**
+ * Claude 연결 상태
+ */
+export type ClaudeConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+
+/**
+ * Claude 실행 방식
+ */
+export type ClaudeExecutionMethod = 'cli' | 'script';
+
+/**
+ * Claude 상태 정보
+ */
+export interface IClaudeStatusInfo {
+	readonly connectionStatus: ClaudeConnectionStatus;
+	readonly model: string;
+	readonly extendedThinking: boolean;
+	readonly executionMethod: ClaudeExecutionMethod;
+	readonly scriptPath?: string;
+	readonly lastConnected?: number;
+	readonly error?: string;
+	readonly version?: string;
+}
+
+/**
+ * Claude 계정 정보
+ */
+export interface IClaudeAccountInfo {
+	readonly email?: string;
+	readonly organization?: string;
+	readonly apiKeyConfigured: boolean;
+	readonly plan?: string;
+}

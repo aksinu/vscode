@@ -10,9 +10,9 @@
 |------|-------|
 | **Phase** | Phase 4 - 고급 UX 기능 |
 | **Sprint** | Sprint_003 ✅ |
-| **Status** | ✅ Sprint 3 전체 완료 |
-| **Updated** | 2026-01-26 16:50 |
-| **Build** | 타입체크 성공 |
+| **Status** | ✅ Sprint 3 완료 + 상태바 & 설정 시스템 |
+| **Updated** | 2026-01-26 22:30 |
+| **Build** | ✅ 타입체크 성공 |
 
 ---
 
@@ -66,7 +66,10 @@ yarn compile          # 빌드 (약 5분)
 - [x] 환영 화면 (Welcome Screen)
 - [x] 로딩 인디케이터
 - [x] 컨텍스트 태그 표시
-- [x] 드래그/드롭 파일 첨부 기능
+- [x] **파일 첨부 시스템 (3가지 방식)**
+  - [x] 열린 파일 버튼 (`+ 파일명` 클릭)
+  - [x] 드래그 앤 드롭
+  - [x] Ctrl+C/V (이미지 붙여넣기)
 
 ### Done (Phase 2 - CLI 연동)
 - [x] **코드 재구성** - `claude/` → `kent/` 폴더로 이동
@@ -255,6 +258,42 @@ Claude CLI `--output-format stream-json` 응답:
 ---
 
 ## Activity Log
+
+### 2026-01-26 (밤4)
+- **버그 수정**
+  - Error 상태 → 응답 데이터 수신 시 즉시 Connected로 변경
+  - checkConnection 실패 시 Error 대신 Disconnected 표시
+- **모델 변경 기능 추가**
+  - 설정(⚙️) → Change Model 메뉴 추가
+  - Opus/Sonnet/Haiku 선택 가능
+- **응답 취소 버튼 추가**
+  - 스트리밍 중 전송 버튼 → 취소 버튼(🔴)으로 변경
+  - 클릭 시 요청 취소
+
+### Known Bugs (수정 필요)
+| # | 버그 | 상태 |
+|---|------|------|
+| 1 | 스트리밍 시 채팅창 깜빡임 + 진행상황 불명확 | 🔴 |
+| 2 | 입력창 - 전송버튼 좌측 이상한 공간 | 🔴 |
+| 3 | 채팅창 width 조절 시 전송버튼 사라짐 | 🔴 |
+| 4 | 터미널 conpty.node 에러 (빌드) | 🟡 P3 |
+
+### 2026-01-26 (밤3)
+- **파일 첨부 시스템 스펙 정리** (SPEC_003)
+  - 3가지 첨부 방식 정의: 열린 파일 버튼, 드래그/드롭, Ctrl+C/V
+  - 명시적 첨부만 전송 (자동 전송 X)
+- **열린 파일 버튼 UI 구현**
+  - 채팅창 상단에 열린 파일 목록 표시 (`+ a.cs + b.ts`)
+  - 클릭 시 첨부 목록에 추가
+  - 이미 첨부된 파일은 비활성화 표시
+  - editorService.onDidVisibleEditorsChange로 실시간 업데이트
+  - 버그 수정: openFilesContainer null 체크 추가
+- **상태 & 설정 시스템 구현** (SPEC_004)
+  - Claude 상태 바 UI (연결 상태, 모델, 실행 방식)
+  - 설정 QuickPick (연결 테스트, Extended Thinking 토글, 설정 파일 열기)
+  - IClaudeStatusInfo/IClaudeAccountInfo 타입 추가
+  - checkConnection() 메서드 구현 (CLI 버전 확인)
+  - toggleExtendedThinking() 메서드 구현
 
 ### 2026-01-26 (밤2)
 - **Sprint 3 완료! (6개 태스크)**

@@ -437,6 +437,15 @@
 	cursor: not-allowed;
 }
 
+.claude-send-button.cancel-mode {
+	background-color: var(--vscode-inputValidation-errorBackground);
+	border: 1px solid var(--vscode-inputValidation-errorBorder);
+}
+
+.claude-send-button.cancel-mode:hover {
+	background-color: var(--vscode-errorForeground);
+}
+
 /* ========== Input Footer (하단 버튼들) ========== */
 
 .claude-input-footer {
@@ -1046,6 +1055,147 @@
 	height: 1px;
 	background-color: var(--vscode-widget-border);
 	margin: 4px 0;
+}
+
+/* ========== Status Bar ========== */
+
+.claude-status-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	background-color: var(--vscode-statusBar-background);
+	border-top: 1px solid var(--vscode-widget-border);
+	font-size: 12px;
+	color: var(--vscode-statusBar-foreground);
+}
+
+.claude-status-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.claude-status-icon {
+	font-size: 10px;
+}
+
+.claude-status-icon.connected {
+	color: var(--vscode-terminal-ansiGreen);
+}
+
+.claude-status-icon.disconnected {
+	color: var(--vscode-terminal-ansiRed);
+}
+
+.claude-status-icon.connecting {
+	color: var(--vscode-terminal-ansiYellow);
+	animation: claude-pulse 1s infinite;
+}
+
+.claude-status-icon.error {
+	color: var(--vscode-errorForeground);
+}
+
+@keyframes claude-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+.claude-status-text {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 150px;
+}
+
+.claude-status-separator {
+	width: 1px;
+	height: 12px;
+	background-color: var(--vscode-statusBar-foreground);
+	opacity: 0.3;
+}
+
+.claude-status-settings {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: auto;
+	padding: 2px 6px;
+	background: transparent;
+	border: none;
+	color: var(--vscode-statusBar-foreground);
+	border-radius: 4px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: opacity 0.15s, background-color 0.15s;
+}
+
+.claude-status-settings:hover {
+	opacity: 1;
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ========== Open Files Buttons ========== */
+
+.claude-open-files {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-editor-background);
+}
+
+.claude-open-file-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 10px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 16px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 0.1s, border-color 0.1s, transform 0.1s;
+}
+
+.claude-open-file-button:hover:not(:disabled) {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+	border-color: var(--vscode-focusBorder);
+	transform: translateY(-1px);
+}
+
+.claude-open-file-button:active:not(:disabled) {
+	transform: translateY(0);
+}
+
+.claude-open-file-button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.claude-open-file-button.attached {
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-color: var(--vscode-badge-background);
+}
+
+.claude-open-file-plus {
+	font-weight: 600;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-open-file-button.attached .claude-open-file-plus {
+	color: var(--vscode-badge-foreground);
+}
+
+.claude-open-file-name {
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* ========== Responsive ========== */

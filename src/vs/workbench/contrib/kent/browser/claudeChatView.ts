@@ -25,7 +25,7 @@ import { IThemeService } from '../../../../platform/theme/common/themeService.js
 import { IViewPaneOptions, ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../common/views.js';
 import { IClaudeService } from '../common/claude.js';
-import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage } from '../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, IClaudeStatusInfo } from '../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../common/claudeContextKeys.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
@@ -64,6 +64,9 @@ export class ClaudeChatViewPane extends ViewPane {
 	private attachmentsContainer!: HTMLElement;
 	private queueContainer!: HTMLElement;
 	private dropOverlay!: HTMLElement;
+	private openFilesContainer!: HTMLElement;
+	private statusBarContainer!: HTMLElement;
+	private sendButton!: HTMLButtonElement;
 	private autocompleteContainer!: HTMLElement;
 	private autocompleteItems: IAutocompleteItem[] = [];
 	private selectedAutocompleteIndex = 0;
@@ -122,6 +125,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			const inProgress = state === 'sending' || state === 'streaming';
 			this.requestInProgressKey.set(inProgress);
 			this.updateLoadingState(state === 'sending'); // 스트리밍 중에는 로딩 숨김
+			this.updateSendButton(inProgress);
 		}));
 
 		this._register(this.claudeService.onDidChangeSession(() => {
@@ -142,6 +146,15 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 드롭 오버레이
 		this.dropOverlay = append(this.container, $('.claude-drop-overlay'));
 		this.dropOverlay.textContent = localize('dropFilesHere', "Drop files here to attach");
+
+		// 열린 파일 버튼 영역
+		this.openFilesContainer = append(this.container, $('.claude-open-files'));
+		this.updateOpenFilesUI();
+
+		// 열린 에디터 변경 시 업데이트
+		this._register(this.editorService.onDidVisibleEditorsChange(() => {
+			this.updateOpenFilesUI();
+		}));
 
 		// 환영 메시지
 		this.welcomeContainer = append(this.container, $('.claude-welcome'));
@@ -173,6 +186,20 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 큐 표시 영역 (입력창 위)
 		this.queueContainer = append(this.container, $('.claude-queue-container'));
 		this.queueContainer.style.display = 'none';
+
+		// 상태 바 (입력창 위)
+		this.statusBarContainer = append(this.container, $('.claude-status-bar'));
+		this.createStatusBar();
+
+		// 상태 변경 이벤트 구독
+		if (this.claudeService.onDidChangeStatusInfo) {
+			this._register(this.claudeService.onDidChangeStatusInfo(status => {
+				this.updateStatusBar(status);
+			}));
+		}
+
+		// 초기 연결 체크 (비동기)
+		this.claudeService.checkConnection?.();
 
 		// 입력 영역
 		this.inputContainer = append(this.container, $('.claude-input-container'));
@@ -416,15 +443,14 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		}));
 
-		// 전송 버튼
-		const sendButton = append(inputWrapper, $('button.claude-send-button'));
-		sendButton.title = localize('sendMessage', "Send message");
-		append(sendButton, $('.codicon.codicon-send'));
+		// 전송/취소 버튼
+		this.sendButton = append(inputWrapper, $('button.claude-send-button')) as HTMLButtonElement;
+		this.sendButton.title = localize('sendMessage', "Send message");
+		append(this.sendButton, $('.codicon.codicon-send'));
 
-		this._register({
-			dispose: () => sendButton.removeEventListener('click', () => this.submitInput())
-		});
-		sendButton.addEventListener('click', () => this.submitInput());
+		this._register(addDisposableListener(this.sendButton, EventType.CLICK, () => {
+			this.handleSendButtonClick();
+		}));
 
 		// 하단 툴바 (입력창 아래, 오른쪽 정렬)
 		const inputFooter = append(this.inputContainer, $('.claude-input-footer'));
@@ -982,6 +1008,9 @@ export class ClaudeChatViewPane extends ViewPane {
 		while (this.attachmentsContainer.firstChild) {
 			this.attachmentsContainer.removeChild(this.attachmentsContainer.firstChild);
 		}
+
+		// 열린 파일 버튼 상태도 업데이트
+		this.updateOpenFilesUI();
 
 		if (this.attachments.length === 0) {
 			this.attachmentsContainer.style.display = 'none';
@@ -1706,5 +1735,380 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.attachments.push(attachment);
 		this.updateAttachmentsUI();
 		this.notificationService.info(localize('workspaceAttached', "Workspace context attached"));
+	}
+
+	// ========== 열린 파일 버튼 ==========
+
+	private updateOpenFilesUI(): void {
+		// 초기화 전이면 무시
+		if (!this.openFilesContainer) {
+			return;
+		}
+
+		// 기존 UI 초기화
+		while (this.openFilesContainer.firstChild) {
+			this.openFilesContainer.removeChild(this.openFilesContainer.firstChild);
+		}
+
+		// 열린 에디터 목록 가져오기
+		const openEditors = this.editorService.editors;
+		const uniqueFiles = new Map<string, URI>();
+
+		for (const editor of openEditors) {
+			const resource = editor.resource;
+			if (resource && resource.scheme === 'file') {
+				const key = resource.toString();
+				if (!uniqueFiles.has(key)) {
+					uniqueFiles.set(key, resource);
+				}
+			}
+		}
+
+		// 열린 파일이 없으면 숨김
+		if (uniqueFiles.size === 0) {
+			this.openFilesContainer.style.display = 'none';
+			return;
+		}
+
+		this.openFilesContainer.style.display = 'flex';
+
+		// 각 파일에 대해 버튼 생성
+		for (const [, uri] of uniqueFiles) {
+			const fileName = basename(uri);
+
+			// 이미 첨부된 파일인지 확인
+			const isAttached = this.attachments.some(a => a.uri?.toString() === uri.toString());
+
+			const button = append(this.openFilesContainer, $('button.claude-open-file-button')) as HTMLButtonElement;
+			button.title = uri.fsPath;
+
+			if (isAttached) {
+				button.classList.add('attached');
+				button.disabled = true;
+			}
+
+			// + 아이콘
+			const plusIcon = append(button, $('span.claude-open-file-plus'));
+			plusIcon.textContent = '+';
+
+			// 파일명
+			const nameSpan = append(button, $('span.claude-open-file-name'));
+			nameSpan.textContent = fileName;
+
+			if (!isAttached) {
+				this._register(addDisposableListener(button, EventType.CLICK, async () => {
+					await this.addFileAttachment(uri);
+					this.updateOpenFilesUI(); // 버튼 상태 업데이트
+				}));
+			}
+		}
+	}
+
+	// ========== 상태 바 ==========
+
+	private createStatusBar(): void {
+		// 연결 상태
+		const connectionStatus = append(this.statusBarContainer, $('.claude-status-item.connection'));
+
+		const connectionIcon = append(connectionStatus, $('.claude-status-icon'));
+		connectionIcon.classList.add('codicon', 'codicon-circle-filled');
+
+		const connectionText = append(connectionStatus, $('.claude-status-text'));
+		connectionText.textContent = 'Checking...';
+
+		// 구분자
+		append(this.statusBarContainer, $('.claude-status-separator'));
+
+		// 모델
+		const modelStatus = append(this.statusBarContainer, $('.claude-status-item.model'));
+		const modelText = append(modelStatus, $('.claude-status-text'));
+		modelText.textContent = 'Loading...';
+
+		// 구분자
+		append(this.statusBarContainer, $('.claude-status-separator'));
+
+		// 실행 방식
+		const execStatus = append(this.statusBarContainer, $('.claude-status-item.execution'));
+		const execText = append(execStatus, $('.claude-status-text'));
+		execText.textContent = 'CLI';
+
+		// 설정 버튼 (오른쪽)
+		const settingsButton = append(this.statusBarContainer, $('button.claude-status-settings'));
+		settingsButton.title = localize('openSettings', "Open Settings");
+		append(settingsButton, $('.codicon.codicon-settings-gear'));
+
+		this._register(addDisposableListener(settingsButton, EventType.CLICK, () => {
+			this.showSettingsQuickPick();
+		}));
+
+		// 초기 상태 업데이트
+		const initialStatus = this.claudeService.getStatusInfo?.();
+		if (initialStatus) {
+			this.updateStatusBar(initialStatus);
+		}
+	}
+
+	private updateStatusBar(status: IClaudeStatusInfo): void {
+		// 연결 상태 업데이트
+		const connectionItem = this.statusBarContainer.querySelector('.claude-status-item.connection');
+		if (connectionItem) {
+			const icon = connectionItem.querySelector('.claude-status-icon');
+			const text = connectionItem.querySelector('.claude-status-text');
+
+			// 아이콘 색상 클래스 초기화
+			icon?.classList.remove('connected', 'disconnected', 'connecting', 'error');
+
+			switch (status.connectionStatus) {
+				case 'connected':
+					icon?.classList.add('connected');
+					if (text) text.textContent = 'Connected';
+					break;
+				case 'disconnected':
+					icon?.classList.add('disconnected');
+					if (text) text.textContent = 'Disconnected';
+					break;
+				case 'connecting':
+					icon?.classList.add('connecting');
+					if (text) text.textContent = 'Connecting...';
+					break;
+				case 'error':
+					icon?.classList.add('error');
+					if (text) text.textContent = 'Error';
+					break;
+			}
+		}
+
+		// 모델 업데이트
+		const modelItem = this.statusBarContainer.querySelector('.claude-status-item.model .claude-status-text');
+		if (modelItem) {
+			// 모델명 축약 (claude-sonnet-4-xxx -> sonnet-4)
+			const shortModel = status.model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+			modelItem.textContent = shortModel;
+		}
+
+		// 실행 방식 업데이트
+		const execItem = this.statusBarContainer.querySelector('.claude-status-item.execution .claude-status-text');
+		if (execItem) {
+			if (status.executionMethod === 'script' && status.scriptPath) {
+				const scriptName = status.scriptPath.split(/[/\\]/).pop() || 'Script';
+				execItem.textContent = `Script: ${scriptName}`;
+			} else {
+				execItem.textContent = 'CLI';
+			}
+		}
+	}
+
+	private async showSettingsQuickPick(): Promise<void> {
+		const status = this.claudeService.getStatusInfo?.() || {
+			connectionStatus: 'disconnected',
+			model: 'unknown',
+			extendedThinking: false,
+			executionMethod: 'cli'
+		} as IClaudeStatusInfo;
+
+		// 현재 상태 표시
+		const connectionIcon = status.connectionStatus === 'connected' ? '$(check)' : '$(close)';
+		const thinkingIcon = status.extendedThinking ? '$(check)' : '$(close)';
+		const execIcon = status.executionMethod === 'script' ? '$(file-code)' : '$(terminal)';
+
+		interface ISettingsQuickPickItem extends IQuickPickItem {
+			id: string;
+		}
+
+		const items: ISettingsQuickPickItem[] = [
+			{
+				id: 'connection',
+				label: `${connectionIcon} Connection`,
+				description: status.connectionStatus === 'connected'
+					? `Connected (v${status.version || 'unknown'})`
+					: status.connectionStatus,
+				detail: status.lastConnected
+					? `Last connected: ${new Date(status.lastConnected).toLocaleString()}`
+					: undefined
+			},
+			{
+				id: 'model',
+				label: `$(symbol-method) Model`,
+				description: status.model
+			},
+			{
+				id: 'execution',
+				label: `${execIcon} Execution Method`,
+				description: status.executionMethod === 'script'
+					? `Script: ${status.scriptPath}`
+					: 'CLI (default)'
+			},
+			{
+				id: 'thinking',
+				label: `${thinkingIcon} Extended Thinking`,
+				description: status.extendedThinking ? 'ON' : 'OFF'
+			},
+			{
+				id: 'separator',
+				label: '',
+				kind: 1 // separator
+			} as ISettingsQuickPickItem,
+			{
+				id: 'changeModel',
+				label: '$(symbol-method) Change Model',
+				detail: `Current: ${status.model}`
+			},
+			{
+				id: 'testConnection',
+				label: '$(sync) Test Connection',
+				detail: 'Check if Claude CLI is available'
+			},
+			{
+				id: 'toggleThinking',
+				label: '$(lightbulb) Toggle Extended Thinking',
+				detail: `Currently ${status.extendedThinking ? 'ON' : 'OFF'}`
+			},
+			{
+				id: 'configureScript',
+				label: '$(file-code) Configure Script',
+				detail: 'Set custom execution script'
+			},
+			{
+				id: 'openJson',
+				label: '$(json) Open claude.local.json',
+				detail: 'Edit local settings directly'
+			}
+		];
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: localize('claudeSettings', "Claude Settings"),
+			canPickMany: false
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		const selectedItem = selected as ISettingsQuickPickItem;
+
+		switch (selectedItem.id) {
+			case 'changeModel':
+				await this.showModelPicker();
+				break;
+
+			case 'testConnection':
+				this.notificationService.info(localize('testingConnection', "Testing connection..."));
+				const connected = await this.claudeService.checkConnection?.();
+				if (connected) {
+					this.notificationService.info(localize('connectionSuccess', "Connection successful!"));
+				} else {
+					this.notificationService.error(localize('connectionFailed', "Connection failed. Make sure Claude CLI is installed."));
+				}
+				break;
+
+			case 'toggleThinking':
+				await this.claudeService.toggleExtendedThinking?.();
+				const newStatus = this.claudeService.getStatusInfo?.();
+				this.notificationService.info(
+					localize('thinkingToggled', "Extended Thinking: {0}", newStatus?.extendedThinking ? 'ON' : 'OFF')
+				);
+				break;
+
+			case 'configureScript':
+			case 'openJson':
+				await this.openLocalSettings();
+				break;
+		}
+	}
+
+	// ========== 전송/취소 버튼 ==========
+
+	private handleSendButtonClick(): void {
+		const state = this.claudeService.getState();
+		if (state === 'sending' || state === 'streaming') {
+			// 취소
+			this.claudeService.cancelRequest();
+			this.notificationService.info(localize('requestCancelled', "Request cancelled"));
+		} else {
+			// 전송
+			this.submitInput();
+		}
+	}
+
+	private updateSendButton(inProgress: boolean): void {
+		if (!this.sendButton) {
+			return;
+		}
+
+		// 아이콘 변경
+		const icon = this.sendButton.querySelector('.codicon');
+		if (icon) {
+			icon.classList.remove('codicon-send', 'codicon-stop-circle');
+			icon.classList.add(inProgress ? 'codicon-stop-circle' : 'codicon-send');
+		}
+
+		// 타이틀 변경
+		this.sendButton.title = inProgress
+			? localize('cancelRequest', "Cancel request")
+			: localize('sendMessage', "Send message");
+
+		// 스타일 변경
+		this.sendButton.classList.toggle('cancel-mode', inProgress);
+	}
+
+	private async showModelPicker(): Promise<void> {
+		const currentModel = this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4-20250514';
+
+		interface IModelQuickPickItem extends IQuickPickItem {
+			modelId: string;
+		}
+
+		const models: IModelQuickPickItem[] = [
+			{
+				modelId: 'claude-opus-4-20250514',
+				label: '$(star) Claude Opus 4',
+				description: 'Most capable model',
+				detail: 'Best for complex tasks, coding, and analysis'
+			},
+			{
+				modelId: 'claude-sonnet-4-20250514',
+				label: 'Claude Sonnet 4',
+				description: 'Balanced performance',
+				detail: 'Good balance of speed and capability'
+			},
+			{
+				modelId: 'claude-3-5-sonnet-20241022',
+				label: 'Claude 3.5 Sonnet',
+				description: 'Previous generation',
+				detail: 'Fast and capable'
+			},
+			{
+				modelId: 'claude-3-5-haiku-20241022',
+				label: 'Claude 3.5 Haiku',
+				description: 'Fastest model',
+				detail: 'Best for simple tasks and quick responses'
+			}
+		];
+
+		// 현재 모델 표시
+		for (const model of models) {
+			if (model.modelId === currentModel) {
+				model.label = `$(check) ${model.label}`;
+				model.description = `${model.description} (current)`;
+			}
+		}
+
+		const selected = await this.quickInputService.pick(models, {
+			placeHolder: localize('selectModel', "Select Claude Model")
+		});
+
+		if (selected && (selected as IModelQuickPickItem).modelId !== currentModel) {
+			const newModel = (selected as IModelQuickPickItem).modelId;
+			await this.configurationService.updateValue('claude.model', newModel);
+			this.notificationService.info(localize('modelChanged', "Model changed to {0}", newModel));
+
+			// 상태 바 업데이트
+			if (this.claudeService.onDidChangeStatusInfo) {
+				const status = this.claudeService.getStatusInfo?.();
+				if (status) {
+					this.updateStatusBar({ ...status, model: newModel });
+				}
+			}
+		}
 	}
 }

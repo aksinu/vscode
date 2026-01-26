@@ -50,6 +50,8 @@ export class ClaudeCLIChannel implements IServerChannel<string> {
 				return Promise.resolve() as Promise<T>;
 			case 'isRunning':
 				return Promise.resolve(this.service.isRunning()) as Promise<T>;
+			case 'checkConnection':
+				return this.service.checkConnection() as Promise<T>;
 		}
 		throw new Error(`Call not found: ${command}`);
 	}
@@ -95,5 +97,10 @@ export class ClaudeCLIChannelClient implements IClaudeCLIService {
 	sendUserInput(input: string): void {
 		console.log('[ClaudeCLIChannelClient] Sending user input via channel');
 		this.channel.call('sendUserInput', [input]);
+	}
+
+	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
+		console.log('[ClaudeCLIChannelClient] Checking connection via channel');
+		return this.channel.call('checkConnection');
 	}
 }

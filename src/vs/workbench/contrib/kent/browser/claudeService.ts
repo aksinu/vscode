@@ -9,7 +9,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IClaudeService } from '../common/claude.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeQueuedMessage } from '../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeQueuedMessage, IClaudeStatusInfo, ClaudeConnectionStatus } from '../common/claudeTypes.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
 import { CLAUDE_CLI_CHANNEL_NAME } from '../common/claudeCLIChannel.js';
@@ -43,6 +43,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _pendingRetryRequest: { prompt: string; options?: IClaudeCLIRequestOptions } | undefined;
 	private _retryCountdownInterval: ReturnType<typeof setInterval> | undefined;
 
+	// Status 관련
+	private _connectionStatus: ClaudeConnectionStatus = 'disconnected';
+	private _cliVersion: string | undefined;
+	private _extendedThinking = false;
+	private _lastConnected: number | undefined;
+
 	private readonly channel: IChannel;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
@@ -62,6 +68,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	private readonly _onDidChangeRateLimitStatus = this._register(new Emitter<{ waiting: boolean; countdown: number; message?: string }>());
 	readonly onDidChangeRateLimitStatus: Event<{ waiting: boolean; countdown: number; message?: string }> = this._onDidChangeRateLimitStatus.event;
+
+	private readonly _onDidChangeStatusInfo = this._register(new Emitter<IClaudeStatusInfo>());
+	readonly onDidChangeStatusInfo: Event<IClaudeStatusInfo> = this._onDidChangeStatusInfo.event;
 
 	private static readonly STORAGE_KEY = 'claude.sessions';
 
@@ -197,6 +206,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	private handleCLIData(event: IClaudeCLIStreamEvent): void {
 		console.log('[ClaudeService] handleCLIData:', event.type, event.subtype || '');
+
+		// 데이터를 받으면 연결된 것으로 판단
+		if (this._connectionStatus !== 'connected') {
+			this._connectionStatus = 'connected';
+			this._lastConnected = Date.now();
+			this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+			console.log('[ClaudeService] Connection confirmed by receiving data');
+		}
 
 		// Rate limit 에러 처리
 		if (event.type === 'error' && event.error_type === 'rate_limit') {
@@ -562,6 +579,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		this._onDidUpdateMessage.fire(finalMessage);
 		this.setState('idle');
+
+		// 응답 성공 시 연결 상태를 connected로 변경
+		if (this._connectionStatus !== 'connected') {
+			this._connectionStatus = 'connected';
+			this._lastConnected = Date.now();
+			this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+		}
 
 		// 세션 저장
 		this.saveSessions();
@@ -1247,5 +1271,68 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._messageQueue = [];
 		this._onDidChangeQueue.fire([]);
 		console.log('[ClaudeService] Queue cleared');
+	}
+
+	// ========== Status ==========
+
+	/**
+	 * Claude 상태 정보 가져오기
+	 */
+	getStatusInfo(): IClaudeStatusInfo {
+		const execMethod = this._localConfig.executable?.type === 'script' ? 'script' : 'cli';
+		const scriptPath = this._localConfig.executable?.type === 'script'
+			? this._localConfig.executable.script
+			: undefined;
+
+		return {
+			connectionStatus: this._connectionStatus,
+			model: this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4',
+			extendedThinking: this._extendedThinking,
+			executionMethod: execMethod,
+			scriptPath,
+			lastConnected: this._lastConnected,
+			version: this._cliVersion
+		};
+	}
+
+	/**
+	 * 연결 테스트
+	 */
+	async checkConnection(): Promise<boolean> {
+		console.log('[ClaudeService] Checking connection...');
+		this._connectionStatus = 'connecting';
+		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+
+		try {
+			// CLI 버전 확인으로 연결 테스트
+			const result = await this.channel.call<{ success: boolean; version?: string; error?: string }>('checkConnection');
+
+			if (result.success) {
+				this._connectionStatus = 'connected';
+				this._cliVersion = result.version;
+				this._lastConnected = Date.now();
+				console.log('[ClaudeService] Connection successful, version:', result.version);
+			} else {
+				// 실패해도 disconnected로 (error 대신) - 메시지 전송 시 자동 연결됨
+				this._connectionStatus = 'disconnected';
+				console.log('[ClaudeService] Connection check failed, but will retry on message send:', result.error);
+			}
+		} catch (error) {
+			// 에러여도 disconnected로 유지
+			this._connectionStatus = 'disconnected';
+			console.error('[ClaudeService] Connection check error (will retry on send):', error);
+		}
+
+		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+		return this._connectionStatus === 'connected';
+	}
+
+	/**
+	 * Extended Thinking 토글
+	 */
+	async toggleExtendedThinking(): Promise<void> {
+		this._extendedThinking = !this._extendedThinking;
+		console.log('[ClaudeService] Extended thinking:', this._extendedThinking ? 'ON' : 'OFF');
+		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
 	}
 }

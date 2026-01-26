@@ -50,7 +50,10 @@
       "Bash(yarn tsc:*)",
       "Bash(timeout 60 yarn compile:*)",
       "Bash(yarn compile:*)",
-      "Bash(./scripts/code.bat)"
+      "Bash(./scripts/code.bat)",
+      "Bash(source:*)",
+      "Bash(git checkout:*)",
+      "Bash(yarn gulp:*)"
     ]
   }
 }

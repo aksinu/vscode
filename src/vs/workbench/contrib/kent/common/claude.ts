@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage } from './claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo } from './claudeTypes.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
@@ -150,4 +150,26 @@ export interface IClaudeService {
 	 * Rate limit 상태 조회
 	 */
 	getRateLimitStatus?(): { waiting: boolean; countdown: number; message?: string };
+
+	// ========== Status ==========
+
+	/**
+	 * Claude 상태 정보 변경 이벤트
+	 */
+	readonly onDidChangeStatusInfo?: Event<IClaudeStatusInfo>;
+
+	/**
+	 * Claude 상태 정보 가져오기
+	 */
+	getStatusInfo?(): IClaudeStatusInfo;
+
+	/**
+	 * 연결 테스트
+	 */
+	checkConnection?(): Promise<boolean>;
+
+	/**
+	 * Extended Thinking 토글
+	 */
+	toggleExtendedThinking?(): Promise<void>;
 }

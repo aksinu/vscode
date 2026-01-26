@@ -104,4 +104,9 @@ export interface IClaudeCLIService {
 	 * 사용자 입력 전송 (AskUser 응답용)
 	 */
 	sendUserInput(input: string): void;
+
+	/**
+	 * Claude CLI 연결 테스트
+	 */
+	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }>;
 }

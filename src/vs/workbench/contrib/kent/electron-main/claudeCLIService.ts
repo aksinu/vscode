@@ -384,6 +384,75 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		return this._isRunning;
 	}
 
+	/**
+	 * Claude CLI 연결 테스트
+	 */
+	async checkConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
+		debugLog('[checkConnection] Starting connection check...');
+
+		return new Promise((resolve) => {
+			try {
+				// 디버거가 자식 프로세스에 붙지 않도록 환경 변수 정리
+				const cleanEnv = { ...process.env };
+				delete cleanEnv.NODE_OPTIONS;
+				delete cleanEnv.ELECTRON_RUN_AS_NODE;
+				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
+				const proc = spawn('claude', ['--version'], {
+					shell: true,
+					env: cleanEnv,
+					timeout: 10000
+				});
+
+				let stdout = '';
+				let stderr = '';
+
+				proc.stdout?.on('data', (data: Buffer) => {
+					stdout += data.toString();
+				});
+
+				proc.stderr?.on('data', (data: Buffer) => {
+					stderr += data.toString();
+				});
+
+				proc.on('close', (code) => {
+					debugLog('[checkConnection] Process closed with code:', code);
+					debugLog('[checkConnection] stdout:', stdout);
+					debugLog('[checkConnection] stderr:', stderr);
+
+					if (code === 0) {
+						// 버전 정보 파싱 시도
+						const versionMatch = stdout.match(/(\d+\.\d+\.\d+)/);
+						resolve({
+							success: true,
+							version: versionMatch ? versionMatch[1] : stdout.trim()
+						});
+					} else {
+						resolve({
+							success: false,
+							error: stderr || `Exit code: ${code}`
+						});
+					}
+				});
+
+				proc.on('error', (error) => {
+					debugLog('[checkConnection] Process error:', error.message);
+					resolve({
+						success: false,
+						error: error.message
+					});
+				});
+
+			} catch (error) {
+				debugLog('[checkConnection] Exception:', error);
+				resolve({
+					success: false,
+					error: String(error)
+				});
+			}
+		});
+	}
+
 	override dispose(): void {
 		this.cancelRequest();
 		this.cleanupPromptFile();
