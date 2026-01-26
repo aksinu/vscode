@@ -212,8 +212,8 @@ import './contrib/mcp/browser/mcp.contribution.js';
 import './contrib/chat/browser/chatSessions/chatSessions.contribution.js';
 import './contrib/chat/browser/contextContrib/chatContext.contribution.js';
 
-// Claude
-import './contrib/claude/browser/claude.contribution.js';
+// Kent (Claude integration)
+import './contrib/kent/browser/kent.contribution.js';
 
 // Interactive
 import './contrib/interactive/browser/interactive.contribution.js';

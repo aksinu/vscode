@@ -4,9 +4,19 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { spawn, ChildProcess } from 'child_process';
-import { Emitter, Event } from '../../../base/common/event.js';
-import { Disposable } from '../../../base/common/lifecycle.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Emitter, Event } from '../../../../base/common/event.js';
+import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
+
+// 디버그용 파일 로그
+const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
+function debugLog(...args: unknown[]) {
+	const timestamp = new Date().toISOString();
+	const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+	fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
+}
 
 export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 	declare readonly _serviceBrand: undefined;
@@ -25,6 +35,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 	constructor() {
 		super();
+		debugLog('ClaudeCLIService initialized');
 	}
 
 	async sendPrompt(prompt: string, options?: IClaudeCLIRequestOptions): Promise<void> {
@@ -34,10 +45,10 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 		this._isRunning = true;
 
-		console.log('[Claude CLI] Starting with prompt:', prompt.substring(0, 100));
+		debugLog(`Starting with prompt length: ${prompt.length}, first 100 chars: ${prompt.substring(0, 100)}`);
 
+		// stdin을 통해 프롬프트를 전달 (명령줄 길이 제한 회피)
 		const args: string[] = [
-			'-p', prompt,
 			'--output-format', 'stream-json',
 			'--verbose'
 		];
@@ -53,22 +64,56 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			args.push('--allowedTools', ...options.allowedTools);
 		}
 
-		console.log('[Claude CLI] Spawning process with args:', args.slice(0, 5).join(' '));
+		debugLog(' Spawning process with args:', args.join(' '));
 
 		return new Promise((resolve, reject) => {
-			this._process = spawn('claude', args, {
-				cwd: options?.workingDir,
-				shell: true,
-				env: { ...process.env }
-			});
+			debugLog(' Platform:', process.platform);
+			debugLog(' Args:', JSON.stringify(args.slice(0, 3)));
 
-			console.log('[Claude CLI] Process spawned, pid:', this._process.pid);
+			try {
+				// 디버거가 자식 프로세스에 붙지 않도록 환경 변수 정리
+				const cleanEnv = { ...process.env };
+				delete cleanEnv.NODE_OPTIONS;
+				delete cleanEnv.ELECTRON_RUN_AS_NODE;
+				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
+				// shell: true로 실행하면 인자가 올바르게 처리됨
+				this._process = spawn('claude', args, {
+					cwd: options?.workingDir || process.cwd(),
+					shell: true,
+					env: cleanEnv,
+					stdio: ['pipe', 'pipe', 'pipe'],
+					windowsHide: true
+				});
+
+				debugLog(' Spawned with shell: true');
+			} catch (spawnError) {
+				debugLog('ERROR: Spawn failed:', spawnError);
+				this._isRunning = false;
+				this._onDidError.fire(`Spawn failed: ${spawnError}`);
+				reject(spawnError);
+				return;
+			}
+
+			if (!this._process || !this._process.pid) {
+				const error = 'Failed to spawn claude process - no PID';
+				debugLog('ERROR:', error);
+				this._isRunning = false;
+				this._onDidError.fire(error);
+				reject(new Error(error));
+				return;
+			}
+
+			debugLog(' Process spawned successfully, pid:', this._process.pid);
+			debugLog(' stdout exists:', !!this._process.stdout);
+			debugLog(' stderr exists:', !!this._process.stderr);
 
 			let buffer = '';
 
+			debugLog(' Registering stdout handler...');
 			this._process.stdout?.on('data', (data: Buffer) => {
 				const chunk = data.toString();
-				console.log('[Claude CLI] stdout chunk:', chunk.substring(0, 200));
+				debugLog(' stdout chunk:', chunk.substring(0, 200));
 				buffer += chunk;
 
 				// 줄 단위로 JSON 파싱
@@ -80,10 +125,10 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 					try {
 						const parsed = JSON.parse(line) as IClaudeCLIStreamEvent;
-						console.log('[Claude CLI] Parsed event type:', parsed.type);
+						debugLog(' Parsed event type:', parsed.type);
 						this._onDidReceiveData.fire(parsed);
 					} catch {
-						console.log('[Claude CLI] JSON parse failed, treating as text');
+						debugLog(' JSON parse failed, treating as text');
 						// JSON 파싱 실패 시 텍스트로 처리
 						this._onDidReceiveData.fire({
 							type: 'text',
@@ -93,14 +138,15 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 				}
 			});
 
+			debugLog(' Registering stderr handler...');
 			this._process.stderr?.on('data', (data: Buffer) => {
 				const errorText = data.toString();
-				console.error('[Claude CLI stderr]', errorText);
-				// stderr는 항상 에러는 아님 (진행 상황 등)
+				debugLog('stderr:', errorText);
 			});
 
+			debugLog(' Registering close handler...');
 			this._process.on('close', (code) => {
-				console.log('[Claude CLI] Process closed with code:', code);
+				debugLog(' Process closed with code:', code);
 				this._isRunning = false;
 				this._process = undefined;
 
@@ -114,13 +160,29 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 				}
 			});
 
+			debugLog(' Registering error handler...');
 			this._process.on('error', (error) => {
-				console.error('[Claude CLI] Process error:', error.message);
+				debugLog('ERROR: Process error:', error.message);
 				this._isRunning = false;
 				this._process = undefined;
 				this._onDidError.fire(error.message);
 				reject(error);
 			});
+
+			debugLog(' All handlers registered, waiting for process events...');
+
+			// stdin을 통해 프롬프트 전송 후 닫기
+			if (this._process.stdin) {
+				debugLog(' Writing prompt to stdin...');
+				this._process.stdin.write(prompt, 'utf8', (err) => {
+					if (err) {
+						debugLog('ERROR: stdin write failed:', err.message);
+					} else {
+						debugLog(' Prompt written to stdin, closing...');
+					}
+					this._process?.stdin?.end();
+				});
+			}
 		});
 	}
 

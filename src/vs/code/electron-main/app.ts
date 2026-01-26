@@ -122,8 +122,8 @@ import { ICSSDevelopmentService, CSSDevelopmentService } from '../../platform/cs
 import { INativeMcpDiscoveryHelperService, NativeMcpDiscoveryHelperChannelName } from '../../platform/mcp/common/nativeMcpDiscoveryHelper.js';
 import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeMcpDiscoveryHelperService.js';
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
-import { ClaudeCLIService } from '../../platform/claude/electron-main/claudeCLIService.js';
-import { CLAUDE_CLI_CHANNEL_NAME } from '../../platform/claude/common/claudeCLIChannel.js';
+import { ClaudeCLIService } from '../../workbench/contrib/kent/electron-main/claudeCLIService.js';
+import { CLAUDE_CLI_CHANNEL_NAME } from '../../workbench/contrib/kent/common/claudeCLIChannel.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 

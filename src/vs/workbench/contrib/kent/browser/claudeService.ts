@@ -11,8 +11,8 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { IClaudeService } from '../common/claude.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession } from '../common/claudeTypes.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../../platform/claude/common/claudeCLI.js';
-import { CLAUDE_CLI_CHANNEL_NAME } from '../../../../platform/claude/common/claudeCLIChannel.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
+import { CLAUDE_CLI_CHANNEL_NAME } from '../common/claudeCLIChannel.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -96,7 +96,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 
 		if (text) {
-			this._accumulatedContent = text; // 누적이 아닌 교체 (CLI는 전체 응답을 한번에 줌)
+			// 텍스트 누적 (CLI는 여러 text 이벤트로 응답을 스트리밍)
+			if (this._accumulatedContent) {
+				this._accumulatedContent += '\n' + text;
+			} else {
+				this._accumulatedContent = text;
+			}
 
 			// 메시지 업데이트
 			const updatedMessage: IClaudeMessage = {
@@ -256,6 +261,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		console.log('[ClaudeService] Sending prompt to CLI:', prompt.substring(0, 100));
 
 		try {
+			// 먼저 채널이 작동하는지 테스트
+			console.log('[ClaudeService] Testing channel with isRunning...');
+			const isRunning = await Promise.race([
+				this.channel.call<boolean>('isRunning'),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Channel timeout')), 5000))
+			]);
+			console.log('[ClaudeService] Channel test passed, isRunning:', isRunning);
+
 			console.log('[ClaudeService] Calling channel.call sendPrompt...');
 
 			const cliOptions: IClaudeCLIRequestOptions = {
@@ -263,7 +276,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				systemPrompt: options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt')
 			};
 
-			await this.channel.call('sendPrompt', [prompt, cliOptions]);
+			// 30초 타임아웃 추가
+			await Promise.race([
+				this.channel.call('sendPrompt', [prompt, cliOptions]),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 30s - CLI may not be responding')), 30000))
+			]);
 			console.log('[ClaudeService] sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
 
 			// 완료 후 최종 메시지 반환
