@@ -83,14 +83,14 @@ export class CLIEventHandler extends Disposable {
 	 * CLI 데이터 이벤트 처리
 	 */
 	handleData(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, handleData:', event.type, event.subtype || '');
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleData:', event.type, event.subtype || '');
 
 		// 데이터를 받으면 연결된 것으로 판단
 		this.callbacks.confirmConnected();
 
 		// Rate limit 에러 처리
 		if (event.type === 'error' && event.error_type === 'rate_limit') {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Rate limit detected! Retry after:', event.retry_after, 'seconds');
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Rate limit detected! Retry after:', event.retry_after, 'seconds');
 			this.callbacks.startRateLimitHandling(event.retry_after || 60, event.content);
 			return;
 		}
@@ -142,7 +142,7 @@ export class CLIEventHandler extends Disposable {
 
 		// AskUser 대기 중이면 상태 유지
 		if (this.callbacks.isWaitingForUser() && this.callbacks.getCurrentAskUserRequest()) {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, CLI completed but waiting for user response');
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI completed but waiting for user response');
 			const waitingMessage: IClaudeMessage = {
 				id: this.callbacks.getCurrentMessageId()!,
 				role: 'assistant',
@@ -195,11 +195,11 @@ export class CLIEventHandler extends Disposable {
 	 * CLI 에러 이벤트 처리
 	 */
 	handleError(error: string): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, handleError:', error);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleError:', error);
 
 		// Rate limit 에러인지 확인
 		if (this.callbacks.isRateLimitError(error)) {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Rate limit detected in error message');
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Rate limit detected in error message');
 			const retrySeconds = this.callbacks.parseRetrySeconds(error) || 60;
 			this.callbacks.startRateLimitHandling(retrySeconds, error);
 			return;
@@ -235,13 +235,13 @@ export class CLIEventHandler extends Disposable {
 	 */
 	async respondToAskUser(responses: string[]): Promise<void> {
 		if (!this.callbacks.isWaitingForUser() || !this.callbacks.getCurrentAskUserRequest()) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, Not waiting for user input');
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Not waiting for user input');
 			return;
 		}
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, User responded:', responses);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'User responded:', responses);
 		const cliSessionId = this.callbacks.getCliSessionId();
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, CLI session ID for resume:', cliSessionId);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI session ID for resume:', cliSessionId);
 
 		// 상태 리셋
 		this.callbacks.setWaitingForUser(false);
@@ -252,7 +252,7 @@ export class CLIEventHandler extends Disposable {
 
 		if (cliSessionId) {
 			// --resume 옵션으로 세션 재개
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Resuming session with response:', responseText);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Resuming session with response:', responseText);
 
 			this.updateCurrentMessage();
 			this.callbacks.setState('streaming');
@@ -264,10 +264,10 @@ export class CLIEventHandler extends Disposable {
 
 				await this.callbacks.getChannel().call('sendPrompt', [responseText, cliOptions]);
 			} catch (error) {
-				this.logService.error(CLIEventHandler.LOG_CATEGORY, Resume failed:', error);
+				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Resume failed:', error);
 			}
 		} else {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, No session ID, sending as new message');
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'No session ID, sending as new message');
 			this.updateCurrentMessage();
 		}
 	}
@@ -275,11 +275,11 @@ export class CLIEventHandler extends Disposable {
 	// ========== Private Methods ==========
 
 	private handleSystemEvent(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, System event - Claude initializing...');
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'System event - Claude initializing...');
 		const systemEvent = event as { session_id?: string };
 		if (systemEvent.session_id) {
 			this.callbacks.setCliSessionId(systemEvent.session_id);
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, CLI session ID:', systemEvent.session_id);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI session ID:', systemEvent.session_id);
 		}
 
 		if (this.callbacks.getCurrentMessageId() && this.callbacks.hasCurrentSession()) {
@@ -307,12 +307,12 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCurrentToolAction(toolAction);
 		this.callbacks.addToolAction(toolAction);
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, Tool use started:', toolAction.tool, toolAction.input);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use started:', toolAction.tool, toolAction.input);
 		this.updateCurrentMessage();
 	}
 
 	private handleAskUserQuestion(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, AskUserQuestion received:', event.tool_input);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'AskUserQuestion received:', event.tool_input);
 
 		const input = event.tool_input as {
 			questions?: Array<{
@@ -324,7 +324,7 @@ export class CLIEventHandler extends Disposable {
 		} | undefined;
 
 		if (!input?.questions) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, AskUserQuestion missing questions');
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'AskUserQuestion missing questions');
 			return;
 		}
 
@@ -340,7 +340,7 @@ export class CLIEventHandler extends Disposable {
 		// Auto Accept 모드: 첫 번째 옵션 자동 선택
 		if (localConfig.autoAccept && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Auto-accept enabled, selecting:', firstOption);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled, selecting:', firstOption);
 
 			this.callbacks.setCurrentAskUserRequest({
 				id: event.tool_use_id || generateUuid(),
@@ -362,15 +362,15 @@ export class CLIEventHandler extends Disposable {
 		});
 		this.callbacks.setWaitingForUser(true);
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, Waiting for user response...');
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response...');
 		this.updateCurrentMessage();
 	}
 
 	private handleInputRequest(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, InputRequest received:', event.questions);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'InputRequest received:', event.questions);
 
 		if (!event.questions || event.questions.length === 0) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, InputRequest missing questions');
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'InputRequest missing questions');
 			return;
 		}
 
@@ -394,7 +394,7 @@ export class CLIEventHandler extends Disposable {
 		// Auto Accept 모드
 		if (localConfig.autoAccept && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Auto-accept enabled (input_request), selecting:', firstOption);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled (input_request), selecting:', firstOption);
 
 			this.callbacks.setCurrentAskUserRequest({
 				id: generateUuid(),
@@ -416,7 +416,7 @@ export class CLIEventHandler extends Disposable {
 		});
 		this.callbacks.setWaitingForUser(true);
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, Waiting for user response (input_request)...');
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response (input_request)...');
 		this.updateCurrentMessage();
 	}
 
@@ -430,7 +430,7 @@ export class CLIEventHandler extends Disposable {
 			});
 
 			this.callbacks.setCurrentToolAction(undefined);
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, Tool use completed:', currentToolAction.tool);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use completed:', currentToolAction.tool);
 			this.updateCurrentMessage();
 		}
 	}

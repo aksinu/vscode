@@ -91,8 +91,8 @@ export class RateLimitManager extends Disposable {
 	 * Rate limit 처리 시작
 	 */
 	handleRateLimit(retryAfterSeconds: number, pendingRequest: IPendingRetryRequest, message?: string): void {
-		this.logService.debug(RateLimitManager.LOG_CATEGORY, Starting retry timer:', retryAfterSeconds, 'seconds');
-		this.logService.debug(RateLimitManager.LOG_CATEGORY, Message:', message);
+		this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Starting retry timer:', retryAfterSeconds, 'seconds');
+		this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Message:', message);
 
 		this._pendingRetryRequest = pendingRequest;
 
@@ -122,7 +122,7 @@ export class RateLimitManager extends Disposable {
 		// 카운트다운 인터벌 (1초마다)
 		this._retryCountdownInterval = setInterval(() => {
 			this._retryCountdown--;
-			this.logService.debug(RateLimitManager.LOG_CATEGORY, Countdown:', this._retryCountdown);
+			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Countdown:', this._retryCountdown);
 
 			// 메시지 업데이트
 			this.callbacks.onUpdateMessage(
@@ -146,7 +146,7 @@ export class RateLimitManager extends Disposable {
 
 		// 재시도 타이머
 		this._retryTimer = setTimeout(() => {
-			this.logService.debug(RateLimitManager.LOG_CATEGORY, Timer expired, attempting retry...');
+			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Timer expired, attempting retry...');
 			this.executeRetry();
 		}, retryAfterSeconds * 1000);
 	}
@@ -155,7 +155,7 @@ export class RateLimitManager extends Disposable {
 	 * Rate limit 대기 취소
 	 */
 	cancel(): void {
-		this.logService.debug(RateLimitManager.LOG_CATEGORY, Cancelling wait');
+		this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Cancelling wait');
 
 		this.clearTimers();
 
@@ -200,7 +200,7 @@ export class RateLimitManager extends Disposable {
 	// ========== Private Methods ==========
 
 	private async executeRetry(): Promise<void> {
-		this.logService.debug(RateLimitManager.LOG_CATEGORY, Retrying...');
+		this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Retrying...');
 
 		// 타이머 정리
 		this._rateLimitInfo = undefined;
@@ -212,7 +212,7 @@ export class RateLimitManager extends Disposable {
 		});
 
 		if (!this._pendingRetryRequest) {
-			this.logService.debug(RateLimitManager.LOG_CATEGORY, No pending request to retry');
+			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'No pending request to retry');
 			this.callbacks.onStateChange('idle');
 			return;
 		}
@@ -220,7 +220,7 @@ export class RateLimitManager extends Disposable {
 		const request = this._pendingRetryRequest;
 		this._pendingRetryRequest = undefined;
 
-		this.logService.debug(RateLimitManager.LOG_CATEGORY, Retrying prompt:', request.prompt.substring(0, 100));
+		this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Retrying prompt:', request.prompt.substring(0, 100));
 
 		// 재시도 중 메시지
 		this.callbacks.onUpdateMessage('🔄 Retrying request...', true);
@@ -228,9 +228,9 @@ export class RateLimitManager extends Disposable {
 
 		try {
 			await this.callbacks.onRetry(request);
-			this.logService.debug(RateLimitManager.LOG_CATEGORY, Retry successful');
+			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Retry successful');
 		} catch (error) {
-			console.error('[RateLimitManager] Retry failed:', error);
+			this.logService.error(RateLimitManager.LOG_CATEGORY, 'Retry failed:', error);
 		}
 	}
 

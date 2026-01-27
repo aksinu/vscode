@@ -123,12 +123,12 @@ export class ClaudeConnection extends Disposable {
 	 */
 	async connect(): Promise<boolean> {
 		if (this._isConnecting) {
-			this.logService.debug(ClaudeConnection.LOG_CATEGORY, Already connecting...');
+			this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Already connecting...');
 			return false;
 		}
 
 		if (this._status === 'connected') {
-			this.logService.debug(ClaudeConnection.LOG_CATEGORY, Already connected');
+			this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Already connected');
 			return true;
 		}
 
@@ -136,7 +136,7 @@ export class ClaudeConnection extends Disposable {
 		this._error = undefined;
 		this.setStatus('connecting');
 
-		this.logService.debug(ClaudeConnection.LOG_CATEGORY, Connecting to Claude CLI...');
+		this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Connecting to Claude CLI...');
 
 		try {
 			// CLI 버전 확인으로 연결 테스트 (5초 타임아웃)
@@ -152,20 +152,20 @@ export class ClaudeConnection extends Disposable {
 				this._lastConnected = Date.now();
 				this.setStatus('connected');
 				this._onDidConnect.fire();
-				this.logService.debug(ClaudeConnection.LOG_CATEGORY, Connected successfully, version:', this._version);
+				this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Connected successfully, version:', this._version);
 				return true;
 			} else {
 				this._error = result.error || 'Connection failed';
 				this.setStatus('error');
 				this._onDidDisconnect.fire(this._error);
-				this.logService.debug(ClaudeConnection.LOG_CATEGORY, Connection failed:', this._error);
+				this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Connection failed:', this._error);
 				return false;
 			}
 		} catch (error) {
 			this._error = (error as Error).message || 'Unknown error';
 			this.setStatus('error');
 			this._onDidDisconnect.fire(this._error);
-			this.logService.error(ClaudeConnection.LOG_CATEGORY, Connection error:', error);
+			this.logService.error(ClaudeConnection.LOG_CATEGORY, 'Connection error:', error);
 			return false;
 		} finally {
 			this._isConnecting = false;
@@ -180,7 +180,7 @@ export class ClaudeConnection extends Disposable {
 			return;
 		}
 
-		this.logService.debug(ClaudeConnection.LOG_CATEGORY, Disconnecting...');
+		this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Disconnecting...');
 		this.setStatus('disconnected');
 		this._onDidDisconnect.fire(undefined);
 	}
@@ -202,7 +202,7 @@ export class ClaudeConnection extends Disposable {
 			this._lastConnected = Date.now();
 			this.setStatus('connected');
 			this._onDidConnect.fire();
-			this.logService.debug(ClaudeConnection.LOG_CATEGORY, Connection confirmed by data reception');
+			this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Connection confirmed by data reception');
 		}
 	}
 
