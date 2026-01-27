@@ -28,6 +28,10 @@ export interface IInputEditorCallbacks {
 	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
 
+// 입력 에디터 상수
+const INPUT_EDITOR_MIN_HEIGHT = 44; // 최소 높이 (1줄 + 패딩)
+const INPUT_EDITOR_MAX_HEIGHT = 200; // 최대 높이 (약 8줄)
+
 /**
  * 입력 에디터 매니저
  * Claude 채팅 입력창 생성 및 관리
@@ -37,6 +41,9 @@ export class InputEditorManager extends Disposable {
 	private readonly editor: ICodeEditor;
 	private readonly placeholder: HTMLElement;
 	private readonly editorWrapper: HTMLElement;
+	private readonly editorContainer: HTMLElement;
+	private inputEditorHeight: number = INPUT_EDITOR_MIN_HEIGHT;
+	private cachedWidth: number = 0;
 
 	constructor(
 		container: HTMLElement,
@@ -50,18 +57,7 @@ export class InputEditorManager extends Disposable {
 
 		// 에디터 영역
 		this.editorWrapper = append(container, $('.claude-input-editor-wrapper'));
-
-		// 여기에 원하는 줄 수를 설정하세요 (예: 4줄)
-		const maxLines = 4;
-		const lineHeight = 20;
-		const verticalPadding = 16; // 상하 패딩 합계 (8 + 8)
-
-		const maxHeight = (maxLines * lineHeight) + verticalPadding;
-
-		// CSS 변수로 등록하여 CSS 파일에서도 쓸 수 있게 합니다.
-		this.editorWrapper.style.setProperty('--claude-input-max-height', `${maxHeight}px`);
-
-		const editorContainer = append(this.editorWrapper, $('.claude-input-editor'));
+		this.editorContainer = append(this.editorWrapper, $('.claude-input-editor'));
 
 		// 플레이스홀더
 		this.placeholder = append(this.editorWrapper, $('.claude-input-placeholder'));
@@ -76,10 +72,11 @@ export class InputEditorManager extends Disposable {
 			folding: false,
 			minimap: { enabled: false },
 			scrollbar: {
-				vertical: 'hidden',        // 마우스 호버 시에도 수직 스크롤바 숨김
-				horizontal: 'hidden',      // 수평 스크롤바 숨김
+				vertical: 'hidden',
+				horizontal: 'hidden',
 				handleMouseWheel: true,
-				alwaysConsumeMouseWheel: false
+				alwaysConsumeMouseWheel: false,
+				useShadows: false
 			},
 			overviewRulerLanes: 0,
 			overviewRulerBorder: false,
@@ -88,9 +85,9 @@ export class InputEditorManager extends Disposable {
 			wordWrap: 'on',
 			wrappingStrategy: 'advanced',
 			scrollBeyondLastLine: false,
-			automaticLayout: true,
+			automaticLayout: false, // 수동으로 레이아웃 관리
 			padding: { top: 12, bottom: 12 },
-			lineHeight: 20, // 줄 높이를 명시적으로 설정하여 중앙 배치를 돕습니다
+			lineHeight: 20,
 			fontSize: 13,
 			fontFamily: this.configurationService.getValue<string>('editor.fontFamily'),
 			ariaLabel: localize('claudeInputAriaLabel', "Claude chat input")
@@ -106,7 +103,7 @@ export class InputEditorManager extends Disposable {
 
 		this.editor = this._register(this.instantiationService.createInstance(
 			CodeEditorWidget,
-			editorContainer,
+			this.editorContainer,
 			editorOptions,
 			codeEditorWidgetOptions
 		));
@@ -116,7 +113,10 @@ export class InputEditorManager extends Disposable {
 		this.editor.setModel(model);
 
 		// 이벤트 설정
-		this.setupEvents(editorContainer);
+		this.setupEvents();
+
+		// 초기 레이아웃
+		this.updateEditorHeight();
 	}
 
 	/**
@@ -169,14 +169,38 @@ export class InputEditorManager extends Disposable {
 	 */
 	layout(): void {
 		const rect = this.editorWrapper.getBoundingClientRect();
-		if (rect.width > 0 && rect.height > 0) {
-			this.editor.layout({ width: rect.width, height: rect.height });
+		if (rect.width > 0) {
+			this.cachedWidth = rect.width;
+			this.updateEditorLayout();
+		}
+	}
+
+	/**
+	 * 에디터 높이 업데이트 (컨텐츠 기반)
+	 */
+	private updateEditorHeight(): void {
+		const contentHeight = this.editor.getContentHeight();
+		const newHeight = Math.max(INPUT_EDITOR_MIN_HEIGHT, Math.min(contentHeight, INPUT_EDITOR_MAX_HEIGHT));
+
+		if (this.inputEditorHeight !== newHeight) {
+			this.inputEditorHeight = newHeight;
+			this.editorContainer.style.height = `${newHeight}px`;
+			this.updateEditorLayout();
+		}
+	}
+
+	/**
+	 * 에디터 레이아웃 적용
+	 */
+	private updateEditorLayout(): void {
+		if (this.cachedWidth > 0) {
+			this.editor.layout({ width: this.cachedWidth, height: this.inputEditorHeight });
 		}
 	}
 
 	// ========== Private Methods ==========
 
-	private setupEvents(editorContainer: HTMLElement): void {
+	private setupEvents(): void {
 		// 플레이스홀더 표시/숨김
 		const updatePlaceholder = () => {
 			const hasText = this.editor.getValue().length > 0;
@@ -188,6 +212,13 @@ export class InputEditorManager extends Disposable {
 			this.callbacks.onContentChange();
 		}));
 		updatePlaceholder();
+
+		// 컨텐츠 높이 변경 시 에디터 높이 자동 조절
+		this._register(this.editor.onDidContentSizeChange(e => {
+			if (e.contentHeightChanged) {
+				this.updateEditorHeight();
+			}
+		}));
 
 		// 포커스 이벤트
 		this._register(this.editor.onDidFocusEditorText(() => {
@@ -201,7 +232,7 @@ export class InputEditorManager extends Disposable {
 		}));
 
 		// 클립보드 붙여넣기 이벤트 (이미지 지원)
-		this.callbacks.registerDisposable(addDisposableListener(editorContainer, EventType.PASTE, (e: ClipboardEvent) => {
+		this.callbacks.registerDisposable(addDisposableListener(this.editorContainer, EventType.PASTE, (e: ClipboardEvent) => {
 			this.callbacks.onPaste(e);
 		}));
 

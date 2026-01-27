@@ -429,41 +429,32 @@
 .claude-input-editor-wrapper {
     flex: 1;
     position: relative;
-    min-height: 32px;
-    /* TS에서 설정한 변수가 있으면 쓰고, 없으면 기본값 100px 사용 */
-    max-height: var(--claude-input-max-height, 100px);
+    min-height: 44px;  /* 최소 1줄 + 패딩 */
+    max-height: 200px; /* 최대 높이 (TS와 일치) */
     min-width: 0;
     overflow: hidden;
 }
 
 .claude-input-editor {
-    /* 에디터 자체가 가지는 기본 배경색이 회색일 수 있습니다. */
     background-color: transparent !important;
+    min-height: 44px;
+    /* 높이는 JS에서 동적으로 설정 */
 }
 
-/* 스크롤바가 생겼을 때 항상 보이도록 설정하고 크기 줄이기 */
+/* 스크롤바 완전히 숨기기 (휠 스크롤은 동작) */
 .claude-input-editor .monaco-scrollable-element > .scrollbar {
-    opacity: 1 !important; /* 호버 안 해도 항상 보이게 함 */
-}
-
-.claude-input-editor .monaco-scrollable-element .scrollbar.vertical {
-    width: 6px !important; /* 스크롤바 전체 폭 */
-}
-
-.claude-input-editor .monaco-scrollable-element .scrollbar.vertical .slider {
-    width: 4px !important; /* 실제 움직이는 바 폭 */
-    border-radius: 2px !important;
-    left: 1px !important;
+    display: none !important;
 }
 
 .claude-input-placeholder {
-	position: absolute;
-    top: 8px; /* 에디터 내부 패딩과 일치 */
+    position: absolute;
+    top: 12px; /* 에디터 padding top과 일치 */
     left: 4px;
     color: var(--vscode-input-placeholderForeground);
     pointer-events: none;
     font-size: 13px;
-    display: block; /* display 설정 유지 */
+    line-height: 20px; /* 에디터 lineHeight와 일치 */
+    display: block;
 }
 
 .claude-send-button {

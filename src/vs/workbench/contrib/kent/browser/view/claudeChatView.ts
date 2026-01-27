@@ -226,9 +226,16 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		));
 
-		// 상태 변경 이벤트 구독
-		if (this.claudeService.onDidChangeStatusInfo) {
-			this._register(this.claudeService.onDidChangeStatusInfo(status => {
+		// 변경 후 (옵셔널 체이닝 사용)
+		const initialStatus = this.claudeService.getStatusInfo?.();
+		if (initialStatus) {
+			this.statusBarManager.update(initialStatus);
+		}
+
+		// 생성 직후 현재 상태로 UI 초기화
+		const onStatusChanged = this.claudeService.onDidChangeStatusInfo;
+		if (onStatusChanged) {
+			this._register(onStatusChanged(status => {
 				this.statusBarManager.update(status);
 			}));
 		}
