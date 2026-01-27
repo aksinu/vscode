@@ -53,7 +53,8 @@
       "Bash(./scripts/code.bat)",
       "Bash(source:*)",
       "Bash(git checkout:*)",
-      "Bash(yarn gulp:*)"
+      "Bash(yarn gulp:*)",
+      "Bash(wc:*)"
     ]
   }
 }

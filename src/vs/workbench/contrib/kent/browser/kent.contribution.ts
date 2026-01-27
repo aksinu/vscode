@@ -11,14 +11,16 @@ import { Registry } from '../../../../platform/registry/common/platform.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { IViewContainersRegistry, IViewsRegistry, Extensions as ViewExtensions, ViewContainerLocation } from '../../../common/views.js';
 import { IClaudeService } from '../common/claude.js';
-import { ClaudeService } from './claudeService.js';
-import { ClaudeChatViewPane } from './claudeChatView.js';
-import { registerClaudeActions } from './claudeActions.js';
+import { IClaudeLogService, ClaudeLogService } from '../common/claudeLogService.js';
+import { ClaudeService } from './service/claudeService.js';
+import { ClaudeChatViewPane } from './view/claudeChatView.js';
+import { registerClaudeActions } from './actions/claudeActions.js';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import './media/claude.css';
 
 // ========== 서비스 등록 ==========
 
+registerSingleton(IClaudeLogService, ClaudeLogService, InstantiationType.Eager);
 registerSingleton(IClaudeService, ClaudeService, InstantiationType.Delayed);
 
 // ========== View Container 등록 ==========

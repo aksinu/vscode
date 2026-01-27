@@ -3,19 +3,19 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, clearNode } from '../../../../base/browser/dom.js';
-import { renderMarkdown, MarkdownRenderOptions } from '../../../../base/browser/markdownRenderer.js';
-import { Codicon } from '../../../../base/common/codicons.js';
-import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
-import { IMarkdownString, MarkdownString } from '../../../../base/common/htmlContent.js';
-import { ThemeIcon } from '../../../../base/common/themables.js';
-import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
-import { INotificationService } from '../../../../platform/notification/common/notification.js';
-import { localize } from '../../../../nls.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest } from '../common/claudeTypes.js';
-import { IEditorService } from '../../../services/editor/common/editorService.js';
-import { ITextModel } from '../../../../editor/common/model.js';
-import { ICodeEditor } from '../../../../editor/browser/editorBrowser.js';
+import { $, append, clearNode } from '../../../../../base/browser/dom.js';
+import { renderMarkdown, MarkdownRenderOptions } from '../../../../../base/browser/markdownRenderer.js';
+import { Codicon } from '../../../../../base/common/codicons.js';
+import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
+import { ThemeIcon } from '../../../../../base/common/themables.js';
+import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+import { INotificationService } from '../../../../../platform/notification/common/notification.js';
+import { localize } from '../../../../../nls.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest } from '../../common/claudeTypes.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { ITextModel } from '../../../../../editor/common/model.js';
+import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
 
 export interface IClaudeMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string) => void;

@@ -114,6 +114,41 @@
 	}
 }
 
+/* 스트리밍 중인 메시지는 애니메이션 없음 */
+.claude-message-wrapper.streaming .claude-message {
+	animation: none;
+}
+
+/* 스트리밍 인디케이터 */
+.claude-message-streaming-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: 4px;
+	color: var(--vscode-textLink-foreground);
+	font-size: 12px;
+}
+
+.claude-message-streaming-indicator::after {
+	content: '';
+	width: 6px;
+	height: 6px;
+	background-color: var(--vscode-textLink-foreground);
+	border-radius: 50%;
+	animation: claude-streaming-pulse 1s infinite;
+}
+
+@keyframes claude-streaming-pulse {
+	0%, 100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.3;
+		transform: scale(0.8);
+	}
+}
+
 .claude-message-user {
 	background-color: var(--vscode-input-background);
 	align-self: flex-end;
@@ -370,6 +405,7 @@
 	padding: 8px;
 	background-color: var(--vscode-panel-background);
 	gap: 4px;
+	position: relative; /* autocomplete 팝업 위치 기준 */
 }
 
 .claude-input-wrapper {
@@ -382,6 +418,8 @@
 	background-color: var(--vscode-input-background);
 	transition: border-color 0.1s, box-shadow 0.1s;
 	min-height: 48px;
+	min-width: 0; /* flex 축소 허용 */
+	overflow: hidden; /* 내용 넘침 방지 */
 }
 
 .claude-input-wrapper.focused {
@@ -394,6 +432,8 @@
 	position: relative;
 	min-height: 32px;
 	max-height: 120px;
+	min-width: 0; /* flex 축소 허용 - 필수! */
+	overflow: hidden; /* Monaco 에디터 넘침 방지 */
 }
 
 .claude-input-editor {

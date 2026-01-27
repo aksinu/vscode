@@ -3,16 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
-import { localize2 } from '../../../../nls.js';
-import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
-import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
-import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
-import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
-import { IViewsService } from '../../../services/views/common/viewsService.js';
-import { IClaudeService } from '../common/claude.js';
-import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../common/claudeContextKeys.js';
-import { ClaudeChatViewPane } from './claudeChatView.js';
+import { KeyCode, KeyMod } from '../../../../../base/common/keyCodes.js';
+import { localize2 } from '../../../../../nls.js';
+import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
+import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
+import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
+import { KeybindingWeight } from '../../../../../platform/keybinding/common/keybindingsRegistry.js';
+import { IViewsService } from '../../../../services/views/common/viewsService.js';
+import { IClaudeService } from '../../common/claude.js';
+import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
+import { ClaudeChatViewPane } from '../view/claudeChatView.js';
 
 // ========== 채팅창 열기 ==========
 
