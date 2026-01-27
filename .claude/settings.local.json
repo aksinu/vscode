@@ -54,7 +54,10 @@
       "Bash(source:*)",
       "Bash(git checkout:*)",
       "Bash(yarn gulp:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(git -C /mnt/d/_______________Kent/vscode status:*)"
     ]
   }
 }

@@ -8,7 +8,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { RateLimitManager } from './claudeRateLimitManager.js';
 import { IStorageService } from '../../../../../platform/storage/common/storage.js';
@@ -39,6 +39,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _localConfig: IClaudeLocalConfig = DEFAULT_LOCAL_CONFIG;
 	private _messageQueue: IClaudeQueuedMessage[] = [];
 	private _isProcessingQueue = false;
+	private _usage: IClaudeUsageInfo | undefined;
 
 	// Rate limit 매니저
 	private readonly rateLimitManager: RateLimitManager;
@@ -221,7 +222,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			processQueue: () => this.processQueue(),
 
 			// 채널
-			getChannel: () => this._connection.getChannel()
+			getChannel: () => this._connection.getChannel(),
+
+			// Usage
+			getUsage: () => this._usage,
+			setUsage: (usage) => { this._usage = usage; }
 		}, this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
 

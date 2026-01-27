@@ -35,7 +35,8 @@ import { InputEditorManager } from './claudeInputEditor.js';
 import { CodeApplyManager } from './claudeCodeApply.js';
 import { SessionPickerUI } from './claudeSessionPicker.js';
 import { OpenFilesBar } from './claudeOpenFilesBar.js';
-import { INotificationService } from '../../../../../platform/notification/common/notification.js';
+import { ConnectionOverlay } from './claudeConnectionOverlay.js';
+import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
@@ -67,6 +68,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private codeApplyManager!: CodeApplyManager;
 	private sessionPicker!: SessionPickerUI;
 	private openFilesBar!: OpenFilesBar;
+	private connectionOverlay!: ConnectionOverlay;
 
 	private messageRenderer!: ClaudeMessageRenderer;
 	private messageDisposables = new Map<string, DisposableStore>();
@@ -143,6 +145,11 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.requestInProgressKey.set(inProgress);
 			this.updateLoadingState(state === 'sending'); // 스트리밍 중에는 로딩 숨김
 			this.updateSendButton(inProgress);
+
+			// 에러 상태 시 연결 오버레이 표시 및 입력 비활성화
+			if (state === 'error') {
+				this.handleConnectionLost();
+			}
 		}));
 
 		this._register(this.claudeService.onDidChangeSession(() => {
@@ -159,6 +166,11 @@ export class ClaudeChatViewPane extends ViewPane {
 		super.renderBody(container);
 
 		this.container = append(container, $('.claude-chat-container'));
+
+		// 연결 오버레이 (가장 먼저 생성 - z-index가 높아서 위에 표시됨)
+		this.connectionOverlay = this._register(new ConnectionOverlay(this.container, {
+			onRetry: () => this.initializeConnection()
+		}));
 
 		// 드롭 오버레이
 		this.dropOverlay = append(this.container, $('.claude-drop-overlay'));
@@ -214,7 +226,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.statusBarContainer = append(this.container, $('.claude-status-bar'));
 		this.statusBarManager = this._register(new StatusBarManager(
 			this.statusBarContainer,
-			this.configurationService,
 			this.quickInputService,
 			this.notificationService,
 			{
@@ -240,12 +251,13 @@ export class ClaudeChatViewPane extends ViewPane {
 			}));
 		}
 
-		// 초기 연결 체크 (비동기)
-		this.claudeService.checkConnection?.();
-
 		// 입력 영역
 		this.inputContainer = append(this.container, $('.claude-input-container'));
 		this.createInputEditor();
+
+		// 초기 연결 시도 (UI 비활성화 상태로 시작)
+		this.setInputEnabled(false);
+		this.initializeConnection();
 
 		// 드래그/드롭 이벤트 설정
 		this.setupDragAndDrop();
@@ -778,5 +790,83 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 스타일 변경
 		this.sendButton.classList.toggle('cancel-mode', inProgress);
+	}
+
+	// ========== 연결 초기화 ==========
+
+	/**
+	 * 입력 영역 활성화/비활성화
+	 */
+	private setInputEnabled(enabled: boolean): void {
+		if (this.inputContainer) {
+			this.inputContainer.classList.toggle('disabled', !enabled);
+			if (this.sendButton) {
+				this.sendButton.disabled = !enabled;
+			}
+		}
+	}
+
+	/**
+	 * Claude CLI 연결 초기화
+	 * 최대 3회 자동 재시도, 실패 시 수동 재시도 버튼 표시
+	 */
+	private async initializeConnection(): Promise<void> {
+		const maxRetries = this.connectionOverlay.maxRetries;
+
+		// 연결 시도
+		this.connectionOverlay.setConnecting();
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			// 재시도 상태 표시 (첫 시도 제외)
+			if (attempt > 1) {
+				this.connectionOverlay.setRetrying(attempt);
+				// 재시도 전 잠시 대기
+				await new Promise(resolve => setTimeout(resolve, 1000));
+			}
+
+			try {
+				const connected = await this.claudeService.checkConnection?.() ?? false;
+
+				if (connected) {
+					// 연결 성공
+					this.connectionOverlay.setConnected();
+					this.setInputEnabled(true);
+					return;
+				}
+			} catch (error) {
+				// 에러 발생 - 계속 재시도
+			}
+
+			// 마지막 시도가 아니면 계속
+			if (attempt < maxRetries) {
+				continue;
+			}
+		}
+
+		// 모든 재시도 실패 - 수동 재시도 버튼 표시
+		this.connectionOverlay.setFailed(
+			localize('connectionFailedDetail', "Could not connect to Claude CLI.\nMake sure Claude CLI is installed and you are logged in.\nRun 'claude login' in terminal.")
+		);
+	}
+
+	/**
+	 * 연결 끊김 처리
+	 * CLI 세션이 비정상 종료되었을 때 호출
+	 */
+	private handleConnectionLost(): void {
+		// 입력 비활성화
+		this.setInputEnabled(false);
+
+		// 알림 표시 (액션 버튼 포함)
+		this.notificationService.prompt(
+			Severity.Warning,
+			localize('connectionLost', "Claude CLI session terminated unexpectedly."),
+			[
+				{
+					label: localize('reconnect', "Reconnect"),
+					run: () => this.initializeConnection()
+				}
+			]
+		);
 	}
 }

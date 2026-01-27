@@ -53,6 +53,17 @@ export interface IClaudeAskUserRequest {
 }
 
 /**
+ * Claude 토큰 사용량 정보
+ */
+export interface IClaudeUsageInfo {
+	readonly inputTokens: number;
+	readonly outputTokens: number;
+	readonly cacheReadTokens?: number;
+	readonly cacheCreationTokens?: number;
+	readonly totalCostUsd?: number;
+}
+
+/**
  * Claude 메시지
  */
 export interface IClaudeMessage {
@@ -67,6 +78,8 @@ export interface IClaudeMessage {
 	readonly currentToolAction?: IClaudeToolAction;
 	readonly askUserRequest?: IClaudeAskUserRequest;
 	readonly isWaitingForUser?: boolean;
+	/** 토큰 사용량 (assistant 메시지에만 해당) */
+	readonly usage?: IClaudeUsageInfo;
 }
 
 /**

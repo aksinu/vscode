@@ -10,19 +10,24 @@
 |------|-------|
 | **Phase** | Phase 4 - 고급 UX 기능 |
 | **Sprint** | Sprint_003 ✅ |
-| **Status** | ✅ Sprint 3 완료 + 리팩토링 Phase 1 완료 |
-| **Updated** | 2026-01-26 23:52 |
-| **Build** | ✅ 타입체크 성공 |
+| **Status** | ✅ Sprint 3 완료 + 리팩토링 Phase 2 진행 중 |
+| **Updated** | 2026-01-27 13:30 |
+| **Build** | 🔨 빌드 필요 (새 파일 추가됨) |
 
 ---
 
 ## Now Working On
 
 ```
-Task: Sprint 3 완료
+Task: 연결 오버레이 구현
 Progress: 100%
-Next: 테스트 후 Sprint 4 계획
+Next: 빌드 후 테스트 필요
 ```
+
+### 빌드 대기 중인 변경사항
+- [ ] `claudeConnectionOverlay.ts` - 새 파일 컴파일 필요
+- [ ] `claudeLogService.ts` - 새 파일 컴파일 필요
+- [ ] `claudeConnection.ts` - 새 파일 컴파일 필요
 
 ### 빌드 & 실행
 
@@ -216,6 +221,7 @@ Claude CLI `--output-format stream-json` 응답:
 | `claudeCLI.ts` | IClaudeCLIService 인터페이스, IClaudeCLIStreamEvent |
 | `claudeCLIChannel.ts` | IPC 채널 (ClaudeCLIChannel, ClaudeCLIChannelClient) |
 | `claudeLocalConfig.ts` | **[Sprint2]** 로컬 설정 타입/유틸 (스크립트 실행 지원) |
+| `claudeLogService.ts` | **[NEW]** 로깅 서비스 (파일+콘솔, 로그 레벨) |
 
 ### browser/
 | File | Description |
@@ -229,6 +235,28 @@ Claude CLI `--output-format stream-json` 응답:
 | `claudeRateLimitManager.ts` | **[리팩토링]** Rate limit 감지/재시도 |
 | `claudeStatusBar.ts` | **[리팩토링]** 상태 바 UI, 설정 QuickPick |
 | `media/claude.css` | 스타일 (도구 상태 UI 포함) |
+
+### browser/view/ (UI 컴포넌트)
+| File | Description |
+|------|-------------|
+| `claudeAttachmentManager.ts` | **[리팩토링]** 첨부파일 관리 |
+| `claudeAutocomplete.ts` | **[리팩토링]** @ 멘션, / 커맨드 자동완성 |
+| `claudeChatView.ts` | 메인 채팅 ViewPane |
+| `claudeCodeApply.ts` | **[리팩토링]** 코드 적용 + Diff 뷰 |
+| `claudeConnectionOverlay.ts` | **[NEW]** 연결 오버레이 (로딩/재시도 UI) |
+| `claudeInputEditor.ts` | **[리팩토링]** 입력 에디터 (자동 높이 조절) |
+| `claudeLocalSettings.ts` | **[리팩토링]** 로컬 설정 관리 |
+| `claudeMessageRenderer.ts` | 메시지 렌더러 |
+| `claudeOpenFilesBar.ts` | **[리팩토링]** 열린 파일 버튼 바 |
+| `claudeSessionPicker.ts` | **[리팩토링]** 세션 선택 UI |
+| `claudeStatusBar.ts` | **[리팩토링]** 상태 바 UI |
+
+### browser/service/ (서비스)
+| File | Description |
+|------|-------------|
+| `claudeConnection.ts` | **[NEW]** 연결 관리 (상태, 이벤트) |
+| `claudeRateLimitManager.ts` | **[리팩토링]** Rate limit 재시도 |
+| `claudeCLIEventHandler.ts` | **[리팩토링]** CLI 이벤트 처리 |
 
 ### electron-main/
 | File | Description |
@@ -261,6 +289,33 @@ Claude CLI `--output-format stream-json` 응답:
 ---
 
 ## Activity Log
+
+### 2026-01-27 (오후)
+- **로깅 시스템 구현**
+  - `claudeLogService.ts` 생성 - 파일 + 콘솔 로깅
+  - 로그 레벨: DEBUG, INFO, WARN, ERROR, OFF
+  - 로그 위치: `.vscode/claude-logs/claude-YYYY-MM-DD.log`
+  - 모든 서비스에 `logService` 주입 완료
+  - `console.log/error` → `logService` 호출로 교체
+
+- **입력 에디터 자동 높이 조절**
+  - `claudeInputEditor.ts` 수정
+  - 컨텐츠에 따라 높이 자동 조절 (MIN: 44px, MAX: 200px)
+  - `onDidContentSizeChange` 이벤트 활용
+  - 스크롤바 숨김 (휠 스크롤은 동작)
+
+- **연결 상태 버그 수정**
+  - `confirmConnected()`, `disconnect()`에서 `_error` 클리어 추가
+  - 데이터 수신 시 즉시 Connected 상태로 전환
+
+- **연결 오버레이 구현** ⭐
+  - `claudeConnectionOverlay.ts` 생성
+  - 채팅창 초기화 시 연결 확인 + UI 비활성화
+  - 상태: connecting → retrying → failed/connected
+  - 3회 자동 재시도 (1초 딜레이)
+  - 실패 시 수동 재시도 버튼 표시
+  - `claudeChatView.ts`에 `initializeConnection()`, `setInputEnabled()` 추가
+  - CSS: 오버레이 스타일, 비활성화 입력 스타일
 
 ### 2026-01-26 (밤6)
 - **코드 리팩토링 (Phase 1)**
@@ -308,6 +363,8 @@ Claude CLI `--output-format stream-json` 응답:
 | 2 | 입력창 - 전송버튼 좌측 이상한 공간 | ✅ flex min-width 수정 |
 | 3 | 채팅창 width 조절 시 전송버튼 사라짐 | ✅ overflow/min-width 수정 |
 | 4 | 터미널 conpty.node 에러 (빌드) | 🟡 P3 |
+| 5 | 연결 안됨 상태에서 채팅 가능 | ✅ 연결 오버레이로 해결 |
+| 6 | ERROR 상태가 CONNECTED로 안 바뀜 | ✅ confirmConnected() 수정 |
 
 ### 2026-01-26 (밤3)
 - **파일 첨부 시스템 스펙 정리** (SPEC_003)
@@ -456,10 +513,11 @@ Claude CLI `--output-format stream-json` 응답:
    - `ClaudeAttachmentManager` - 첨부파일 관리
    - 드래그/드롭 로직 헬퍼화
 
-#### P3 - 장기 정리
-3. **로깅 정리**
-   - `console.log` → 로그 레벨 시스템으로 변경
-   - `debugLog` 파일 로깅 → 개발 환경에서만 활성화
+#### P3 - 장기 정리 ✅ 완료
+3. **로깅 정리** ✅
+   - `console.log` → 로그 레벨 시스템으로 변경 ✅
+   - `IClaudeLogService` 구현 (파일 + 콘솔 로깅) ✅
+   - 로그 위치: `.vscode/claude-logs/claude-YYYY-MM-DD.log` ✅
 
 4. **네이밍 일관성**
    - 폴더: `kent/` vs 파일: `claude*`

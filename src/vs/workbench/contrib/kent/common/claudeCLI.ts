@@ -9,6 +9,19 @@ import { IClaudeExecutableConfig } from './claudeLocalConfig.js';
 
 export const IClaudeCLIService = createDecorator<IClaudeCLIService>('claudeCLIService');
 
+//claude cli reference
+//https://code.claude.com/docs/ko/cli-reference
+
+/**
+ * CLI 스트림 이벤트의 usage 정보
+ */
+export interface IClaudeCLIUsage {
+	readonly input_tokens?: number;
+	readonly output_tokens?: number;
+	readonly cache_read_input_tokens?: number;
+	readonly cache_creation_input_tokens?: number;
+}
+
 /**
  * Claude CLI 스트리밍 응답 타입
  */
@@ -18,6 +31,7 @@ export interface IClaudeCLIStreamEvent {
 	readonly content?: string;
 	readonly message?: {
 		readonly content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
+		readonly usage?: IClaudeCLIUsage;
 	} | string;
 	readonly result?: string;
 	readonly delta?: { text?: string };
@@ -38,6 +52,9 @@ export interface IClaudeCLIStreamEvent {
 	// Error fields (rate limit, etc.)
 	readonly error_type?: 'rate_limit' | 'api_error' | 'network_error' | 'unknown';
 	readonly retry_after?: number; // 초 단위 대기 시간
+	// Usage fields (result event)
+	readonly usage?: IClaudeCLIUsage;
+	readonly total_cost_usd?: number;
 }
 
 /**

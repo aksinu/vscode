@@ -9,7 +9,7 @@
 이 프로젝트는 **VS Code 포크**입니다.
 - 기존 VS Code 코드베이스 위에 Claude 기능 추가
 - 기존 패턴과 아키텍처를 최대한 따름
-- `src/vs/workbench/contrib/` 하위에 새 모듈 추가
+- `src/vs/workbench/contrib/kent/` 하위에 Claude 모듈 구현
 
 ---
 
@@ -20,18 +20,26 @@ ProjectRoot/
 ├── CLAUDE.md              # AI 룰 (이 파일)
 ├── PROJECT.md             # 프로젝트 목표 및 아키텍처
 │
+├── .claude/
+│   ├── settings.local.json  # 로컬 권한 설정
+│   └── agents/              # 서브에이전트 정의
+│       ├── vscode-structure.md     # VS Code 구조 가이드
+│       ├── contribution-pattern.md # Contribution 패턴
+│       ├── claude-integration.md   # Claude 통합 설계
+│       ├── project-status.md       # 프로젝트 상태
+│       └── design-specs.md         # 설계 명세
+│
 ├── _Dev/                  # 개발 문서
-│   ├── Status.md          # 현재 진행 상태
-│   ├── Tasks/             # 태스크 기록
+│   ├── Status.md          # 현재 진행 상태 ★ 작업 시작 시 확인
 │   └── Specs/             # 설계 명세
 │
-├── _Guides/               # 개발 가이드
+├── _Guides/               # 개발 가이드 (참조용)
 │   ├── 01_VSCode_Structure.md
 │   ├── 02_Contribution_Pattern.md
 │   └── 03_Claude_Integration.md
 │
 └── src/                   # VS Code 소스
-    └── vs/workbench/contrib/claude/  # Claude 모듈 (추가 예정)
+    └── vs/workbench/contrib/kent/  # Claude 모듈
 ```
 
 ---
@@ -40,10 +48,9 @@ ProjectRoot/
 
 ### 작업 시작
 ```
-1. PROJECT.md → 목표 확인
-2. _Dev/Status.md → 현재 상태 확인
-3. 관련 _Guides/ 참조
-4. 기존 VS Code 코드 패턴 파악
+1. _Dev/Status.md → 현재 상태 확인
+2. 필요시 관련 가이드/스펙 참조
+3. 기존 VS Code 코드 패턴 파악
 ```
 
 ### 작업 중
@@ -81,16 +88,16 @@ ProjectRoot/
 
 ### Service Registration
 ```typescript
-// common/claudeService.ts
+// common/claude.ts
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
-// browser/claude.contribution.ts
+// browser/kent.contribution.ts
 registerSingleton(IClaudeService, ClaudeService, InstantiationType.Delayed);
 ```
 
 ### View Registration
 ```typescript
-// browser/claude.contribution.ts
+// browser/kent.contribution.ts
 Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
     id: 'workbench.view.claude',
     name: 'Claude',
@@ -100,13 +107,17 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ---
 
-## Guides Index
+## Subagent Reference
 
-| Guide | Description |
-|-------|-------------|
-| [01_VSCode_Structure](./_Guides/01_VSCode_Structure.md) | VS Code 소스 구조 |
-| [02_Contribution_Pattern](./_Guides/02_Contribution_Pattern.md) | Contribution 패턴 |
-| [03_Claude_Integration](./_Guides/03_Claude_Integration.md) | Claude 통합 설계 |
+질문이나 정보가 필요할 때 관련 에이전트를 참조:
+
+| Agent | 용도 |
+|-------|------|
+| `vscode-structure` | VS Code 소스 구조 |
+| `contribution-pattern` | Contribution 패턴 |
+| `claude-integration` | Claude 통합 설계 |
+| `project-status` | 현재 개발 상태 |
+| `design-specs` | 설계 명세 |
 
 ---
 

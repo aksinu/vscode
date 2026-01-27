@@ -181,6 +181,7 @@ export class ClaudeConnection extends Disposable {
 		}
 
 		this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Disconnecting...');
+		this._error = undefined; // 에러 상태 클리어
 		this.setStatus('disconnected');
 		this._onDidDisconnect.fire(undefined);
 	}
@@ -200,6 +201,7 @@ export class ClaudeConnection extends Disposable {
 	confirmConnected(): void {
 		if (this._status !== 'connected') {
 			this._lastConnected = Date.now();
+			this._error = undefined; // 에러 상태 클리어
 			this.setStatus('connected');
 			this._onDidConnect.fire();
 			this.logService.debug(ClaudeConnection.LOG_CATEGORY, 'Connection confirmed by data reception');

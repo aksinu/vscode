@@ -198,6 +198,46 @@
 	margin-left: auto;
 }
 
+/* ========== Message Usage Info ========== */
+
+.claude-message-usage {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-usage-tokens {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.claude-usage-item {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+}
+
+.claude-usage-item .codicon {
+	font-size: 10px;
+	opacity: 0.7;
+}
+
+.claude-usage-item.cache {
+	color: var(--vscode-terminal-ansiGreen);
+}
+
+.claude-usage-cost {
+	margin-left: auto;
+	font-weight: 500;
+	color: var(--vscode-terminal-ansiYellow);
+}
+
 /* ========== Message Copy Button ========== */
 
 .claude-message-copy {
@@ -1254,4 +1294,81 @@
 	.claude-welcome-hints {
 		flex-direction: column;
 	}
+}
+
+/* ========== Connection Overlay ========== */
+
+.claude-connection-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--vscode-panel-background);
+	z-index: 1000;
+}
+
+.claude-connection-overlay-content {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	padding: 32px;
+	max-width: 400px;
+}
+
+.claude-connection-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-connection-icon.codicon-error {
+	color: var(--vscode-errorForeground);
+}
+
+.claude-connection-icon.codicon-check {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.claude-connection-status {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 8px;
+}
+
+.claude-connection-detail {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.5;
+	margin-bottom: 16px;
+	white-space: pre-line;
+}
+
+.claude-connection-button {
+	margin-top: 8px;
+}
+
+.claude-connection-button .monaco-button {
+	padding: 8px 16px;
+}
+
+/* ========== Input Disabled State ========== */
+
+.claude-input-container.disabled {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.claude-input-container.disabled .claude-input-wrapper {
+	background-color: var(--vscode-input-background);
+	cursor: not-allowed;
+}
+
+.claude-input-container.disabled .claude-send-button {
+	cursor: not-allowed;
 }

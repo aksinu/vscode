@@ -6,7 +6,6 @@
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
@@ -32,7 +31,6 @@ export class StatusBarManager extends Disposable {
 
 	constructor(
 		container: HTMLElement,
-		private readonly configurationService: IConfigurationService,
 		private readonly quickInputService: IQuickInputService,
 		private readonly notificationService: INotificationService,
 		private readonly callbacks: IStatusBarCallbacks
@@ -47,7 +45,8 @@ export class StatusBarManager extends Disposable {
 	 */
 	update(status: IClaudeStatusInfo): void {
 		this.updateConnectionStatus(status);
-		this.updateModel(status);
+		// 모델 표시 제거 - CLI에서 현재 모델을 알 수 없어 불확실한 정보 표시 방지
+		// this.updateModel(status);
 		this.updateExecutionMethod(status);
 	}
 
@@ -60,14 +59,6 @@ export class StatusBarManager extends Disposable {
 		connectionIcon.classList.add('codicon', 'codicon-circle-filled');
 		const connectionText = append(connectionStatus, $('.claude-status-text'));
 		connectionText.textContent = 'Checking...';
-
-		// 구분자
-		append(this.container, $('.claude-status-separator'));
-
-		// 모델
-		const modelStatus = append(this.container, $('.claude-status-item.model'));
-		const modelText = append(modelStatus, $('.claude-status-text'));
-		modelText.textContent = 'Loading...';
 
 		// 구분자
 		append(this.container, $('.claude-status-separator'));
@@ -122,15 +113,6 @@ export class StatusBarManager extends Disposable {
 		}
 	}
 
-	private updateModel(status: IClaudeStatusInfo): void {
-		const modelItem = this.container.querySelector('.claude-status-item.model .claude-status-text');
-		if (modelItem) {
-			// 모델명 축약 (claude-sonnet-4-xxx -> sonnet-4)
-			const shortModel = status.model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
-			modelItem.textContent = shortModel;
-		}
-	}
-
 	private updateExecutionMethod(status: IClaudeStatusInfo): void {
 		const execItem = this.container.querySelector('.claude-status-item.execution .claude-status-text');
 		if (execItem) {
@@ -171,11 +153,6 @@ export class StatusBarManager extends Disposable {
 					: undefined
 			},
 			{
-				id: 'model',
-				label: `$(symbol-method) Model`,
-				description: status.model
-			},
-			{
 				id: 'execution',
 				label: `${execIcon} Execution Method`,
 				description: status.executionMethod === 'script'
@@ -192,11 +169,6 @@ export class StatusBarManager extends Disposable {
 				label: '',
 				kind: 1 // separator
 			} as ISettingsQuickPickItem,
-			{
-				id: 'changeModel',
-				label: '$(symbol-method) Change Model',
-				detail: `Current: ${status.model}`
-			},
 			{
 				id: 'testConnection',
 				label: '$(sync) Test Connection',
@@ -229,10 +201,6 @@ export class StatusBarManager extends Disposable {
 		const selectedItem = selected as ISettingsQuickPickItem;
 
 		switch (selectedItem.id) {
-			case 'changeModel':
-				await this.showModelPicker();
-				break;
-
 			case 'testConnection':
 				this.notificationService.info(localize('testingConnection', "Testing connection..."));
 				const connected = await this.callbacks.checkConnection();
@@ -255,65 +223,6 @@ export class StatusBarManager extends Disposable {
 			case 'openJson':
 				await this.callbacks.openLocalSettings();
 				break;
-		}
-	}
-
-	private async showModelPicker(): Promise<void> {
-		const currentModel = this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4-20250514';
-
-		interface IModelQuickPickItem extends IQuickPickItem {
-			modelId: string;
-		}
-
-		const models: IModelQuickPickItem[] = [
-			{
-				modelId: 'claude-opus-4-20250514',
-				label: '$(star) Claude Opus 4',
-				description: 'Most capable model',
-				detail: 'Best for complex tasks, coding, and analysis'
-			},
-			{
-				modelId: 'claude-sonnet-4-20250514',
-				label: 'Claude Sonnet 4',
-				description: 'Balanced performance',
-				detail: 'Good balance of speed and capability'
-			},
-			{
-				modelId: 'claude-3-5-sonnet-20241022',
-				label: 'Claude 3.5 Sonnet',
-				description: 'Previous generation',
-				detail: 'Fast and capable'
-			},
-			{
-				modelId: 'claude-3-5-haiku-20241022',
-				label: 'Claude 3.5 Haiku',
-				description: 'Fastest model',
-				detail: 'Best for simple tasks and quick responses'
-			}
-		];
-
-		// 현재 모델 표시
-		for (const model of models) {
-			if (model.modelId === currentModel) {
-				model.label = `$(check) ${model.label}`;
-				model.description = `${model.description} (current)`;
-			}
-		}
-
-		const selected = await this.quickInputService.pick(models, {
-			placeHolder: localize('selectModel', "Select Claude Model")
-		});
-
-		if (selected && (selected as IModelQuickPickItem).modelId !== currentModel) {
-			const newModel = (selected as IModelQuickPickItem).modelId;
-			await this.configurationService.updateValue('claude.model', newModel);
-			this.notificationService.info(localize('modelChanged', "Model changed to {0}", newModel));
-
-			// 상태 바 업데이트
-			const status = this.callbacks.getStatusInfo();
-			if (status) {
-				this.update({ ...status, model: newModel });
-			}
 		}
 	}
 }

@@ -12,7 +12,7 @@ import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { localize } from '../../../../../nls.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo } from '../../common/claudeTypes.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { ITextModel } from '../../../../../editor/common/model.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
@@ -118,6 +118,11 @@ export class ClaudeMessageRenderer extends Disposable {
 		// 컨텍스트 표시 (사용자 메시지에 첨부된 경우)
 		if (message.context && message.role === 'user') {
 			this.renderContext(message, messageElement);
+		}
+
+		// 토큰 사용량 표시 (assistant 메시지, 스트리밍 완료 후)
+		if (message.role === 'assistant' && !message.isStreaming && message.usage) {
+			this.renderUsageInfo(message.usage, messageElement);
 		}
 
 		return disposables;
@@ -480,5 +485,51 @@ export class ClaudeMessageRenderer extends Disposable {
 			default:
 				return '';
 		}
+	}
+
+	private renderUsageInfo(usage: IClaudeUsageInfo, container: HTMLElement): void {
+		const usageElement = append(container, $('.claude-message-usage'));
+
+		// 토큰 정보
+		const tokensElement = append(usageElement, $('.claude-usage-tokens'));
+
+		// 입력 토큰
+		const inputTokens = append(tokensElement, $('.claude-usage-item'));
+		inputTokens.title = localize('inputTokens', "Input tokens");
+		append(inputTokens, $('.codicon.codicon-arrow-right'));
+		const inputValue = append(inputTokens, $('span'));
+		inputValue.textContent = this.formatNumber(usage.inputTokens);
+
+		// 출력 토큰
+		const outputTokens = append(tokensElement, $('.claude-usage-item'));
+		outputTokens.title = localize('outputTokens', "Output tokens");
+		append(outputTokens, $('.codicon.codicon-arrow-left'));
+		const outputValue = append(outputTokens, $('span'));
+		outputValue.textContent = this.formatNumber(usage.outputTokens);
+
+		// 캐시 토큰 (있으면)
+		if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
+			const cacheTokens = append(tokensElement, $('.claude-usage-item.cache'));
+			cacheTokens.title = localize('cacheTokens', "Cache read tokens");
+			append(cacheTokens, $('.codicon.codicon-database'));
+			const cacheValue = append(cacheTokens, $('span'));
+			cacheValue.textContent = this.formatNumber(usage.cacheReadTokens);
+		}
+
+		// 비용 (있으면)
+		if (usage.totalCostUsd !== undefined && usage.totalCostUsd > 0) {
+			const costElement = append(usageElement, $('.claude-usage-cost'));
+			costElement.title = localize('totalCost', "Estimated cost");
+			costElement.textContent = `$${usage.totalCostUsd.toFixed(4)}`;
+		}
+	}
+
+	private formatNumber(num: number): string {
+		if (num >= 1000000) {
+			return (num / 1000000).toFixed(1) + 'M';
+		} else if (num >= 1000) {
+			return (num / 1000).toFixed(1) + 'K';
+		}
+		return num.toString();
 	}
 }

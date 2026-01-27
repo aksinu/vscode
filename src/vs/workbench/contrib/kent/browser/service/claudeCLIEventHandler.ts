@@ -6,7 +6,7 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
@@ -62,6 +62,10 @@ export interface ICLIEventHandlerCallbacks {
 
 	// 채널
 	getChannel(): IChannel;
+
+	// Usage
+	getUsage(): IClaudeUsageInfo | undefined;
+	setUsage(usage: IClaudeUsageInfo | undefined): void;
 }
 
 /**
@@ -123,6 +127,18 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
+		// result 이벤트에서 usage 정보 추출
+		if (event.type === 'result' && event.usage) {
+			this.callbacks.setUsage({
+				inputTokens: event.usage.input_tokens || 0,
+				outputTokens: event.usage.output_tokens || 0,
+				cacheReadTokens: event.usage.cache_read_input_tokens,
+				cacheCreationTokens: event.usage.cache_creation_input_tokens,
+				totalCostUsd: event.total_cost_usd
+			});
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage);
+		}
+
 		// 텍스트 컨텐츠 추출
 		const text = this.extractText(event);
 
@@ -168,7 +184,8 @@ export class CLIEventHandler extends Disposable {
 			content: this.callbacks.getAccumulatedContent(),
 			timestamp: Date.now(),
 			isStreaming: false,
-			toolActions: [...this.callbacks.getToolActions()]
+			toolActions: [...this.callbacks.getToolActions()],
+			usage: this.callbacks.getUsage()
 		};
 
 		this.callbacks.updateSessionMessage(finalMessage);
@@ -186,6 +203,7 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setAccumulatedContent('');
 		this.callbacks.setCurrentToolAction(undefined);
 		this.callbacks.setCliSessionId(undefined);
+		this.callbacks.setUsage(undefined);
 
 		// 큐에 대기 중인 메시지 처리
 		this.callbacks.processQueue();
