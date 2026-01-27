@@ -65,8 +65,9 @@ export class InputEditorManager extends Disposable {
 			folding: false,
 			minimap: { enabled: false },
 			scrollbar: {
-				vertical: 'auto',
-				horizontal: 'hidden',
+				vertical: 'hidden',        // 마우스 호버 시에도 수직 스크롤바 숨김
+				horizontal: 'hidden',      // 수평 스크롤바 숨김
+				handleMouseWheel: true,
 				alwaysConsumeMouseWheel: false
 			},
 			overviewRulerLanes: 0,
@@ -77,7 +78,8 @@ export class InputEditorManager extends Disposable {
 			wrappingStrategy: 'advanced',
 			scrollBeyondLastLine: false,
 			automaticLayout: true,
-			padding: { top: 8, bottom: 8 },
+			padding: { top: 12, bottom: 12 },
+			lineHeight: 20, // 줄 높이를 명시적으로 설정하여 중앙 배치를 돕습니다
 			fontSize: 13,
 			fontFamily: this.configurationService.getValue<string>('editor.fontFamily'),
 			ariaLabel: localize('claudeInputAriaLabel', "Claude chat input")

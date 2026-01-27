@@ -409,17 +409,16 @@
 }
 
 .claude-input-wrapper {
-	display: flex;
-	align-items: flex-end;
-	gap: 8px;
-	padding: 8px;
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 8px;
-	background-color: var(--vscode-input-background);
-	transition: border-color 0.1s, box-shadow 0.1s;
-	min-height: 48px;
-	min-width: 0; /* flex 축소 허용 */
-	overflow: hidden; /* 내용 넘침 방지 */
+    display: flex;
+    align-items: center; /* 버튼과 에디터를 수직 중앙 정렬 */
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 8px;
+    background-color: var(--vscode-input-background);
+    min-height: 48px;
+    overflow: hidden; /* 다시 추가: 테두리 클리핑 및 넘침 방지 필수! */
+    transition: border-color 0.1s, box-shadow 0.1s;
 }
 
 .claude-input-wrapper.focused {
@@ -428,29 +427,43 @@
 }
 
 .claude-input-editor-wrapper {
-	flex: 1;
-	position: relative;
-	min-height: 32px;
-	max-height: 120px;
-	min-width: 0; /* flex 축소 허용 - 필수! */
-	overflow: hidden; /* Monaco 에디터 넘침 방지 */
+    flex: 1;
+    position: relative;
+    min-height: 32px;
+    /* TS에서 설정한 변수가 있으면 쓰고, 없으면 기본값 100px 사용 */
+    max-height: var(--claude-input-max-height, 100px);
+    min-width: 0;
+    overflow: hidden;
 }
 
 .claude-input-editor {
-	width: 100%;
-	height: 100%;
-	min-height: 32px;
-	border-radius: 4px;
-	overflow: hidden;
+    /* 에디터 자체가 가지는 기본 배경색이 회색일 수 있습니다. */
+    background-color: transparent !important;
+}
+
+/* 스크롤바가 생겼을 때 항상 보이도록 설정하고 크기 줄이기 */
+.claude-input-editor .monaco-scrollable-element > .scrollbar {
+    opacity: 1 !important; /* 호버 안 해도 항상 보이게 함 */
+}
+
+.claude-input-editor .monaco-scrollable-element .scrollbar.vertical {
+    width: 6px !important; /* 스크롤바 전체 폭 */
+}
+
+.claude-input-editor .monaco-scrollable-element .scrollbar.vertical .slider {
+    width: 4px !important; /* 실제 움직이는 바 폭 */
+    border-radius: 2px !important;
+    left: 1px !important;
 }
 
 .claude-input-placeholder {
 	position: absolute;
-	top: 8px;
-	left: 4px;
-	color: var(--vscode-input-placeholderForeground);
-	pointer-events: none;
-	font-size: 13px;
+    top: 8px; /* 에디터 내부 패딩과 일치 */
+    left: 4px;
+    color: var(--vscode-input-placeholderForeground);
+    pointer-events: none;
+    font-size: 13px;
+    display: block; /* display 설정 유지 */
 }
 
 .claude-send-button {
@@ -466,6 +479,8 @@
 	border-radius: 6px;
 	cursor: pointer;
 	transition: background-color 0.1s;
+	margin-bottom: 2px; /* 에디터 텍스트 라인과 맞추기 위해 약간의 하단 여백 추가 */
+    align-self: flex-end; /* 입력창 하단에 딱 붙도록 고정 */
 }
 
 .claude-send-button:hover {
