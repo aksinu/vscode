@@ -1,6 +1,8 @@
 {
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
+		"incremental": true,               /* 증분 컴파일 활성화 - 수동 컴파일 속도 향상 */
+        "tsBuildInfoFile": "../out/.tsbuildinfo", /* 빌드 정보 저장 위치 지정 */
 		"esModuleInterop": true,
 		"removeComments": false,
 		"preserveConstEnums": true,

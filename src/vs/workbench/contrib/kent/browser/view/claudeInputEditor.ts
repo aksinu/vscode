@@ -50,6 +50,17 @@ export class InputEditorManager extends Disposable {
 
 		// 에디터 영역
 		this.editorWrapper = append(container, $('.claude-input-editor-wrapper'));
+
+		// 여기에 원하는 줄 수를 설정하세요 (예: 4줄)
+		const maxLines = 4;
+		const lineHeight = 20;
+		const verticalPadding = 16; // 상하 패딩 합계 (8 + 8)
+
+		const maxHeight = (maxLines * lineHeight) + verticalPadding;
+
+		// CSS 변수로 등록하여 CSS 파일에서도 쓸 수 있게 합니다.
+		this.editorWrapper.style.setProperty('--claude-input-max-height', `${maxHeight}px`);
+
 		const editorContainer = append(this.editorWrapper, $('.claude-input-editor'));
 
 		// 플레이스홀더
