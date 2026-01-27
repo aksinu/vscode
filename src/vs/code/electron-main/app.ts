@@ -1223,11 +1223,18 @@ export class CodeApplication extends Disposable {
 						const [prompt, options] = args as [string, unknown];
 						return claudeCLIService.sendPrompt(prompt, options as any) as Promise<T>;
 					}
+					case 'sendUserInput': {
+						const [input] = args as [string];
+						claudeCLIService.sendUserInput(input);
+						return Promise.resolve() as Promise<T>;
+					}
 					case 'cancelRequest':
 						claudeCLIService.cancelRequest();
 						return Promise.resolve() as Promise<T>;
 					case 'isRunning':
 						return Promise.resolve(claudeCLIService.isRunning()) as Promise<T>;
+					case 'checkConnection':
+						return claudeCLIService.checkConnection() as Promise<T>;
 				}
 				throw new Error(`Call not found: ${command}`);
 			}

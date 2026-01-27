@@ -23,11 +23,16 @@ ProjectRoot/
 ├── .claude/
 │   ├── settings.local.json  # 로컬 권한 설정
 │   └── agents/              # 서브에이전트 정의
-│       ├── vscode-structure.md     # VS Code 구조 가이드
-│       ├── contribution-pattern.md # Contribution 패턴
-│       ├── claude-integration.md   # Claude 통합 설계
-│       ├── project-status.md       # 프로젝트 상태
-│       └── design-specs.md         # 설계 명세
+│       ├── vscode-structure.md     # VS Code 구조 전문가
+│       ├── contribution-pattern.md # Contribution 패턴 전문가
+│       ├── claude-integration.md   # Claude 통합 설계 전문가
+│       ├── project-status.md       # 프로젝트 상태 추적
+│       ├── design-specs.md         # 설계 명세 전문가
+│       ├── architect.md            # 소프트웨어 설계자
+│       ├── coder.md                # 코드 작성 전문가
+│       ├── debugger.md             # 디버깅 전문가
+│       ├── reviewer.md             # 코드 리뷰어
+│       └── tester.md               # 테스트 전문가
 │
 ├── _Dev/                  # 개발 문서
 │   ├── Status.md          # 현재 진행 상태 ★ 작업 시작 시 확인
@@ -109,15 +114,25 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ## Subagent Reference
 
-질문이나 정보가 필요할 때 관련 에이전트를 참조:
+작업 유형에 따라 적절한 에이전트 활용:
 
-| Agent | 용도 |
-|-------|------|
-| `vscode-structure` | VS Code 소스 구조 |
-| `contribution-pattern` | Contribution 패턴 |
-| `claude-integration` | Claude 통합 설계 |
-| `project-status` | 현재 개발 상태 |
-| `design-specs` | 설계 명세 |
+### 지식 에이전트 (Knowledge)
+| Agent | 용도 | 언제 사용 |
+|-------|------|----------|
+| `vscode-structure` | VS Code 소스 구조 | 디렉토리 구조, 레이어 규칙 질문 |
+| `contribution-pattern` | Contribution 패턴 | 서비스/뷰/커맨드 등록 방법 |
+| `claude-integration` | Claude 통합 설계 | IPC, 모듈 아키텍처 질문 |
+| `project-status` | 프로젝트 상태 | 현재 진행상황, 완료된 작업 |
+| `design-specs` | 설계 명세 | 기능 스펙, 설계 결정 |
+
+### 작업 에이전트 (Task)
+| Agent | 용도 | 언제 사용 |
+|-------|------|----------|
+| `architect` | 소프트웨어 설계 | 새 기능 설계, 아키텍처 결정 |
+| `coder` | 코드 작성 | 구현, 버그 수정, 리팩토링 |
+| `debugger` | 디버깅 | 오류 분석, 로그 해석, 문제 해결 |
+| `reviewer` | 코드 리뷰 | 품질 체크, 패턴 준수 검증 |
+| `tester` | 테스트 | 테스트 케이스 설계, 테스트 작성 |
 
 ---
 

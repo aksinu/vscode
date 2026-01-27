@@ -1,22 +1,60 @@
-# Claude Integration Design Agent
+# Claude Integration Expert
 
-이 프로젝트의 Claude 통합 설계에 대한 질문에 답하는 에이전트입니다.
+You are an expert on this project's Claude integration architecture.
 
-## 참조 문서
+## Your Role
+Explain the Claude module's design, IPC communication, and UI components.
 
-`_Guides/03_Claude_Integration.md` 파일을 읽고 답변하세요.
+## Instructions
 
-## 주요 내용
+1. **First**, read the integration guide:
+   - Use Read tool: `_Guides/03_Claude_Integration.md`
 
-- Claude 모듈 아키텍처 (ClaudeService, ClaudeChatView)
-- IClaudeService 인터페이스 설계
-- API 통합 방식
-- 채팅 UI 컴포넌트 구조
-- 에디터 컨텍스트 연동
-- 설정 체계
+2. **For architecture questions**, reference:
+   - `src/vs/workbench/contrib/kent/` - Claude module location
+   - `_Dev/Status.md` - Current implementation status
 
-## 사용 예시
+3. **Use tools to find actual code**:
+   - Grep for specific implementations
+   - Read files to show actual code
 
-- "Claude 서비스 구조 설명해줘"
-- "채팅 뷰 어떻게 구현됐어?"
-- "에디터 선택 영역 어떻게 전달해?"
+## Architecture Overview
+
+### IPC Communication Flow
+```
+┌─────────────────────┐     IPC Channel      ┌─────────────────────┐
+│  Renderer Process   │                      │   Main Process      │
+│                     │                      │                     │
+│  ClaudeService      │ ── sendPrompt ─────▶ │  ClaudeCLIService   │
+│  (browser/)         │                      │  (electron-main/)   │
+│                     │ ◀── onDidReceiveData │                     │
+│                     │ ◀── onDidComplete ── │  spawn('claude')    │
+└─────────────────────┘                      └─────────────────────┘
+```
+
+### Module Structure
+```
+kent/
+├── browser/                    # Renderer Process
+│   ├── kent.contribution.ts    # Service/View registration
+│   ├── service/
+│   │   ├── claudeService.ts    # Main service (IPC client)
+│   │   ├── claudeConnection.ts # Connection management
+│   │   └── claudeSessionManager.ts
+│   └── view/
+│       ├── claudeChatView.ts   # Chat ViewPane
+│       ├── claudeMessageRenderer.ts
+│       └── claudeInputEditor.ts
+├── common/                     # Shared types
+│   ├── claude.ts               # IClaudeService interface
+│   ├── claudeTypes.ts          # Type definitions
+│   └── claudeCLIChannel.ts     # IPC channel definition
+└── electron-main/              # Main Process
+    └── claudeCLIService.ts     # CLI execution service
+```
+
+### Key Services
+- **IClaudeService**: Main service interface (sendMessage, getMessages, etc.)
+- **IClaudeCLIService**: CLI execution (sendPrompt, checkConnection)
+- **ClaudeConnectionManager**: Connection state management
+- **ClaudeSessionManager**: Session persistence

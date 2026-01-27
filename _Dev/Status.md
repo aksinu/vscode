@@ -9,549 +9,124 @@
 | Item | Value |
 |------|-------|
 | **Phase** | Phase 4 - 고급 UX 기능 |
-| **Sprint** | Sprint_003 ✅ |
-| **Status** | ✅ Sprint 3 완료 + 리팩토링 Phase 2 진행 중 |
-| **Updated** | 2026-01-27 13:30 |
-| **Build** | 🔨 빌드 필요 (새 파일 추가됨) |
+| **Status** | 연결 오버레이 구현 완료, IPC 버그 수정 중 |
+| **Updated** | 2026-01-27 |
+| **Build** | 🔨 빌드 필요 |
 
 ---
 
 ## Now Working On
 
 ```
-Task: 연결 오버레이 구현
-Progress: 100%
-Next: 빌드 후 테스트 필요
+Task: IPC checkConnection 메서드 누락 수정
+File: src/vs/code/electron-main/app.ts
+Status: 수정 완료, 빌드 필요
 ```
-
-### 빌드 대기 중인 변경사항
-- [ ] `claudeConnectionOverlay.ts` - 새 파일 컴파일 필요
-- [ ] `claudeLogService.ts` - 새 파일 컴파일 필요
-- [ ] `claudeConnection.ts` - 새 파일 컴파일 필요
 
 ### 빌드 & 실행
 
 ```bash
 cd D:/_______________Kent/vscode
-yarn compile          # 빌드 (약 5분)
+yarn compile          # 빌드
 ./scripts/code.bat    # 실행
 ```
 
-### Sprint 3 Tasks
+---
 
-| # | Task | Priority | Status | Difficulty |
-|---|------|----------|--------|------------|
-| 1 | [@ 멘션 시스템](Tasks/Sprint_003/TASK_001_AtMention.md) | P1 | [x] | Medium |
-| 2 | [/슬래시 커맨드](Tasks/Sprint_003/TASK_002_SlashCommand.md) | P1 | [x] | Low |
-| 3 | [Diff 뷰 Apply](Tasks/Sprint_003/TASK_003_DiffApply.md) | P1 | [x] | Medium |
-| 4 | [토큰 소진 시 자동 대기/재시도](Tasks/Sprint_003/TASK_004_RateLimitRetry.md) | P1 | [x] | Medium |
-| 5 | [이미지 붙여넣기](Tasks/Sprint_003/TASK_005_ImagePaste.md) | P1 | [x] | Low |
-| 6 | [다중 세션 관리](Tasks/Sprint_003/TASK_006_MultiSession.md) | P2 | [x] | Medium |
+## Completed Features
 
-### Sprint 2 Tasks (완료)
+### Phase 1 - 기본 구조
+- Claude 모듈 기본 구조, 서비스, ViewPane, 액션/커맨드
+- Markdown 렌더링, 코드 블록 (Copy/Insert/Apply)
+- 파일 첨부 (열린 파일 버튼, 드래그드롭, 클립보드)
 
-| # | Task | Priority | Status | Difficulty |
-|---|------|----------|--------|------------|
-| 1 | [로컬 설정 + 스크립트 실행](Tasks/Sprint_002/TASK_001_LocalSettings.md) | P1 | [x] | Medium |
-| 2 | [모두 OK (Auto Accept)](Tasks/Sprint_002/TASK_002_AutoAccept.md) | P1 | [x] | Low |
-| 3 | [대화 복사 기능](Tasks/Sprint_002/TASK_003_MessageCopy.md) | P2 | [x] | Low |
-| 4 | [이전 대화 구분선](Tasks/Sprint_002/TASK_004_SessionDivider.md) | P2 | [x] | Low |
-| 5 | [스트리밍 중 입력 큐](Tasks/Sprint_002/TASK_005_InputQueue.md) | P2 | [x] | Medium |
+### Phase 2 - CLI 연동
+- Main Process CLI 서비스, IPC 채널
+- stdin 프롬프트 전달, 환경변수 정리
+- 대화 기록 저장 (IStorageService)
 
-### Done (Phase 1 - 기본 구조)
-- [x] 프로젝트 문서 구조 설정
-- [x] VS Code Chat 모듈 구조 분석
-- [x] Claude 모듈 기본 구조 생성
-- [x] 서비스 구현 (IClaudeService)
-- [x] ViewPane 구현 (ClaudeChatViewPane)
-- [x] 액션/커맨드 등록
-- [x] 설정 등록
-- [x] Markdown 렌더링 구현
-- [x] 코드 블록 렌더러 (Copy/Insert/Apply 버튼)
-- [x] 환영 화면 (Welcome Screen)
-- [x] 로딩 인디케이터
-- [x] 컨텍스트 태그 표시
-- [x] **파일 첨부 시스템 (3가지 방식)**
-  - [x] 열린 파일 버튼 (`+ 파일명` 클릭)
-  - [x] 드래그 앤 드롭
-  - [x] Ctrl+C/V (이미지 붙여넣기)
+### Phase 2.5 - AskUser & 컨텍스트
+- AskUser 이벤트 처리, 대화 컨텍스트 전달
 
-### Done (Phase 2 - CLI 연동)
-- [x] **코드 재구성** - `claude/` → `kent/` 폴더로 이동
-- [x] **Main Process CLI 서비스** - `ClaudeCLIService`
-- [x] **IPC 채널 구현** - Renderer ↔ Main 통신
-- [x] **stdin 방식 프롬프트 전달** - 명령줄 길이 제한 회피
-- [x] **환경변수 정리** - 디버거 자식 프로세스 붙는 문제 해결
-- [x] **도구 액션 추적** - tool_use 이벤트 처리 구조
-- [x] **대화 기록 저장** - StorageService로 워크스페이스별 저장
-- [x] **도구 상태 UI** - 스피너, 완료 표시 CSS
+### Phase 4 - 고급 UX (Sprint 2-3)
+- @ 멘션, /슬래시 커맨드, Diff 뷰 Apply
+- Rate limit 재시도, 이미지 붙여넣기, 다중 세션
+- 로컬 설정, Auto Accept, 대화 복사, 입력 큐
 
-### Done (Phase 2.5 - AskUser & 대화 컨텍스트)
-- [x] **AskUser 이벤트 처리** - Claude가 선택 요구 시 UI 표시
-- [x] **대화 컨텍스트 전달** - 이전 메시지를 프롬프트에 포함
-- [x] **input_request 이벤트 처리** - CLI 직접 형식 지원
+### 리팩토링
+- 로깅 시스템 (`claudeLogService.ts`)
+- 연결 오버레이 (`claudeConnectionOverlay.ts`)
+- 컴포넌트 분리 (Autocomplete, RateLimit, StatusBar 등)
 
-### Done (Phase 4 - 고급 UX)
-- [x] @ 멘션 시스템 (@file, @workspace, 열린 파일 목록)
-- [x] /슬래시 커맨드 (/explain, /fix, /test, /refactor, /docs, /optimize)
-- [x] Diff 뷰 Apply (코드 적용 전 미리보기)
+---
 
-### Remaining (Phase 4+)
-- [ ] 실시간 글자별 스트리밍 (CLI 제한으로 현재 불가)
-- [ ] 파일 탐색기에서 파일 선택 (@file 개선)
-- [ ] 컨텍스트 메뉴 통합 (우클릭 → Claude에게 물어보기)
+## Remaining
+
+- [ ] 실시간 글자별 스트리밍 (CLI 제한)
+- [ ] 파일 탐색기에서 파일 선택
+- [ ] 컨텍스트 메뉴 통합
 
 ---
 
 ## Architecture
 
-### 폴더 구조 (최종)
+### 폴더 구조
 
 ```
 src/vs/workbench/contrib/kent/
 ├── browser/                    # Renderer Process
 │   ├── kent.contribution.ts    # 서비스/뷰/설정 등록
-│   ├── claudeService.ts        # IClaudeService 구현 (IPC 클라이언트)
-│   ├── claudeChatView.ts       # 채팅 ViewPane
-│   ├── claudeMessageRenderer.ts # 메시지 렌더러
-│   ├── claudeActions.ts        # 커맨드/액션
-│   └── media/claude.css        # 스타일
+│   ├── service/                # 서비스 (claudeService, connection, session)
+│   ├── view/                   # UI 컴포넌트
+│   └── media/claude.css
 ├── common/                     # 공통 타입/인터페이스
-│   ├── claude.ts               # IClaudeService 인터페이스
-│   ├── claudeTypes.ts          # 타입 정의 (IClaudeMessage, IClaudeToolAction 등)
-│   ├── claudeContextKeys.ts    # 컨텍스트 키
-│   ├── claudeCLI.ts            # CLI 서비스 인터페이스
-│   └── claudeCLIChannel.ts     # IPC 채널 정의
-└── electron-main/              # Main Process
-    └── claudeCLIService.ts     # CLI 실행 서비스
+└── electron-main/              # Main Process (CLI 실행)
 
-src/vs/code/electron-main/app.ts  # 수정: CLI 서비스/채널 등록
-src/vs/workbench/workbench.common.main.ts  # 수정: kent contribution import
+src/vs/code/electron-main/app.ts  # IPC 채널 등록
 ```
 
 ### IPC 통신 흐름
 
 ```
-┌─────────────────────────┐        IPC Channel        ┌─────────────────────────┐
-│  Renderer Process       │                           │  Main Process           │
-│                         │                           │                         │
-│  ClaudeService          │ ── sendPrompt ──────────▶ │  ClaudeCLIService       │
-│  (claudeService.ts)     │                           │  (claudeCLIService.ts)  │
-│                         │                           │                         │
-│                         │ ◀── onDidReceiveData ──── │  spawn('claude', args)  │
-│                         │ ◀── onDidComplete ─────── │                         │
-│                         │ ◀── onDidError ────────── │  stdin.write(prompt)    │
-└─────────────────────────┘                           └─────────────────────────┘
-```
-
-### CLI 실행 방식
-
-```javascript
-// stdin으로 프롬프트 전달 (명령줄 길이 제한 회피)
-const args = ['--output-format', 'stream-json', '--verbose'];
-this._process = spawn('claude', args, {
-    shell: true,
-    env: cleanEnv,  // NODE_OPTIONS, VSCODE_INSPECTOR_OPTIONS 제거
-});
-this._process.stdin.write(prompt);
-this._process.stdin.end();
+Renderer (ClaudeService) ──IPC──▶ Main (ClaudeCLIService)
+         ◀── onDidReceiveData ──        spawn('claude')
+         ◀── onDidComplete ────
 ```
 
 ---
 
-## 해결된 문제들
+## Known Issues
 
-### 1. 명령줄 길이 제한 (Windows ~8KB)
-- **문제**: `-p "긴 프롬프트"` 사용 시 길이 초과
-- **해결**: stdin으로 프롬프트 전달
-
-### 2. 디버거가 자식 프로세스에 붙는 문제
-- **문제**: F5 디버그 시 Claude CLI가 멈춤
-- **해결**: 환경변수 정리
-  ```javascript
-  delete cleanEnv.NODE_OPTIONS;
-  delete cleanEnv.ELECTRON_RUN_AS_NODE;
-  delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
-  ```
-
-### 3. 대화 기록 휘발
-- **문제**: F5 재시작 시 대화 사라짐
-- **해결**: IStorageService로 워크스페이스별 저장
+| # | 버그 | 상태 |
+|---|------|------|
+| 1 | 터미널 conpty.node 에러 (빌드) | 🟡 P3 |
 
 ---
 
-## CLI 이벤트 구조
+## Quick Reference
 
-Claude CLI `--output-format stream-json` 응답:
+### Commands
+| Command | Keybinding |
+|---------|------------|
+| `claude.openChat` | `Ctrl+Shift+C` |
+| `claude.clearChat` | `Ctrl+Shift+K` |
+| `claude.focusInput` | `Ctrl+L` |
 
-```json
-// 1. 초기화
-{"type":"system","subtype":"init","session_id":"...","tools":["Task","Bash",...]}
-
-// 2. 응답 (전체 한 번에)
-{"type":"assistant","message":{"content":[{"type":"text","text":"응답 내용"}]}}
-
-// 3. 도구 사용 (있을 경우)
-{"type":"tool_use","tool_name":"Read","tool_input":{"file_path":"..."}}
-{"type":"tool_result","tool_result":"파일 내용..."}
-
-// 4. 완료
-{"type":"result","subtype":"success","result":"최종 응답"}
-```
-
----
-
-## Files Modified (Original VS Code)
-
-| File | Changes |
-|------|---------|
-| `src/vs/code/electron-main/app.ts` | CLI 서비스 생성 및 IPC 채널 등록 |
-| `src/vs/workbench/workbench.common.main.ts` | kent contribution import 추가 |
-
----
-
-## Created Files (kent/)
-
-### common/
-| File | Description |
-|------|-------------|
-| `claude.ts` | IClaudeService 인터페이스 |
-| `claudeTypes.ts` | 타입 정의 (IClaudeMessage, IClaudeToolAction, IClaudeSession, IClaudeQueuedMessage 등) |
-| `claudeContextKeys.ts` | 컨텍스트 키 |
-| `claudeCLI.ts` | IClaudeCLIService 인터페이스, IClaudeCLIStreamEvent |
-| `claudeCLIChannel.ts` | IPC 채널 (ClaudeCLIChannel, ClaudeCLIChannelClient) |
-| `claudeLocalConfig.ts` | **[Sprint2]** 로컬 설정 타입/유틸 (스크립트 실행 지원) |
-| `claudeLogService.ts` | **[NEW]** 로깅 서비스 (파일+콘솔, 로그 레벨) |
-
-### browser/
-| File | Description |
-|------|-------------|
-| `kent.contribution.ts` | 서비스/뷰/설정 등록 (registerSingleton) |
-| `claudeService.ts` | Renderer측 서비스 (IPC 클라이언트, 저장소 연동) |
-| `claudeChatView.ts` | 채팅 ViewPane |
-| `claudeMessageRenderer.ts` | 메시지 렌더러 (Markdown, 코드 블록, 도구 상태) |
-| `claudeActions.ts` | 커맨드/액션 |
-| `claudeAutocomplete.ts` | **[리팩토링]** @ 멘션, / 커맨드 자동완성 |
-| `claudeRateLimitManager.ts` | **[리팩토링]** Rate limit 감지/재시도 |
-| `claudeStatusBar.ts` | **[리팩토링]** 상태 바 UI, 설정 QuickPick |
-| `media/claude.css` | 스타일 (도구 상태 UI 포함) |
-
-### browser/view/ (UI 컴포넌트)
-| File | Description |
-|------|-------------|
-| `claudeAttachmentManager.ts` | **[리팩토링]** 첨부파일 관리 |
-| `claudeAutocomplete.ts` | **[리팩토링]** @ 멘션, / 커맨드 자동완성 |
-| `claudeChatView.ts` | 메인 채팅 ViewPane |
-| `claudeCodeApply.ts` | **[리팩토링]** 코드 적용 + Diff 뷰 |
-| `claudeConnectionOverlay.ts` | **[NEW]** 연결 오버레이 (로딩/재시도 UI) |
-| `claudeInputEditor.ts` | **[리팩토링]** 입력 에디터 (자동 높이 조절) |
-| `claudeLocalSettings.ts` | **[리팩토링]** 로컬 설정 관리 |
-| `claudeMessageRenderer.ts` | 메시지 렌더러 |
-| `claudeOpenFilesBar.ts` | **[리팩토링]** 열린 파일 버튼 바 |
-| `claudeSessionPicker.ts` | **[리팩토링]** 세션 선택 UI |
-| `claudeStatusBar.ts` | **[리팩토링]** 상태 바 UI |
-
-### browser/service/ (서비스)
-| File | Description |
-|------|-------------|
-| `claudeConnection.ts` | **[NEW]** 연결 관리 (상태, 이벤트) |
-| `claudeRateLimitManager.ts` | **[리팩토링]** Rate limit 재시도 |
-| `claudeCLIEventHandler.ts` | **[리팩토링]** CLI 이벤트 처리 |
-
-### electron-main/
-| File | Description |
-|------|-------------|
-| `claudeCLIService.ts` | Main Process CLI 실행 서비스 |
-
----
-
-## Commands
-
-| Command | Keybinding | Description |
-|---------|------------|-------------|
-| `claude.openChat` | `Ctrl+Shift+C` | 채팅 열기 |
-| `claude.clearChat` | `Ctrl+Shift+K` | 채팅 비우기 |
-| `claude.cancelRequest` | `Escape` | 요청 취소 |
-| `claude.newSession` | - | 새 세션 |
-| `claude.focusInput` | `Ctrl+L` | 입력창 포커스 |
-
----
-
-## Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `claude.model` | `claude-sonnet-4-20250514` | 사용할 모델 |
-| `claude.maxTokens` | `4096` | 최대 토큰 수 |
-| `claude.systemPrompt` | (기본 프롬프트) | 시스템 프롬프트 |
-| `claude.fontSize` | `13` | 채팅 폰트 크기 |
+### Settings
+| Setting | Default |
+|---------|---------|
+| `claude.model` | `claude-sonnet-4-20250514` |
+| `claude.maxTokens` | `4096` |
 
 ---
 
 ## Activity Log
 
-### 2026-01-27 (오후)
-- **로깅 시스템 구현**
-  - `claudeLogService.ts` 생성 - 파일 + 콘솔 로깅
-  - 로그 레벨: DEBUG, INFO, WARN, ERROR, OFF
-  - 로그 위치: `.vscode/claude-logs/claude-YYYY-MM-DD.log`
-  - 모든 서비스에 `logService` 주입 완료
-  - `console.log/error` → `logService` 호출로 교체
-
-- **입력 에디터 자동 높이 조절**
-  - `claudeInputEditor.ts` 수정
-  - 컨텐츠에 따라 높이 자동 조절 (MIN: 44px, MAX: 200px)
-  - `onDidContentSizeChange` 이벤트 활용
-  - 스크롤바 숨김 (휠 스크롤은 동작)
-
-- **연결 상태 버그 수정**
-  - `confirmConnected()`, `disconnect()`에서 `_error` 클리어 추가
-  - 데이터 수신 시 즉시 Connected 상태로 전환
-
-- **연결 오버레이 구현** ⭐
-  - `claudeConnectionOverlay.ts` 생성
-  - 채팅창 초기화 시 연결 확인 + UI 비활성화
-  - 상태: connecting → retrying → failed/connected
-  - 3회 자동 재시도 (1초 딜레이)
-  - 실패 시 수동 재시도 버튼 표시
-  - `claudeChatView.ts`에 `initializeConnection()`, `setInputEnabled()` 추가
-  - CSS: 오버레이 스타일, 비활성화 입력 스타일
-
-### 2026-01-26 (밤6)
-- **코드 리팩토링 (Phase 1)**
-  - `claudeAutocomplete.ts` 추출 (422줄)
-    - @ 멘션, / 슬래시 커맨드 자동완성
-    - claudeChatView.ts -334줄
-  - `claudeRateLimitManager.ts` 추출 (257줄)
-    - Rate limit 감지, 카운트다운, 재시도
-    - claudeService.ts -156줄
-  - `claudeStatusBar.ts` 추출 (319줄)
-    - 상태 바 UI, 설정 QuickPick, 모델 선택
-    - claudeChatView.ts -259줄
-  - **총 결과**:
-    - claudeChatView.ts: 2,122줄 → 1,529줄 (-28%)
-    - claudeService.ts: 1,339줄 → 1,183줄 (-12%)
-
-### 2026-01-26 (밤5)
-- **UI 버그 수정**
-  - 입력창 전송 버튼 좌측 이상한 공간 문제 해결
-    - `.claude-input-editor-wrapper`에 `min-width: 0`, `overflow: hidden` 추가
-    - flex item이 내용 크기 이하로 축소되지 않는 문제 해결
-  - 채팅창 width 조절 시 전송 버튼 사라지는 문제 해결
-    - `.claude-input-wrapper`에 `min-width: 0`, `overflow: hidden` 추가
-    - `.claude-input-container`에 `position: relative` 추가 (autocomplete 위치 기준)
-- **스트리밍 깜빡임 완화**
-  - 스트리밍 중인 메시지에 `.streaming` 클래스 추가
-  - 스트리밍 중 메시지는 애니메이션 비활성화
-  - 스트리밍 인디케이터 CSS 추가 (펄스 점 애니메이션)
-
-### 2026-01-26 (밤4)
-- **버그 수정**
-  - Error 상태 → 응답 데이터 수신 시 즉시 Connected로 변경
-  - checkConnection 실패 시 Error 대신 Disconnected 표시
-- **모델 변경 기능 추가**
-  - 설정(⚙️) → Change Model 메뉴 추가
-  - Opus/Sonnet/Haiku 선택 가능
-- **응답 취소 버튼 추가**
-  - 스트리밍 중 전송 버튼 → 취소 버튼(🔴)으로 변경
-  - 클릭 시 요청 취소
-
-### Known Bugs (수정 필요)
-| # | 버그 | 상태 |
-|---|------|------|
-| 1 | 스트리밍 시 채팅창 깜빡임 + 진행상황 불명확 | ✅ CSS 애니메이션 개선 |
-| 2 | 입력창 - 전송버튼 좌측 이상한 공간 | ✅ flex min-width 수정 |
-| 3 | 채팅창 width 조절 시 전송버튼 사라짐 | ✅ overflow/min-width 수정 |
-| 4 | 터미널 conpty.node 에러 (빌드) | 🟡 P3 |
-| 5 | 연결 안됨 상태에서 채팅 가능 | ✅ 연결 오버레이로 해결 |
-| 6 | ERROR 상태가 CONNECTED로 안 바뀜 | ✅ confirmConnected() 수정 |
-
-### 2026-01-26 (밤3)
-- **파일 첨부 시스템 스펙 정리** (SPEC_003)
-  - 3가지 첨부 방식 정의: 열린 파일 버튼, 드래그/드롭, Ctrl+C/V
-  - 명시적 첨부만 전송 (자동 전송 X)
-- **열린 파일 버튼 UI 구현**
-  - 채팅창 상단에 열린 파일 목록 표시 (`+ a.cs + b.ts`)
-  - 클릭 시 첨부 목록에 추가
-  - 이미 첨부된 파일은 비활성화 표시
-  - editorService.onDidVisibleEditorsChange로 실시간 업데이트
-  - 버그 수정: openFilesContainer null 체크 추가
-- **상태 & 설정 시스템 구현** (SPEC_004)
-  - Claude 상태 바 UI (연결 상태, 모델, 실행 방식)
-  - 설정 QuickPick (연결 테스트, Extended Thinking 토글, 설정 파일 열기)
-  - IClaudeStatusInfo/IClaudeAccountInfo 타입 추가
-  - checkConnection() 메서드 구현 (CLI 버전 확인)
-  - toggleExtendedThinking() 메서드 구현
-
-### 2026-01-26 (밤2)
-- **Sprint 3 완료! (6개 태스크)**
-- **TASK_001: @ 멘션 시스템**
-  - `@` 입력 시 자동완성 팝업 표시
-  - `@file` - 현재 에디터 파일 첨부
-  - `@workspace` - 워크스페이스 컨텍스트 첨부
-  - 열린 에디터 파일 목록 표시
-  - 키보드 네비게이션 (↑↓, Enter, Esc)
-- **TASK_002: /슬래시 커맨드**
-  - `/` 입력 시 커맨드 목록 팝업
-  - `/explain`, `/fix`, `/test`, `/refactor`, `/docs`, `/optimize`
-  - 선택 시 해당 프롬프트로 입력창 교체
-- **TASK_003: Diff 뷰 Apply**
-  - Apply 버튼 클릭 시 QuickPick 표시
-  - "Preview Diff" - Diff 에디터로 미리보기
-  - "Apply Directly" - 바로 적용
-  - Accept/Reject 알림으로 확인
-- **TASK_004: 토큰 소진 시 자동 대기/재시도**
-  - Rate limit 에러 감지 (429, quota exceeded, token exhausted)
-  - 대기 시간 파싱 (seconds/minutes/hours)
-  - 카운트다운 UI 표시
-  - 자동 재시도
-  - 상세 디버그 로그 (`debugLog()`)
-- **TASK_005: 이미지 붙여넣기**
-  - Ctrl+V로 클립보드 이미지 붙여넣기
-  - Win+Shift+S 캡처 후 바로 첨부 가능
-  - Base64 변환 및 프롬프트에 포함
-- **TASK_006: 다중 세션 관리**
-  - 세션 관리 버튼 (레이어 아이콘)
-  - QuickPick으로 세션 목록 표시
-  - 새 세션 생성 / 세션 전환
-  - 세션별 대화 기록 유지
-
-### 2026-01-26 (밤1)
-- **Sprint 2 완료!**
-- **TASK_001: 로컬 설정 시스템 구현**
-  - `.vscode/claude.local.json` 설정 파일 지원
-  - 스크립트 실행 지원 (bat, sh, ps1, node, python)
-  - OS별 인터프리터 분기 처리
-  - `claudeLocalConfig.ts` 타입/유틸 생성
-  - `claudeCLIService.ts` 스크립트 실행 로직 추가
-  - `claudeService.ts` 로컬 설정 로드 로직 추가
-- **TASK_002: Auto Accept 모드 구현**
-  - `autoAccept: true` 설정 시 자동 승인
-  - 자동 선택된 옵션 UI 표시
-  - AskUser/InputRequest 모두 지원
-- **TASK_003: 대화 복사 기능**
-  - 메시지별 복사 버튼 (hover 시 표시)
-  - 텍스트 선택 허용 (user-select: text)
-- **TASK_004: 이전 대화 구분선**
-  - 세션 로드 시 이전/현재 대화 구분선 표시
-  - "Previous Session" 라벨
-- **TASK_005: 스트리밍 중 입력 큐**
-  - 응답 중에도 메시지 입력 가능 → 큐에 추가
-  - 큐 UI 표시 (입력창 위)
-  - 개별/전체 큐 삭제 기능
-  - 응답 완료 후 자동 순차 처리
-
-### 2026-01-26 (저녁)
-- **AskUser UI 개선**
-  - 선택지 클릭 시 즉시 제출 (기존 동작 유지)
-  - Submit 버튼 제거 (불필요)
-  - "Other" 입력은 Enter 키로 제출
-  - placeholder에 "press Enter" 안내 추가
-  - 관련 CSS 정리
-
-### 2026-01-26 (오후)
-- **AskUser 이벤트 처리 완료**
-  - `handleAskUserQuestion`: tool_use 이벤트에서 AskUserQuestion 처리
-  - `handleInputRequest`: input_request 이벤트 처리 (CLI 직접 형식)
-  - `respondToAskUser`: 단순 텍스트 응답으로 수정
-  - UI: 옵션 버튼, 직접 입력 필드 렌더링
-- **대화 컨텍스트 전달 기능**
-  - `buildPromptWithContext`: 이전 메시지를 프롬프트에 포함
-  - 최근 10개 메시지까지 컨텍스트로 전달
-  - 긴 메시지는 2000자로 자름
-
-### 2026-01-26 (오전)
-- 코드 재구성: `claude/` → `kent/` 폴더
-- Main Process CLI 서비스 구현
-- IPC 채널 구현 및 연결
-- stdin 방식 프롬프트 전달로 변경
-- 환경변수 정리 (디버거 문제 해결)
-- 도구 액션 타입 및 UI 추가
-- 대화 기록 저장 기능 추가 (IStorageService)
-- 도구 상태 CSS 스타일 추가
-
-### 2025-01-25
-- 프로젝트 문서 구조 재구성
-- VS Code Chat 모듈 구조 분석 완료
-- Claude 모듈 기본 구조 생성 완료
-- UI 컴포넌트 구현 (Markdown, 코드 블록, 환영 화면)
+### 2026-01-27
+- IPC `checkConnection`, `sendUserInput` 메서드 app.ts에 추가
+- 서브에이전트 10개 구성 (architect, coder, debugger, reviewer, tester + 지식 5개)
+- 개발 문서 정리
 
 ---
 
-## Known Limitations
-
-1. **실시간 스트리밍 불가**: CLI가 응답을 한 번에 보냄 (글자별 스트리밍 X)
-2. ~~**AskUser 미지원**: Claude가 사용자 선택을 요구할 때 UI에 표시 안 됨~~ ✅ 해결
-3. ~~**대화 컨텍스트**: CLI 세션이 독립적이라 이전 대화 컨텍스트 전달 안 됨~~ ✅ 해결 (프롬프트에 포함)
-
----
-
-## Code Quality & Refactoring Analysis
-
-### 파일별 분석
-
-| File | Lines | Status | Notes |
-|------|-------|--------|-------|
-| `claudeService.ts` | ~690 | ⚠️ Large | CLI 핸들링 + 세션 + 스토리지 혼재 |
-| `claudeChatView.ts` | ~670 | ⚠️ Large | UI + 드래그드롭 + 첨부파일 혼재 |
-| `claudeMessageRenderer.ts` | ~450 | ✅ OK | 잘 구조화됨 |
-| `claudeCLIService.ts` | ~260 | ✅ OK | debugLog 정리 필요 |
-| `claudeTypes.ts` | ~140 | ✅ OK | 타입 정의 깔끔 |
-| `claude.ts` | ~90 | ✅ OK | 인터페이스 깔끔 |
-| `claudeCLI.ts` | ~90 | ✅ OK | CLI 인터페이스 깔끔 |
-| `claudeCLIChannel.ts` | ~50 | ✅ OK | IPC 채널 정의 |
-
-### 리팩토링 권장사항 (우선순위순)
-
-#### P2 - 중기 개선
-1. **ClaudeService 분리**
-   - `ClaudeSessionManager` - 세션/스토리지 관리
-   - `ClaudeCLIEventHandler` - CLI 이벤트 처리
-   - 현재 ~700줄 → 각 ~250줄로 분리
-
-2. **ClaudeChatView 분리**
-   - `ClaudeAttachmentManager` - 첨부파일 관리
-   - 드래그/드롭 로직 헬퍼화
-
-#### P3 - 장기 정리 ✅ 완료
-3. **로깅 정리** ✅
-   - `console.log` → 로그 레벨 시스템으로 변경 ✅
-   - `IClaudeLogService` 구현 (파일 + 콘솔 로깅) ✅
-   - 로그 위치: `.vscode/claude-logs/claude-YYYY-MM-DD.log` ✅
-
-4. **네이밍 일관성**
-   - 폴더: `kent/` vs 파일: `claude*`
-   - 현재 의도적 분리이나 문서화 필요
-
-### 현재 판단
-- **즉시 리팩토링 불필요**: 작동하고 유지보수 가능
-- **기능 추가 시점에 분리 고려**: 코드가 더 커지면 자연스럽게 분리
-
----
-
-## Next Steps
-
-1. ~~**AskUser 이벤트 처리**~~ ✅ 완료
-
-2. ~~**대화 컨텍스트 전달**~~ ✅ 완료
-
-3. ~~**@ 멘션 시스템**~~ ✅ 완료 (Sprint 3)
-   - `@file`, `@workspace` 파싱
-   - 자동완성 UI
-   - 열린 파일 목록 표시
-
-4. ~~**/슬래시 커맨드**~~ ✅ 완료 (Sprint 3)
-   - `/explain`, `/fix`, `/test`, `/refactor`, `/docs`, `/optimize`
-
-5. ~~**Diff 뷰 Apply**~~ ✅ 완료 (Sprint 3)
-   - 코드 적용 전 변경사항 미리보기
-   - Accept/Reject 선택
-
-6. **향후 개선 사항** (Phase 4+)
-   - 파일 탐색기 통합 (파일 선택 다이얼로그)
-   - 컨텍스트 메뉴 통합
-   - 인라인 코드 제안
-
----
-
-**이 문서는 AI Agent 작업 재개 시 현재 상태 파악용으로 항상 최신 유지**
+**AI Agent 작업 재개 시 이 문서 먼저 확인**
