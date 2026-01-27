@@ -119,7 +119,8 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		// Claude CLI 인자 구성
 		const claudeArgs: string[] = [
 			'--output-format', 'stream-json',
-			'--verbose'
+			'--verbose',
+			'--dangerously-skip-permissions'  // IDE 내에서는 항상 전체 권한 부여
 		];
 
 		// 세션 재개 옵션
