@@ -564,7 +564,7 @@ export class ClaudeMessageRenderer extends Disposable {
 			summaryParts.push(localize('filesDeleted', "{0} deleted", fileChanges.filesDeleted));
 		}
 
-		const fileIcon = append(summary, $('.codicon.codicon-files'));
+		append(summary, $('.codicon.codicon-files'));
 		const summaryText = append(summary, $('span'));
 		summaryText.textContent = summaryParts.join(', ');
 
@@ -657,7 +657,7 @@ export class ClaudeMessageRenderer extends Disposable {
 
 			// Revert 버튼
 			if (this.options.onRevertFile && !change.reverted) {
-				const revertButton = append(buttons, $('button.claude-file-button.revert'));
+				const revertButton = append(buttons, $('button.claude-file-button.revert')) as HTMLButtonElement;
 				revertButton.title = localize('revertFile', "Revert changes");
 				append(revertButton, $('.codicon.codicon-discard'));
 

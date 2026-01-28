@@ -22,7 +22,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IViewPaneOptions, ViewPane } from '../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../common/views.js';
 import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, IClaudeFileChange } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage } from '../../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
