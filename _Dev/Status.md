@@ -69,11 +69,17 @@ yarn compile          # 빌드
 
 ## Remaining
 
-- [ ] 실시간 글자별 스트리밍 (CLI 제한)
-- [ ] 파일 탐색기에서 파일 선택
-- [ ] 컨텍스트 메뉴 통합
-- [ ] 세션 전체 변경사항 히스토리
-- [ ] Accept/Reject 변경사항 UI
+### 🎯 VS Code 확장 기능 (Claude CLI 독립적)
+- [ ] 파일 탐색기 우클릭 → Claude로 전송
+- [ ] 에디터 컨텍스트 메뉴 통합
+- [ ] 세션별 변경사항 히스토리 관리
+- [ ] Accept/Reject 변경사항 배치 UI
+- [ ] 워크스페이스 파일 자동 인덱싱
+
+### ✅ 이미 지원됨 (Claude CLI 기본 기능)
+- [x] **실시간 스트리밍**: `--output-format stream-json` 이미 구현됨
+- [x] **세션 관리**: `--resume`, `--continue` 지원
+- [x] **도구 제한**: `--allowed-tools` 설정 가능
 
 ---
 

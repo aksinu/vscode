@@ -13,22 +13,24 @@ GitHub Copilot 대신 Claude를 기본 AI 어시스턴트로 사용하며, Claud
 
 ## Goals
 
-### Primary (Phase 1 - 채팅창 구현)
-- [ ] Claude 채팅 패널 UI 구현
-- [ ] Anthropic API 연동
-- [ ] 기본 대화 기능 (멀티턴)
-- [ ] 코드 컨텍스트 전달 (선택 영역, 현재 파일)
+### Primary (Phase 1 - 기본 채팅) ✅ 완료
+- [x] Claude 채팅 패널 UI 구현
+- [x] Claude CLI 연동 (IPC)
+- [x] 기본 대화 기능 (멀티턴)
+- [x] 코드 컨텍스트 전달 (파일 첨부, 선택 영역)
 
-### Secondary (Phase 2 - 편의기능)
-- [ ] 인라인 코드 제안
-- [ ] 코드 설명 / 리팩토링 액션
-- [ ] 파일 탐색 컨텍스트 연동
-- [ ] 터미널 통합
+### Secondary (Phase 2-4 - 고급 기능) ✅ 대부분 완료
+- [x] 실시간 스트리밍, 마크다운 렌더링
+- [x] 코드 블록 (Copy/Insert/Apply), Diff 뷰
+- [x] 파일 변경 추적, 되돌리기
+- [x] Rate limit 처리, AskUser 상호작용
+- [x] 세션 관리, 대화 기록
 
-### Future (Phase 3 - 고급기능)
-- [ ] Agent 모드 (파일 생성/수정)
-- [ ] MCP 서버 연동
-- [ ] 프로젝트 전체 컨텍스트
+### VS Code 확장 기능 (Claude CLI 독립적)
+- [ ] 파일 탐색기 우클릭 연동
+- [ ] 에디터 컨텍스트 메뉴
+- [ ] 워크스페이스 파일 자동 인덱싱
+- [ ] 실시간 문제(Problems) 패널 연동
 
 ---
 

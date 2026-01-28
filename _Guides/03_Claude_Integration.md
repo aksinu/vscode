@@ -134,53 +134,51 @@ export interface IClaudeConfig {
 
 ---
 
-## API Integration
+## Claude CLI Integration ✅ 현재 구현
 
-### Anthropic API Client
+### IPC 기반 CLI 연동
 
 ```typescript
-// browser/claudeApiClient.ts
+// electron-main/claudeCLIService.ts - Main Process
+export class ClaudeCLIService {
+    private childProcess?: ChildProcess;
 
-export class ClaudeApiClient {
-    private readonly baseUrl = 'https://api.anthropic.com/v1';
+    sendPrompt(prompt: string, options?: IClaudeCLIRequestOptions): Promise<void> {
+        const args = [
+            '--print',
+            '--output-format', 'stream-json',
+            '--model', options?.model || 'sonnet',
+            '--max-tokens', (options?.maxTokens || 4096).toString()
+        ];
 
-    constructor(
-        private apiKey: string,
-        private model: string
-    ) {}
-
-    async createMessage(
-        messages: Array<{ role: string; content: string }>,
-        options?: { maxTokens?: number; system?: string }
-    ): Promise<{ content: string }> {
-        const response = await fetch(`${this.baseUrl}/messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': this.apiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: this.model,
-                max_tokens: options?.maxTokens || 4096,
-                system: options?.system,
-                messages
-            })
+        this.childProcess = spawn('claude', args, {
+            cwd: options?.workingDir || process.cwd(),
+            stdio: ['pipe', 'pipe', 'pipe']
         });
 
-        const data = await response.json();
-        return { content: data.content[0].text };
-    }
+        // stdin으로 프롬프트 전송
+        this.childProcess.stdin?.write(prompt + '\n');
+        this.childProcess.stdin?.end();
 
-    // Streaming version
-    async *streamMessage(
-        messages: Array<{ role: string; content: string }>,
-        options?: { maxTokens?: number; system?: string }
-    ): AsyncGenerator<string> {
-        // SSE 스트리밍 구현
+        // stdout 스트림 처리
+        this.childProcess.stdout?.on('data', this.handleStreamData.bind(this));
+    }
+}
+
+// browser/claudeService.ts - Renderer Process
+export class ClaudeService {
+    sendMessage(content: string): Promise<void> {
+        // IPC로 Main Process의 CLI 서비스 호출
+        return this.claudeCLIChannel.call('sendPrompt', content);
     }
 }
 ```
+
+### ✅ 장점: Claude CLI 사용
+- **도구 지원**: Write, Edit, Bash, Grep 등 내장 도구
+- **스트리밍**: `--output-format stream-json`으로 실시간 응답
+- **세션 관리**: `--resume`, `--continue` 지원
+- **권한 관리**: 자동 권한 요청 시스템
 
 ---
 

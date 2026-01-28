@@ -22,7 +22,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IViewPaneOptions, ViewPane } from '../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../common/views.js';
 import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, IClaudeToolAction } from '../../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
@@ -58,6 +58,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private dropOverlay!: HTMLElement;
 	private openFilesContainer!: HTMLElement;
 	private statusBarContainer!: HTMLElement;
+	private toolStatusContainer!: HTMLElement;
 	private sendButton!: HTMLButtonElement;
 	private autocompleteContainer!: HTMLElement;
 	private autocompleteManager!: AutocompleteManager;
@@ -173,6 +174,14 @@ export class ClaudeChatViewPane extends ViewPane {
 		this._register(this.claudeService.onDidChangeQueue(queue => {
 			this.updateQueueUI(queue);
 		}));
+
+		// 도구 실행 상태 변경 이벤트
+		const onToolActionChanged = this.claudeService.onDidChangeToolAction;
+		if (onToolActionChanged) {
+			this._register(onToolActionChanged(action => {
+				this.updateToolStatus(action);
+			}));
+		}
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -222,6 +231,10 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 큐 표시 영역 (입력창 위)
 		this.queueContainer = append(this.container, $('.claude-queue-container'));
 		this.queueContainer.style.display = 'none';
+
+		// 도구 실행 상태 표시 영역 (입력창 위)
+		this.toolStatusContainer = append(this.container, $('.claude-tool-status-bar'));
+		this.toolStatusContainer.style.display = 'none';
 
 		// 로컬 설정 매니저
 		this.localSettingsManager = new LocalSettingsManager(
@@ -327,6 +340,78 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.loadingElement.style.display = loading ? 'flex' : 'none';
 		if (loading) {
 			this.scrollToBottom();
+		}
+	}
+
+	private updateToolStatus(action: IClaudeToolAction | undefined): void {
+		// 기존 내용 초기화
+		while (this.toolStatusContainer.firstChild) {
+			this.toolStatusContainer.removeChild(this.toolStatusContainer.firstChild);
+		}
+
+		if (!action || action.status !== 'running') {
+			this.toolStatusContainer.style.display = 'none';
+			return;
+		}
+
+		this.toolStatusContainer.style.display = 'flex';
+
+		// 스피너
+		const spinner = append(this.toolStatusContainer, $('.claude-tool-status-spinner'));
+		spinner.classList.add('codicon', 'codicon-loading', 'codicon-modifier-spin');
+
+		// 도구 이름
+		const toolName = append(this.toolStatusContainer, $('.claude-tool-status-name'));
+		toolName.textContent = this.getToolDisplayName(action.tool);
+
+		// 입력 파라미터 (있으면)
+		if (action.input) {
+			const toolInput = append(this.toolStatusContainer, $('.claude-tool-status-input'));
+			toolInput.textContent = this.formatToolInput(action.tool, action.input);
+		}
+	}
+
+	private getToolDisplayName(tool: string): string {
+		const toolNames: Record<string, string> = {
+			'Read': 'Reading file',
+			'Write': 'Writing file',
+			'Edit': 'Editing file',
+			'Bash': 'Running command',
+			'Grep': 'Searching code',
+			'Glob': 'Finding files',
+			'WebFetch': 'Fetching URL',
+			'WebSearch': 'Searching web',
+			'Task': 'Running task',
+			'TodoWrite': 'Writing todos',
+			'TaskCreate': 'Creating task',
+			'TaskUpdate': 'Updating task',
+			'AskUser': 'Asking question'
+		};
+		return toolNames[tool] || tool;
+	}
+
+	private formatToolInput(tool: string, input: Record<string, unknown>): string {
+		switch (tool) {
+			case 'Read':
+				return String(input['file_path'] || input['path'] || '').split(/[/\\]/).pop() || '';
+			case 'Write':
+			case 'Edit':
+				return String(input['file_path'] || input['path'] || '').split(/[/\\]/).pop() || '';
+			case 'Bash':
+				const cmd = String(input['command'] || '');
+				return cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd;
+			case 'Grep':
+				return `"${input['pattern'] || ''}"`;
+			case 'Glob':
+				return String(input['pattern'] || '');
+			case 'WebFetch':
+			case 'WebSearch':
+				return String(input['url'] || input['query'] || '');
+			case 'TodoWrite':
+			case 'TaskCreate':
+				return String(input['subject'] || '');
+			default:
+				return '';
 		}
 	}
 
@@ -507,14 +592,14 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 입력 초기화
 		this.inputEditorManager.setValue('');
 
-		// 현재 에디터 컨텍스트 가져오기
-		const context = this.getEditorContext();
+		// 컨텍스트: 수동 첨부파일만 포함 (자동 컨텍스트 비활성화)
+		let context: { attachments?: IClaudeAttachment[] } | undefined;
 
-		// 첨부파일 추가
+		// 첨부파일이 있을 때만 컨텍스트 생성
 		if (this.attachmentManager.count > 0) {
-			if (context) {
-				(context as { attachments?: IClaudeAttachment[] }).attachments = [...this.attachmentManager.attachments];
-			}
+			context = {
+				attachments: [...this.attachmentManager.attachments]
+			};
 		}
 
 		// 첨부파일 초기화
@@ -526,31 +611,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		} catch (error) {
 			// 에러는 서비스에서 처리됨
 		}
-	}
-
-	private getEditorContext(): { selection?: string; filePath?: URI; language?: string } | undefined {
-		const editor = this.editorService.activeTextEditorControl;
-		if (!editor || !('getModel' in editor)) {
-			return undefined;
-		}
-
-		const codeEditor = editor as ICodeEditor;
-		const model = codeEditor.getModel();
-		const selection = codeEditor.getSelection();
-
-		if (!model) {
-			return undefined;
-		}
-
-		const selectedText = selection && !selection.isEmpty()
-			? model.getValueInRange(selection)
-			: undefined;
-
-		return {
-			selection: selectedText,
-			filePath: model.uri,
-			language: model.getLanguageId()
-		};
 	}
 
 	private appendMessage(message: IClaudeMessage): void {

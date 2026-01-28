@@ -129,6 +129,9 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		if (options?.resumeSessionId) {
 			claudeArgs.push('--resume', options.resumeSessionId);
 			debugLog(' Resuming session:', options.resumeSessionId);
+		} else if (options?.continueLastSession) {
+			claudeArgs.push('--continue');
+			debugLog(' Continuing last session');
 		}
 
 		// 옵션 추가

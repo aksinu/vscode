@@ -677,7 +677,53 @@
 	background-color: var(--vscode-toolbar-hoverBackground);
 }
 
-/* ========== Tool Actions ========== */
+/* ========== Tool Status Bar (하단 고정) ========== */
+
+.claude-tool-status-bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	background-color: var(--vscode-textBlockQuote-background);
+	border-top: 1px solid var(--vscode-widget-border);
+	border-left: 3px solid var(--vscode-textLink-foreground);
+	flex-shrink: 0;
+	animation: claude-tool-status-appear 0.2s ease-out;
+}
+
+@keyframes claude-tool-status-appear {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.claude-tool-status-spinner {
+	font-size: 14px;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-tool-status-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-tool-status-input {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-editor-font-family);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 300px;
+}
+
+/* ========== Tool Actions (메시지 내) ========== */
 
 .claude-tool-status {
 	margin-bottom: 12px;
@@ -1227,6 +1273,7 @@
 .claude-open-files {
 	display: flex;
 	flex-wrap: wrap;
+	flex-shrink: 0;
 	gap: 6px;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--vscode-widget-border);

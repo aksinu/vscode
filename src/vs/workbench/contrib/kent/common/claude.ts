@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary } from './claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, IClaudeToolAction } from './claudeTypes.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
@@ -157,6 +157,11 @@ export interface IClaudeService {
 	 * Claude 상태 정보 변경 이벤트
 	 */
 	readonly onDidChangeStatusInfo?: Event<IClaudeStatusInfo>;
+
+	/**
+	 * 도구 실행 상태 변경 이벤트
+	 */
+	readonly onDidChangeToolAction?: Event<IClaudeToolAction | undefined>;
 
 	/**
 	 * Claude 상태 정보 가져오기

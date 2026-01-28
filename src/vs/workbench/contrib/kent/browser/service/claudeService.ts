@@ -87,6 +87,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private readonly _onDidChangeStatusInfo = this._register(new Emitter<IClaudeStatusInfo>());
 	readonly onDidChangeStatusInfo: Event<IClaudeStatusInfo> = this._onDidChangeStatusInfo.event;
 
+	private readonly _onDidChangeToolAction = this._register(new Emitter<IClaudeToolAction | undefined>());
+	readonly onDidChangeToolAction: Event<IClaudeToolAction | undefined> = this._onDidChangeToolAction.event;
+
 	constructor(
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IMainProcessService mainProcessService: IMainProcessService,
@@ -199,7 +202,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				}
 			},
 			getCurrentToolAction: () => this._currentToolAction,
-			setCurrentToolAction: (action) => { this._currentToolAction = action; },
+			setCurrentToolAction: (action) => {
+				this._currentToolAction = action;
+				this._onDidChangeToolAction.fire(action);
+			},
 
 			// AskUser
 			getCurrentAskUserRequest: () => this._currentAskUserRequest,
@@ -467,13 +473,33 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._sessionManager.startNewSession();
 		}
 
+		// --continue 플래그 감지
+		let continueLastSession = false;
+		let actualContent = content;
+
+		if (content.trim().startsWith('--continue') || content.trim().startsWith('-c ')) {
+			continueLastSession = true;
+			// --continue 이후의 텍스트를 프롬프트로 사용
+			actualContent = content.trim()
+				.replace(/^--continue\s*/, '')
+				.replace(/^-c\s*/, '')
+				.trim();
+
+			// 프롬프트가 없으면 빈 문자열 (CLI가 이전 대화 로드)
+			if (!actualContent) {
+				actualContent = '';
+			}
+
+			this.logService.info(ClaudeService.LOG_CATEGORY, 'Continue mode detected, prompt:', actualContent || '(empty)');
+		}
+
 		// 파일 스냅샷 매니저 초기화 - 새 명령 시작
 		const workingDir = this._localConfig.workingDirectory
 			? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
 			: this.getWorkspaceRoot();
 		this._fileSnapshotManager.startCommand(workingDir);
 
-		// 사용자 메시지 추가
+		// 사용자 메시지 추가 (원본 content 사용)
 		const userMessage: IClaudeMessage = {
 			id: generateUuid(),
 			role: 'user',
@@ -488,12 +514,19 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 사용자 메시지 저장
 		this._sessionManager.saveSessions();
 
-		// 프롬프트 구성 - 이전 대화 컨텍스트 포함
-		const prompt = this._contextBuilder.buildPromptWithContext(
-			content,
-			this._sessionManager.getMessages(),
-			options?.context
-		);
+		// 프롬프트 구성 - continue 모드가 아닐 때만 컨텍스트 포함
+		let prompt: string;
+		if (continueLastSession) {
+			// continue 모드: actualContent만 사용 (빈 문자열 가능)
+			prompt = actualContent;
+		} else {
+			// 일반 모드: 이전 대화 컨텍스트 포함
+			prompt = this._contextBuilder.buildPromptWithContext(
+				content,
+				this._sessionManager.getMessages(),
+				options?.context
+			);
+		}
 
 		// 스트리밍 메시지 생성
 		this._currentMessageId = generateUuid();
@@ -533,7 +566,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				workingDir: this._localConfig.workingDirectory
 					? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
 					: this.getWorkspaceRoot(),
-				executable: this._localConfig.executable
+				executable: this._localConfig.executable,
+				continueLastSession
 			};
 
 			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)

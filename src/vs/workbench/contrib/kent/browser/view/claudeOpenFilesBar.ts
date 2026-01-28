@@ -36,6 +36,7 @@ export class OpenFilesBar {
 	update(): void {
 		// 초기화 전이면 무시
 		if (!this.container) {
+			console.log('[OpenFilesBar] No container');
 			return;
 		}
 
@@ -48,8 +49,11 @@ export class OpenFilesBar {
 		const openEditors = this.editorService.editors;
 		const uniqueFiles = new Map<string, URI>();
 
+		console.log('[OpenFilesBar] Total editors:', openEditors.length);
+
 		for (const editor of openEditors) {
 			const resource = editor.resource;
+			console.log('[OpenFilesBar] Editor resource:', resource?.toString(), 'scheme:', resource?.scheme);
 			if (resource && resource.scheme === 'file') {
 				const key = resource.toString();
 				if (!uniqueFiles.has(key)) {
@@ -57,6 +61,8 @@ export class OpenFilesBar {
 				}
 			}
 		}
+
+		console.log('[OpenFilesBar] Unique files:', uniqueFiles.size);
 
 		// 열린 파일이 없으면 숨김
 		if (uniqueFiles.size === 0) {
