@@ -8,7 +8,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { RateLimitManager } from './claudeRateLimitManager.js';
 import { IStorageService } from '../../../../../platform/storage/common/storage.js';
@@ -20,8 +20,12 @@ import { ClaudeConnection } from './claudeConnection.js';
 import { CLIEventHandler } from './claudeCLIEventHandler.js';
 import { ClaudeSessionManager } from './claudeSessionManager.js';
 import { ClaudeContextBuilder } from './claudeContextBuilder.js';
+import { FileSnapshotManager } from './claudeFileSnapshot.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
+import { IModelService } from '../../../../../editor/common/services/model.js';
+import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -56,6 +60,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// 컨텍스트 빌더
 	private readonly _contextBuilder: ClaudeContextBuilder;
 
+	// 파일 스냅샷 매니저 (Diff 용)
+	private readonly _fileSnapshotManager: FileSnapshotManager;
+
 	// Status 관련
 	private _extendedThinking = false;
 
@@ -86,7 +93,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		@IStorageService storageService: IStorageService,
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
-		@IClaudeLogService private readonly logService: IClaudeLogService
+		@IClaudeLogService private readonly logService: IClaudeLogService,
+		@IModelService private readonly modelService: IModelService,
+		@ITextModelService private readonly textModelService: ITextModelService,
+		@IEditorService private readonly editorService: IEditorService
 	) {
 		super();
 
@@ -100,6 +110,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		// 컨텍스트 빌더 생성
 		this._contextBuilder = new ClaudeContextBuilder();
+
+		// 파일 스냅샷 매니저 생성
+		this._fileSnapshotManager = this._register(new FileSnapshotManager(
+			this.fileService,
+			this.modelService,
+			this.textModelService,
+			this.editorService,
+			this.logService
+		));
 
 		// 연결 관리자 생성
 		this._connection = this._register(new ClaudeConnection(mainProcessService, this.logService));
@@ -226,7 +245,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// Usage
 			getUsage: () => this._usage,
-			setUsage: (usage) => { this._usage = usage; }
+			setUsage: (usage) => { this._usage = usage; },
+
+			// File Snapshot (Diff 용)
+			captureFileBeforeEdit: (filePath) => this._fileSnapshotManager.captureBeforeEdit(filePath),
+			captureFileAfterEdit: (filePath) => this._fileSnapshotManager.captureAfterEdit(filePath),
+			onCommandComplete: () => this.handleCommandComplete()
 		}, this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
 
@@ -443,6 +467,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._sessionManager.startNewSession();
 		}
 
+		// 파일 스냅샷 매니저 초기화 - 새 명령 시작
+		const workingDir = this._localConfig.workingDirectory
+			? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
+			: this.getWorkspaceRoot();
+		this._fileSnapshotManager.startCommand(workingDir);
+
 		// 사용자 메시지 추가
 		const userMessage: IClaudeMessage = {
 			id: generateUuid(),
@@ -657,5 +687,65 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._extendedThinking = !this._extendedThinking;
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Extended thinking:', this._extendedThinking ? 'ON' : 'OFF');
 		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+	}
+
+	// ========== File Snapshot / Diff ==========
+
+	/**
+	 * 명령 완료 시 호출 - 변경된 파일 정보 수집
+	 */
+	private async handleCommandComplete(): Promise<void> {
+		const changesSummary = this._fileSnapshotManager.getChangesSummary();
+		this.logService.debug(ClaudeService.LOG_CATEGORY, `Command complete, ${changesSummary.changes.length} files changed`);
+
+		// 현재 메시지에 파일 변경사항 추가
+		if (changesSummary.changes.length > 0 && this._currentMessageId && this._sessionManager.hasCurrentSession()) {
+			const messages = this._sessionManager.getMessages();
+			const currentMessage = messages.find(m => m.id === this._currentMessageId);
+
+			if (currentMessage) {
+				const updatedMessage: IClaudeMessage = {
+					...currentMessage,
+					fileChanges: changesSummary
+				};
+				this._sessionManager.updateMessage(updatedMessage);
+				this._onDidUpdateMessage.fire(updatedMessage);
+			}
+		}
+	}
+
+	/**
+	 * 변경된 파일 목록 가져오기
+	 */
+	getChangedFiles(): IClaudeFileChange[] {
+		return this._fileSnapshotManager.getChangedFiles();
+	}
+
+	/**
+	 * 변경사항 요약 가져오기
+	 */
+	getFileChangesSummary(): IClaudeFileChangesSummary {
+		return this._fileSnapshotManager.getChangesSummary();
+	}
+
+	/**
+	 * 특정 파일의 Diff 표시
+	 */
+	async showFileDiff(fileChange: IClaudeFileChange): Promise<void> {
+		await this._fileSnapshotManager.showDiff(fileChange);
+	}
+
+	/**
+	 * 파일 변경사항 되돌리기
+	 */
+	async revertFile(fileChange: IClaudeFileChange): Promise<boolean> {
+		return this._fileSnapshotManager.revertFile(fileChange.filePath);
+	}
+
+	/**
+	 * 모든 파일 변경사항 되돌리기
+	 */
+	async revertAllFiles(): Promise<number> {
+		return this._fileSnapshotManager.revertAll();
 	}
 }

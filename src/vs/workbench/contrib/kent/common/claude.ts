@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo } from './claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary } from './claudeTypes.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
@@ -172,4 +172,31 @@ export interface IClaudeService {
 	 * Extended Thinking 토글
 	 */
 	toggleExtendedThinking?(): Promise<void>;
+
+	// ========== File Changes ==========
+
+	/**
+	 * 변경된 파일 목록 가져오기
+	 */
+	getChangedFiles?(): IClaudeFileChange[];
+
+	/**
+	 * 변경사항 요약 가져오기
+	 */
+	getFileChangesSummary?(): IClaudeFileChangesSummary;
+
+	/**
+	 * 특정 파일의 Diff 표시
+	 */
+	showFileDiff?(fileChange: IClaudeFileChange): Promise<void>;
+
+	/**
+	 * 파일 변경사항 되돌리기
+	 */
+	revertFile?(fileChange: IClaudeFileChange): Promise<boolean>;
+
+	/**
+	 * 모든 파일 변경사항 되돌리기
+	 */
+	revertAllFiles?(): Promise<number>;
 }

@@ -66,6 +66,11 @@ export interface ICLIEventHandlerCallbacks {
 	// Usage
 	getUsage(): IClaudeUsageInfo | undefined;
 	setUsage(usage: IClaudeUsageInfo | undefined): void;
+
+	// File Snapshot (Diff 용)
+	captureFileBeforeEdit(filePath: string): Promise<void>;
+	captureFileAfterEdit(filePath: string): Promise<void>;
+	onCommandComplete(): Promise<void>;
 }
 
 /**
@@ -205,6 +210,9 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCliSessionId(undefined);
 		this.callbacks.setUsage(undefined);
 
+		// 파일 변경사항 Diff 표시
+		this.callbacks.onCommandComplete();
+
 		// 큐에 대기 중인 메시지 처리
 		this.callbacks.processQueue();
 	}
@@ -325,8 +333,47 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCurrentToolAction(toolAction);
 		this.callbacks.addToolAction(toolAction);
 
+		// 파일 수정 도구인 경우 스냅샷 캡처
+		if (this.isFileModifyTool(toolName)) {
+			const filePath = this.extractFilePath(toolName, event.tool_input);
+			if (filePath) {
+				this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Capturing file before edit:', filePath);
+				this.callbacks.captureFileBeforeEdit(filePath);
+			}
+		}
+
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use started:', toolAction.tool, toolAction.input);
 		this.updateCurrentMessage();
+	}
+
+	/**
+	 * 파일 수정 도구인지 확인
+	 */
+	private isFileModifyTool(toolName: string): boolean {
+		return ['Edit', 'Write', 'NotebookEdit'].includes(toolName);
+	}
+
+	/**
+	 * 도구 입력에서 파일 경로 추출
+	 */
+	private extractFilePath(toolName: string, input: unknown): string | undefined {
+		if (!input || typeof input !== 'object') {
+			return undefined;
+		}
+
+		const inputObj = input as Record<string, unknown>;
+
+		// Edit, Write: file_path
+		if (inputObj.file_path && typeof inputObj.file_path === 'string') {
+			return inputObj.file_path;
+		}
+
+		// NotebookEdit: notebook_path
+		if (inputObj.notebook_path && typeof inputObj.notebook_path === 'string') {
+			return inputObj.notebook_path;
+		}
+
+		return undefined;
 	}
 
 	private handleAskUserQuestion(event: IClaudeCLIStreamEvent): void {
@@ -446,6 +493,15 @@ export class CLIEventHandler extends Disposable {
 				output: event.tool_result,
 				error: event.is_error ? event.tool_result : undefined
 			});
+
+			// 파일 수정 도구의 결과인 경우 수정 후 내용 캡처
+			if (this.isFileModifyTool(currentToolAction.tool) && !event.is_error) {
+				const filePath = this.extractFilePath(currentToolAction.tool, currentToolAction.input);
+				if (filePath) {
+					this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Capturing file after edit:', filePath);
+					this.callbacks.captureFileAfterEdit(filePath);
+				}
+			}
 
 			this.callbacks.setCurrentToolAction(undefined);
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use completed:', currentToolAction.tool);

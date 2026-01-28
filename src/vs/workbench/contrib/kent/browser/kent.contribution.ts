@@ -95,8 +95,8 @@ configurationRegistry.registerConfiguration({
 		},
 		'claude.systemPrompt': {
 			type: 'string',
-			default: 'You are a helpful coding assistant. Provide clear, concise answers with code examples when appropriate.',
-			description: localize('claude.systemPrompt', "System prompt for Claude")
+			default: '',  // 빈 문자열 = Claude CLI 자체 시스템 프롬프트 사용
+			description: localize('claude.systemPrompt', "System prompt for Claude (leave empty to use Claude CLI default)")
 		},
 		'claude.fontSize': {
 			type: 'number',

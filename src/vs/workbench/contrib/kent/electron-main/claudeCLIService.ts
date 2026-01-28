@@ -90,6 +90,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 	private _process: ChildProcess | undefined;
 	private _isRunning = false;
 	private _stdinOpen = false;
+	private _receivedResult = false;  // result 이벤트 수신 여부
 
 	private readonly _onDidReceiveData = this._register(new Emitter<IClaudeCLIStreamEvent>());
 	readonly onDidReceiveData: Event<IClaudeCLIStreamEvent> = this._onDidReceiveData.event;
@@ -113,6 +114,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		}
 
 		this._isRunning = true;
+		this._receivedResult = false;  // 리셋
 
 		debugLog(`Starting with prompt length: ${prompt.length}, first 100 chars: ${prompt.substring(0, 100)}`);
 
@@ -133,8 +135,9 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		if (options?.model) {
 			claudeArgs.push('--model', options.model);
 		}
-		if (options?.systemPrompt && !options?.resumeSessionId) {
-			// 세션 재개 시에는 시스템 프롬프트 무시
+		// 시스템 프롬프트가 있고, 빈 문자열이 아니고, 세션 재개가 아닐 때만 전달
+		// 빈 문자열이면 Claude CLI 자체 시스템 프롬프트 사용
+		if (options?.systemPrompt && options.systemPrompt.trim() !== '' && !options?.resumeSessionId) {
 			claudeArgs.push('--system-prompt', options.systemPrompt);
 		}
 		if (options?.allowedTools && options.allowedTools.length > 0) {
@@ -205,6 +208,13 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 					try {
 						const parsed = JSON.parse(line) as IClaudeCLIStreamEvent;
 						debugLog(' Parsed event type:', parsed.type);
+
+						// result 이벤트 수신 시 플래그 설정
+						if (parsed.type === 'result') {
+							this._receivedResult = true;
+							debugLog(' Result event received, marking as complete');
+						}
+
 						this._onDidReceiveData.fire(parsed);
 					} catch {
 						debugLog(' JSON parse failed, treating as text');
@@ -238,18 +248,27 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			});
 
 			debugLog(' Registering close handler...');
-			this._process.on('close', (code) => {
-				debugLog(' Process closed with code:', code);
+			this._process.on('close', (code, signal) => {
+				debugLog(' Process closed with code:', code, 'signal:', signal);
 				this._isRunning = false;
 				this._stdinOpen = false;
 				this._process = undefined;
 				this.cleanupPromptFile();
 
-				if (code === 0) {
+				// 정상 종료 조건:
+				// 1. code === 0
+				// 2. code === null이지만 이미 result를 받은 경우 (시그널에 의한 정상 종료)
+				const isSuccess = code === 0 || (code === null && this._receivedResult);
+
+				if (isSuccess) {
+					debugLog(' Process completed successfully (receivedResult:', this._receivedResult, ')');
 					this._onDidComplete.fire();
 					resolve();
 				} else {
-					const errorMsg = `Claude CLI exited with code ${code}`;
+					const errorMsg = signal
+						? `Claude CLI terminated by signal ${signal}`
+						: `Claude CLI exited with code ${code}`;
+					debugLog(' Process failed:', errorMsg);
 					this._onDidError.fire(errorMsg);
 					reject(new Error(errorMsg));
 				}
@@ -377,6 +396,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			this._process = undefined;
 			this._isRunning = false;
 			this._stdinOpen = false;
+			this._receivedResult = false;
 			this.cleanupPromptFile();
 		}
 	}

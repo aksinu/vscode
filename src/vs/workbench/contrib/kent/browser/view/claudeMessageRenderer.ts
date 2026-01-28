@@ -12,7 +12,7 @@ import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { localize } from '../../../../../nls.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { ITextModel } from '../../../../../editor/common/model.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
@@ -20,6 +20,9 @@ import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
 export interface IClaudeMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string) => void;
 	readonly onRespondToAskUser?: (responses: string[]) => void;
+	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
+	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
+	readonly onRevertAllFiles?: () => Promise<number>;
 }
 
 export class ClaudeMessageRenderer extends Disposable {
@@ -123,6 +126,11 @@ export class ClaudeMessageRenderer extends Disposable {
 		// 토큰 사용량 표시 (assistant 메시지, 스트리밍 완료 후)
 		if (message.role === 'assistant' && !message.isStreaming && message.usage) {
 			this.renderUsageInfo(message.usage, messageElement);
+		}
+
+		// 파일 변경사항 표시 (assistant 메시지, 스트리밍 완료 후)
+		if (message.role === 'assistant' && !message.isStreaming && message.fileChanges && message.fileChanges.changes.length > 0) {
+			this.renderFileChanges(message.fileChanges, messageElement, disposables);
 		}
 
 		return disposables;
@@ -531,5 +539,162 @@ export class ClaudeMessageRenderer extends Disposable {
 			return (num / 1000).toFixed(1) + 'K';
 		}
 		return num.toString();
+	}
+
+	private renderFileChanges(fileChanges: IClaudeFileChangesSummary, container: HTMLElement, disposables: DisposableStore): void {
+		const changesContainer = append(container, $('.claude-file-changes'));
+
+		// 헤더
+		const header = append(changesContainer, $('.claude-file-changes-header'));
+
+		// 토글 아이콘
+		const toggleIcon = append(header, $('.codicon.codicon-chevron-down'));
+
+		// 요약 정보
+		const summary = append(header, $('.claude-file-changes-summary'));
+		const summaryParts: string[] = [];
+
+		if (fileChanges.filesCreated > 0) {
+			summaryParts.push(localize('filesCreated', "{0} created", fileChanges.filesCreated));
+		}
+		if (fileChanges.filesModified > 0) {
+			summaryParts.push(localize('filesModified', "{0} modified", fileChanges.filesModified));
+		}
+		if (fileChanges.filesDeleted > 0) {
+			summaryParts.push(localize('filesDeleted', "{0} deleted", fileChanges.filesDeleted));
+		}
+
+		const fileIcon = append(summary, $('.codicon.codicon-files'));
+		const summaryText = append(summary, $('span'));
+		summaryText.textContent = summaryParts.join(', ');
+
+		// 라인 변경 요약
+		const lineStats = append(summary, $('.claude-file-changes-lines'));
+		if (fileChanges.totalLinesAdded > 0) {
+			const addedSpan = append(lineStats, $('span.added'));
+			addedSpan.textContent = `+${fileChanges.totalLinesAdded}`;
+		}
+		if (fileChanges.totalLinesRemoved > 0) {
+			const removedSpan = append(lineStats, $('span.removed'));
+			removedSpan.textContent = `-${fileChanges.totalLinesRemoved}`;
+		}
+
+		// Revert All 버튼
+		if (this.options.onRevertAllFiles && fileChanges.changes.length > 1) {
+			const revertAllButton = append(header, $('button.claude-file-changes-revert-all'));
+			revertAllButton.title = localize('revertAll', "Revert all changes");
+			append(revertAllButton, $('.codicon.codicon-discard'));
+			const revertAllText = append(revertAllButton, $('span'));
+			revertAllText.textContent = localize('revertAllLabel', "Revert All");
+
+			const revertAllHandler = async (e: MouseEvent) => {
+				e.stopPropagation();
+				if (this.options.onRevertAllFiles) {
+					const count = await this.options.onRevertAllFiles();
+					if (count > 0) {
+						this.notificationService.info(localize('revertedFiles', "Reverted {0} file(s)", count));
+						// UI에서 제거
+						changesContainer.remove();
+					}
+				}
+			};
+			revertAllButton.addEventListener('click', revertAllHandler);
+			disposables.add({ dispose: () => revertAllButton.removeEventListener('click', revertAllHandler) });
+		}
+
+		// 파일 목록
+		const fileList = append(changesContainer, $('.claude-file-changes-list'));
+
+		for (const change of fileChanges.changes) {
+			const fileItem = append(fileList, $('.claude-file-changes-item'));
+
+			// 상태 아이콘
+			const statusIcon = append(fileItem, $('.claude-file-status-icon'));
+			switch (change.changeType) {
+				case 'created':
+					statusIcon.classList.add('codicon', 'codicon-diff-added', 'created');
+					break;
+				case 'modified':
+					statusIcon.classList.add('codicon', 'codicon-diff-modified', 'modified');
+					break;
+				case 'deleted':
+					statusIcon.classList.add('codicon', 'codicon-diff-removed', 'deleted');
+					break;
+			}
+
+			// 파일명
+			const fileName = append(fileItem, $('.claude-file-name'));
+			fileName.textContent = change.fileName;
+			fileName.title = change.filePath;
+
+			// 라인 변경
+			const lineChanges = append(fileItem, $('.claude-file-line-changes'));
+			if (change.linesAdded > 0) {
+				const addedSpan = append(lineChanges, $('span.added'));
+				addedSpan.textContent = `+${change.linesAdded}`;
+			}
+			if (change.linesRemoved > 0) {
+				const removedSpan = append(lineChanges, $('span.removed'));
+				removedSpan.textContent = `-${change.linesRemoved}`;
+			}
+
+			// 버튼 그룹
+			const buttons = append(fileItem, $('.claude-file-buttons'));
+
+			// Diff 버튼
+			if (this.options.onShowFileDiff) {
+				const diffButton = append(buttons, $('button.claude-file-button'));
+				diffButton.title = localize('showDiff', "Show diff");
+				append(diffButton, $('.codicon.codicon-diff'));
+
+				const diffHandler = (e: MouseEvent) => {
+					e.stopPropagation();
+					this.options.onShowFileDiff?.(change);
+				};
+				diffButton.addEventListener('click', diffHandler);
+				disposables.add({ dispose: () => diffButton.removeEventListener('click', diffHandler) });
+			}
+
+			// Revert 버튼
+			if (this.options.onRevertFile && !change.reverted) {
+				const revertButton = append(buttons, $('button.claude-file-button.revert'));
+				revertButton.title = localize('revertFile', "Revert changes");
+				append(revertButton, $('.codicon.codicon-discard'));
+
+				const revertHandler = async (e: MouseEvent) => {
+					e.stopPropagation();
+					if (this.options.onRevertFile) {
+						const success = await this.options.onRevertFile(change);
+						if (success) {
+							fileItem.classList.add('reverted');
+							revertButton.disabled = true;
+							this.notificationService.info(localize('fileReverted', "Reverted: {0}", change.fileName));
+						}
+					}
+				};
+				revertButton.addEventListener('click', revertHandler);
+				disposables.add({ dispose: () => revertButton.removeEventListener('click', revertHandler) });
+			}
+
+			// 파일 클릭 시 Diff 표시
+			if (this.options.onShowFileDiff) {
+				const itemClickHandler = () => {
+					this.options.onShowFileDiff?.(change);
+				};
+				fileItem.addEventListener('click', itemClickHandler);
+				disposables.add({ dispose: () => fileItem.removeEventListener('click', itemClickHandler) });
+			}
+		}
+
+		// 토글 기능
+		let isCollapsed = false;
+		const headerClickHandler = () => {
+			isCollapsed = !isCollapsed;
+			fileList.style.display = isCollapsed ? 'none' : 'block';
+			toggleIcon.classList.toggle('codicon-chevron-down', !isCollapsed);
+			toggleIcon.classList.toggle('codicon-chevron-right', isCollapsed);
+		};
+		header.addEventListener('click', headerClickHandler);
+		disposables.add({ dispose: () => header.removeEventListener('click', headerClickHandler) });
 	}
 }

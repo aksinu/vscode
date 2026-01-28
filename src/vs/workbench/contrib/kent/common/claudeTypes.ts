@@ -80,6 +80,8 @@ export interface IClaudeMessage {
 	readonly isWaitingForUser?: boolean;
 	/** 토큰 사용량 (assistant 메시지에만 해당) */
 	readonly usage?: IClaudeUsageInfo;
+	/** 파일 변경사항 (assistant 메시지, 완료 후) */
+	readonly fileChanges?: IClaudeFileChangesSummary;
 }
 
 /**
@@ -201,4 +203,33 @@ export interface IClaudeAccountInfo {
 	readonly organization?: string;
 	readonly apiKeyConfigured: boolean;
 	readonly plan?: string;
+}
+
+/**
+ * 파일 변경 정보 (Claude가 수정한 파일)
+ */
+export interface IClaudeFileChange {
+	readonly filePath: string;
+	readonly fileName: string;
+	readonly changeType: 'created' | 'modified' | 'deleted';
+	readonly linesAdded: number;
+	readonly linesRemoved: number;
+	/** 원본 내용 (revert 용) */
+	readonly originalContent: string;
+	/** 수정된 내용 */
+	readonly modifiedContent: string;
+	/** 이미 revert 되었는지 */
+	reverted?: boolean;
+}
+
+/**
+ * 파일 변경 요약
+ */
+export interface IClaudeFileChangesSummary {
+	readonly filesCreated: number;
+	readonly filesModified: number;
+	readonly filesDeleted: number;
+	readonly totalLinesAdded: number;
+	readonly totalLinesRemoved: number;
+	readonly changes: IClaudeFileChange[];
 }

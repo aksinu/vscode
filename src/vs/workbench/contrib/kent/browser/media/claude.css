@@ -1372,3 +1372,193 @@
 .claude-input-container.disabled .claude-send-button {
 	cursor: not-allowed;
 }
+
+/* ========== File Changes ========== */
+
+.claude-file-changes {
+	margin-top: 16px;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	overflow: hidden;
+	background-color: var(--vscode-editor-background);
+}
+
+.claude-file-changes-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	background-color: var(--vscode-titleBar-activeBackground);
+	border-bottom: 1px solid var(--vscode-widget-border);
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-file-changes-header:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-file-changes-header > .codicon {
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	transition: transform 0.15s;
+}
+
+.claude-file-changes-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	font-size: 12px;
+	color: var(--vscode-foreground);
+}
+
+.claude-file-changes-summary > .codicon {
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-file-changes-lines {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 8px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+}
+
+.claude-file-changes-lines span.added {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.claude-file-changes-lines span.removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+.claude-file-changes-revert-all {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 10px;
+	border: none;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-file-changes-revert-all:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.claude-file-changes-revert-all .codicon {
+	font-size: 12px;
+}
+
+.claude-file-changes-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.claude-file-changes-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-file-changes-item:last-child {
+	border-bottom: none;
+}
+
+.claude-file-changes-item:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-file-changes-item.reverted {
+	opacity: 0.5;
+	text-decoration: line-through;
+}
+
+.claude-file-status-icon {
+	font-size: 14px;
+}
+
+.claude-file-status-icon.created {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.claude-file-status-icon.modified {
+	color: var(--vscode-gitDecoration-modifiedResourceForeground, #d29922);
+}
+
+.claude-file-status-icon.deleted {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+.claude-file-name {
+	flex: 1;
+	font-size: 13px;
+	color: var(--vscode-foreground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.claude-file-line-changes {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+}
+
+.claude-file-line-changes span.added {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.claude-file-line-changes span.removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+.claude-file-buttons {
+	display: flex;
+	gap: 4px;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+
+.claude-file-changes-item:hover .claude-file-buttons {
+	opacity: 1;
+}
+
+.claude-file-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-file-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-file-button.revert:hover {
+	color: var(--vscode-errorForeground);
+}
+
+.claude-file-button:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
