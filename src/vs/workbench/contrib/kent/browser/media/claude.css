@@ -1640,6 +1640,136 @@
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
+/* ========== Session Tabs ========== */
+
+.claude-session-tabs {
+	display: flex;
+	align-items: center;
+	padding: 0 4px;
+	background: var(--vscode-editorGroupHeader-tabsBackground);
+	border-bottom: 1px solid var(--vscode-widget-border);
+	min-height: 35px;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+
+.claude-session-tabs::-webkit-scrollbar {
+	height: 3px;
+}
+
+.claude-session-tabs::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 3px;
+}
+
+.claude-session-tabs-list {
+	display: flex;
+	flex: 1;
+	gap: 1px;
+	min-width: 0;
+}
+
+.claude-session-tab {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	background: var(--vscode-tab-inactiveBackground);
+	color: var(--vscode-tab-inactiveForeground);
+	border: none;
+	border-radius: 4px 4px 0 0;
+	cursor: pointer;
+	font-size: 12px;
+	max-width: 160px;
+	min-width: 80px;
+	transition: background-color 0.1s;
+	position: relative;
+}
+
+.claude-session-tab:hover {
+	background: var(--vscode-tab-hoverBackground);
+}
+
+.claude-session-tab.active {
+	background: var(--vscode-tab-activeBackground);
+	color: var(--vscode-tab-activeForeground);
+}
+
+.claude-session-tab.active::after {
+	content: '';
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 2px;
+	background: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+}
+
+.claude-session-tab-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.claude-session-tab-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	border-radius: 3px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.1s, background-color 0.1s;
+	flex-shrink: 0;
+}
+
+.claude-session-tab:hover .claude-session-tab-close {
+	opacity: 0.7;
+}
+
+.claude-session-tab-close:hover {
+	opacity: 1 !important;
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-session-tab-new {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: 4px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: opacity 0.1s, background-color 0.1s;
+	flex-shrink: 0;
+	margin-left: 4px;
+}
+
+.claude-session-tab-new:hover {
+	opacity: 1;
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-session-tab-rename-input {
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-focusBorder);
+	color: var(--vscode-input-foreground);
+	font-size: 12px;
+	padding: 2px 4px;
+	border-radius: 2px;
+	width: 100px;
+	outline: none;
+}
+
 /* ========== Settings Panel Overlay ========== */
 
 .claude-settings-overlay {

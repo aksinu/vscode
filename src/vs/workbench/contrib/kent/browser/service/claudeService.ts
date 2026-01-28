@@ -575,17 +575,20 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				|| this._localConfig.model
 				|| this.configurationService.getValue<string>('claude.model');
 
-			// Ultrathink: session override > local config > instance setting
-			const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
-				? this._sessionUltrathinkOverride
-				: (this._localConfig.ultrathink ?? this._ultrathink);
 
-			// Ultrathink 모드일 경우 프롬프트 앞에 "ultrathink:" 키워드 추가
-			let finalPrompt = prompt;
-			if (effectiveUltrathink && prompt.trim()) {
-				finalPrompt = `ultrathink: ${prompt}`;
-				this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink mode enabled, prompt prefixed with ultrathink:');
-			}
+			//UltraThink 더이상 사용 XXXX
+			//Ultrathink no longer does anything. Thinking budget is now max by default.
+			// // Ultrathink: session override > local config > instance setting
+			// const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
+			// 	? this._sessionUltrathinkOverride
+			// 	: (this._localConfig.ultrathink ?? this._ultrathink);
+
+			// // Ultrathink 모드일 경우 프롬프트 앞에 "ultrathink:" 키워드 추가
+			// let finalPrompt = prompt;
+			// if (effectiveUltrathink && prompt.trim()) {
+			// 	finalPrompt = `ultrathink: ${prompt}`;
+			// 	this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink mode enabled, prompt prefixed with ultrathink:');
+			// }
 
 			const cliOptions: IClaudeCLIRequestOptions = {
 				model: effectiveModel,
@@ -599,7 +602,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)
 			await Promise.race([
-				this._connection.getChannel().call('sendPrompt', [finalPrompt, cliOptions]),
+				this._connection.getChannel().call('sendPrompt', [prompt, cliOptions]),
 				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 5 minutes')), 300000))
 			]);
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));

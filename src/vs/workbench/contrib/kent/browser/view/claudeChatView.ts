@@ -37,6 +37,7 @@ import { OpenFilesBar } from './claudeOpenFilesBar.js';
 import { ConnectionOverlay } from './claudeConnectionOverlay.js';
 import { ClaudeSettingsPanel } from './claudeSettingsPanel.js';
 import { SessionSettingsPanel, ISessionSettings } from './claudeSessionSettingsPanel.js';
+import { SessionTabs } from './claudeSessionTabs.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
@@ -73,6 +74,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private connectionOverlay!: ConnectionOverlay;
 	private settingsPanel!: ClaudeSettingsPanel;
 	private sessionSettingsPanel!: SessionSettingsPanel;
+	private sessionTabs!: SessionTabs;
 	private sessionSettings: ISessionSettings = { name: '' };
 
 	private messageRenderer!: ClaudeMessageRenderer;
@@ -170,9 +172,17 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		}));
 
-		this._register(this.claudeService.onDidChangeSession(() => {
+		this._register(this.claudeService.onDidChangeSession((session) => {
 			this.clearMessages();
+			// 세션의 메시지들 렌더링
+			if (session) {
+				for (const message of session.messages) {
+					this.appendMessage(message);
+				}
+			}
 			this.updateWelcomeVisibility();
+			// 세션 탭 갱신
+			this.sessionTabs?.render();
 		}));
 
 		this._register(this.claudeService.onDidChangeQueue(queue => {
@@ -366,7 +376,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	/**
-	 * 컨테이너 상단에 설정 버튼 추가
+	 * 컨테이너 상단에 설정 버튼 및 세션 탭 추가
 	 */
 	private setupHeaderActions(): void {
 		// 헤더 바 생성 (컨테이너 최상단)
@@ -385,6 +395,21 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 헤더 바를 컨테이너 최상단으로 이동
 		if (this.container.firstChild !== headerBar) {
 			this.container.insertBefore(headerBar, this.container.firstChild);
+		}
+
+		// 세션 탭 생성 (헤더 바 다음)
+		this.sessionTabs = this._register(new SessionTabs(this.container, {
+			getSessions: () => this.claudeService.getSessions(),
+			getCurrentSession: () => this.claudeService.getCurrentSession(),
+			onNewSession: () => this.createNewSession(),
+			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
+			onDeleteSession: (sessionId) => this.deleteSession(sessionId),
+			onRenameSession: (sessionId, newName) => this.renameSession(sessionId, newName)
+		}));
+
+		// 세션 탭을 헤더 바 다음으로 이동
+		if (headerBar.nextSibling) {
+			this.container.insertBefore(this.sessionTabs['container'], headerBar.nextSibling);
 		}
 	}
 
@@ -1031,5 +1056,66 @@ export class ClaudeChatViewPane extends ViewPane {
 				}
 			]
 		);
+	}
+
+	// ========== 세션 관리 ==========
+
+	/**
+	 * 새 세션 생성
+	 */
+	private createNewSession(): void {
+		this.claudeService.startNewSession();
+		this.notificationService.info(localize('newSessionCreated', "New session created"));
+	}
+
+	/**
+	 * 세션 전환
+	 */
+	private switchToSession(sessionId: string): void {
+		const currentSession = this.claudeService.getCurrentSession();
+		if (currentSession?.id === sessionId) {
+			return;
+		}
+
+		const session = this.claudeService.switchSession?.(sessionId);
+		if (!session) {
+			this.notificationService.error(localize('sessionNotFound', "Session not found"));
+			return;
+		}
+	}
+
+	/**
+	 * 세션 삭제
+	 */
+	private deleteSession(sessionId: string): void {
+		const sessions = this.claudeService.getSessions();
+
+		// 마지막 세션은 삭제 불가
+		if (sessions.length <= 1) {
+			this.notificationService.warn(localize('cannotDeleteLastSession', "Cannot delete the last session"));
+			return;
+		}
+
+		const success = this.claudeService.deleteSession?.(sessionId);
+		if (success) {
+			this.notificationService.info(localize('sessionDeleted', "Session deleted"));
+			this.sessionTabs?.render();
+		}
+	}
+
+	/**
+	 * 세션 이름 변경
+	 */
+	private renameSession(sessionId: string, newName: string): void {
+		const success = this.claudeService.renameSession?.(sessionId, newName);
+		if (success) {
+			this.sessionTabs?.render();
+
+			// 현재 세션이면 타이틀도 업데이트
+			const currentSession = this.claudeService.getCurrentSession();
+			if (currentSession?.id === sessionId) {
+				this.updateTitle(newName);
+			}
+		}
 	}
 }
