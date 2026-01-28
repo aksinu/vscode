@@ -5,6 +5,67 @@
 
 import { URI } from '../../../../base/common/uri.js';
 
+// ========== Model Constants ==========
+
+/**
+ * 사용 가능한 Claude 모델 목록
+ */
+export const CLAUDE_AVAILABLE_MODELS = [
+	'claude-sonnet-4-20250514',
+	'claude-opus-4-20250514',
+	'claude-3-5-sonnet-20241022',
+	'claude-3-5-haiku-20241022'
+] as const;
+
+/**
+ * 기본 모델
+ */
+export const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+
+/**
+ * 모델 유효성 검증 결과
+ */
+export interface IClaudeModelValidationResult {
+	readonly isValid: boolean;
+	readonly model: string;
+	readonly warning?: string;
+}
+
+/**
+ * 모델 유효성 검증
+ * @param model 검증할 모델명
+ * @returns 유효성 검증 결과 (유효하지 않으면 기본 모델로 대체)
+ */
+export function validateClaudeModel(model: string | undefined): IClaudeModelValidationResult {
+	// 빈 값이면 유효 (기본 모델 사용)
+	if (!model || model.trim() === '') {
+		return { isValid: true, model: '' };
+	}
+
+	const trimmedModel = model.trim();
+
+	// 유효한 모델인지 확인
+	if (CLAUDE_AVAILABLE_MODELS.includes(trimmedModel as typeof CLAUDE_AVAILABLE_MODELS[number])) {
+		return { isValid: true, model: trimmedModel };
+	}
+
+	// 유효하지 않은 모델 - 경고와 함께 기본 모델 반환
+	return {
+		isValid: false,
+		model: CLAUDE_DEFAULT_MODEL,
+		warning: `Unknown model "${trimmedModel}". Using default model "${CLAUDE_DEFAULT_MODEL}" instead.`
+	};
+}
+
+/**
+ * 사용 가능한 모델 목록 반환 (UI용)
+ */
+export function getAvailableClaudeModels(): string[] {
+	return [...CLAUDE_AVAILABLE_MODELS];
+}
+
+// ========== Message Types ==========
+
 /**
  * Claude 메시지 역할
  */

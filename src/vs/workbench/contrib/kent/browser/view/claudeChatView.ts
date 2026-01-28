@@ -22,7 +22,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IViewPaneOptions, ViewPane } from '../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../common/views.js';
 import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, IClaudeToolAction } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, IClaudeToolAction, getAvailableClaudeModels } from '../../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
@@ -330,12 +330,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * 사용 가능한 모델 목록 반환
 	 */
 	private getAvailableModels(): string[] {
-		return [
-			'claude-sonnet-4-20250514',
-			'claude-opus-4-20250514',
-			'claude-3-5-sonnet-20241022',
-			'claude-3-5-haiku-20241022'
-		];
+		return getAvailableClaudeModels();
 	}
 
 	/**

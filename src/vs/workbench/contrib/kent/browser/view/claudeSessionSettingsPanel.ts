@@ -6,6 +6,7 @@
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
+import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
 
 /**
  * 세션 설정 데이터
@@ -34,6 +35,7 @@ export class SessionSettingsPanel extends Disposable {
 	private overlay: HTMLElement | undefined;
 	private currentSettings: ISessionSettings = { name: '' };
 	private disposables: IDisposable[] = [];
+	private modelWarningElement: HTMLElement | undefined;
 
 	constructor(
 		private readonly callbacks: ISessionSettingsPanelCallbacks
@@ -108,14 +110,7 @@ export class SessionSettingsPanel extends Disposable {
 		});
 
 		// 모델 오버라이드
-		this.createTextSetting(content, {
-			label: localize('modelOverride', "Model Override"),
-			description: localize('modelOverrideDesc', "Override the default model for this session (leave empty for default)"),
-			placeholder: 'claude-sonnet-4-20250514',
-			value: this.currentSettings.model || '',
-			hint: `Available: ${this.callbacks.getAvailableModels().join(', ')}`,
-			onChange: (value) => { this.currentSettings.model = value || undefined; }
-		});
+		this.createModelSetting(content);
 
 		// Ultrathink 오버라이드
 		this.createToggleSetting(content, {
@@ -152,6 +147,13 @@ export class SessionSettingsPanel extends Disposable {
 		const saveBtn = append(footer, $('button.claude-settings-btn.primary'));
 		saveBtn.textContent = localize('save', "Save");
 		this.disposables.push(addDisposableListener(saveBtn, EventType.CLICK, () => {
+			// 모델 유효성 검증 - 유효하지 않으면 기본 모델로 대체
+			if (this.currentSettings.model) {
+				const validation = validateClaudeModel(this.currentSettings.model);
+				if (!validation.isValid) {
+					this.currentSettings.model = validation.model || CLAUDE_DEFAULT_MODEL;
+				}
+			}
 			this.callbacks.onSave(this.currentSettings);
 			this.close();
 		}));
@@ -202,6 +204,54 @@ export class SessionSettingsPanel extends Disposable {
 
 		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
 			options.onChange(input.value);
+		}));
+
+		return item;
+	}
+
+	/**
+	 * 모델 설정 필드 생성 (유효성 검증 포함)
+	 */
+	private createModelSetting(container: HTMLElement): HTMLElement {
+		const item = append(container, $('.claude-settings-item'));
+
+		const info = append(item, $('.claude-settings-info'));
+		const label = append(info, $('.claude-settings-label'));
+		label.textContent = localize('modelOverride', "Model Override");
+		const desc = append(info, $('.claude-settings-desc'));
+		desc.textContent = localize('modelOverrideDesc', "Override the default model for this session (leave empty for default)");
+		const hint = append(info, $('.claude-settings-hint'));
+		hint.textContent = `Available: ${this.callbacks.getAvailableModels().join(', ')}`;
+
+		// 경고 메시지 요소
+		this.modelWarningElement = append(info, $('.claude-settings-warning'));
+		this.modelWarningElement.style.display = 'none';
+
+		const control = append(item, $('.claude-settings-control'));
+		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;
+		input.type = 'text';
+		input.placeholder = 'claude-sonnet-4-20250514';
+		input.value = this.currentSettings.model || '';
+
+		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
+			const value = input.value.trim();
+			this.currentSettings.model = value || undefined;
+
+			// 유효성 검증
+			if (value) {
+				const validation = validateClaudeModel(value);
+				if (!validation.isValid && this.modelWarningElement) {
+					this.modelWarningElement.textContent = `⚠️ ${validation.warning}`;
+					this.modelWarningElement.style.display = 'block';
+					input.classList.add('invalid');
+				} else if (this.modelWarningElement) {
+					this.modelWarningElement.style.display = 'none';
+					input.classList.remove('invalid');
+				}
+			} else if (this.modelWarningElement) {
+				this.modelWarningElement.style.display = 'none';
+				input.classList.remove('invalid');
+			}
 		}));
 
 		return item;

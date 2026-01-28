@@ -1881,6 +1881,23 @@
 	margin-bottom: 8px;
 }
 
+/* Warning Message */
+.claude-settings-warning {
+	font-size: 12px;
+	color: var(--vscode-editorWarning-foreground);
+	margin-top: 6px;
+	padding: 6px 8px;
+	background: var(--vscode-inputValidation-warningBackground);
+	border: 1px solid var(--vscode-inputValidation-warningBorder);
+	border-radius: 4px;
+	line-height: 1.4;
+}
+
+/* Invalid Input */
+.claude-settings-input.invalid {
+	border-color: var(--vscode-inputValidation-warningBorder);
+}
+
 /* ========== Ultrathink Toggle Button ========== */
 
 .claude-ultrathink-toggle {

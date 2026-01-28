@@ -12,6 +12,7 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
+import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
 
 /**
  * Claude 전체 설정 패널 콜백
@@ -30,6 +31,7 @@ export class ClaudeSettingsPanel extends Disposable {
 	private configUri: URI | undefined;
 	private currentConfig: IClaudeLocalConfig = {};
 	private disposables: IDisposable[] = [];
+	private modelWarningElement: HTMLElement | undefined;
 
 	constructor(
 		private readonly fileService: IFileService,
@@ -135,14 +137,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		const content = append(panel, $('.claude-settings-content'));
 
 		// Model 설정
-		this.createTextSetting(content, {
-			label: localize('model', "Model"),
-			description: localize('modelDesc', "Claude model to use (leave empty for default)"),
-			placeholder: 'claude-sonnet-4-20250514',
-			value: this.currentConfig.model || '',
-			hint: `Available: ${this.callbacks.getAvailableModels().join(', ')}`,
-			onChange: (value) => { this.currentConfig = { ...this.currentConfig, model: value || undefined }; }
-		});
+		this.createModelSetting(content);
 
 		// Ultrathink 설정
 		this.createToggleSetting(content, {
@@ -214,6 +209,13 @@ export class ClaudeSettingsPanel extends Disposable {
 		const saveBtn = append(footer, $('button.claude-settings-btn.primary'));
 		saveBtn.textContent = localize('save', "Save");
 		this.disposables.push(addDisposableListener(saveBtn, EventType.CLICK, async () => {
+			// 모델 유효성 검증 - 유효하지 않으면 기본 모델로 대체
+			if (this.currentConfig.model) {
+				const validation = validateClaudeModel(this.currentConfig.model);
+				if (!validation.isValid) {
+					this.currentConfig = { ...this.currentConfig, model: validation.model || CLAUDE_DEFAULT_MODEL };
+				}
+			}
 			await this.saveConfig();
 			this.notificationService.info(localize('settingsSaved', "Settings saved"));
 			this.close();
@@ -265,6 +267,54 @@ export class ClaudeSettingsPanel extends Disposable {
 
 		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
 			options.onChange(input.value);
+		}));
+
+		return item;
+	}
+
+	/**
+	 * 모델 설정 필드 생성 (유효성 검증 포함)
+	 */
+	private createModelSetting(container: HTMLElement): HTMLElement {
+		const item = append(container, $('.claude-settings-item'));
+
+		const info = append(item, $('.claude-settings-info'));
+		const label = append(info, $('.claude-settings-label'));
+		label.textContent = localize('model', "Model");
+		const desc = append(info, $('.claude-settings-desc'));
+		desc.textContent = localize('modelDesc', "Claude model to use (leave empty for default)");
+		const hint = append(info, $('.claude-settings-hint'));
+		hint.textContent = `Available: ${this.callbacks.getAvailableModels().join(', ')}`;
+
+		// 경고 메시지 요소
+		this.modelWarningElement = append(info, $('.claude-settings-warning'));
+		this.modelWarningElement.style.display = 'none';
+
+		const control = append(item, $('.claude-settings-control'));
+		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;
+		input.type = 'text';
+		input.placeholder = 'claude-sonnet-4-20250514';
+		input.value = this.currentConfig.model || '';
+
+		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
+			const value = input.value.trim();
+			this.currentConfig = { ...this.currentConfig, model: value || undefined };
+
+			// 유효성 검증
+			if (value) {
+				const validation = validateClaudeModel(value);
+				if (!validation.isValid && this.modelWarningElement) {
+					this.modelWarningElement.textContent = `⚠️ ${validation.warning}`;
+					this.modelWarningElement.style.display = 'block';
+					input.classList.add('invalid');
+				} else if (this.modelWarningElement) {
+					this.modelWarningElement.style.display = 'none';
+					input.classList.remove('invalid');
+				}
+			} else if (this.modelWarningElement) {
+				this.modelWarningElement.style.display = 'none';
+				input.classList.remove('invalid');
+			}
 		}));
 
 		return item;
