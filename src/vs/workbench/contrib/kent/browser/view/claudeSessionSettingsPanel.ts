@@ -92,7 +92,7 @@ export class SessionSettingsPanel extends Disposable {
 		title.textContent = localize('sessionSettings', "Session Settings");
 
 		const closeBtn = append(header, $('button.claude-settings-close'));
-		closeBtn.innerHTML = '&times;';
+		closeBtn.textContent = '×';
 		this.disposables.push(addDisposableListener(closeBtn, EventType.CLICK, () => this.close()));
 
 		// 컨텐츠
@@ -134,7 +134,9 @@ export class SessionSettingsPanel extends Disposable {
 		continueDesc.textContent = localize('continueDesc', "Resume the last Claude session with --continue flag");
 
 		const continueBtn = append(continueSection, $('button.claude-settings-btn.continue'));
-		continueBtn.innerHTML = '<span class="codicon codicon-history"></span> ' + localize('continue', "Continue Last Session");
+		const continueIcon = append(continueBtn, $('span.codicon.codicon-history'));
+		continueIcon.setAttribute('aria-hidden', 'true');
+		append(continueBtn, document.createTextNode(' ' + localize('continue', "Continue Last Session")));
 		this.disposables.push(addDisposableListener(continueBtn, EventType.CLICK, () => {
 			this.callbacks.onContinue();
 			this.close();

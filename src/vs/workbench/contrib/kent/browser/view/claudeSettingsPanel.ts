@@ -128,7 +128,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		title.textContent = localize('globalSettings', "Claude Global Settings");
 
 		const closeBtn = append(header, $('button.claude-settings-close'));
-		closeBtn.innerHTML = '&times;';
+		closeBtn.textContent = '×';
 		this.disposables.push(addDisposableListener(closeBtn, EventType.CLICK, () => this.close()));
 
 		// 컨텐츠

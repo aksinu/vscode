@@ -375,21 +375,22 @@ export class ClaudeChatViewPane extends ViewPane {
 	 */
 	private setupHeaderActions(): void {
 		// 헤더 바 생성 (컨테이너 최상단)
-		const headerBar = document.createElement('div');
-		headerBar.className = 'claude-header-bar';
+		const headerBar = append(this.container, $('.claude-header-bar'));
 
 		// 설정 버튼
-		const settingsButton = document.createElement('button');
-		settingsButton.className = 'claude-header-settings-btn';
+		const settingsButton = append(headerBar, $('button.claude-header-settings-btn'));
 		settingsButton.title = localize('openGlobalSettings', "Global Settings");
-		settingsButton.innerHTML = '<span class="codicon codicon-settings-gear"></span>';
+		const settingsIcon = append(settingsButton, $('span.codicon.codicon-settings-gear'));
+		settingsIcon.setAttribute('aria-hidden', 'true');
 
 		this._register(addDisposableListener(settingsButton, EventType.CLICK, async () => {
 			await this.settingsPanel.open(this.container);
 		}));
 
-		headerBar.appendChild(settingsButton);
-		this.container.insertBefore(headerBar, this.container.firstChild);
+		// 헤더 바를 컨테이너 최상단으로 이동
+		if (this.container.firstChild !== headerBar) {
+			this.container.insertBefore(headerBar, this.container.firstChild);
+		}
 	}
 
 	private renderWelcome(): void {
