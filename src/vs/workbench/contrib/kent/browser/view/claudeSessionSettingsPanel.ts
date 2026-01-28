@@ -13,7 +13,7 @@ import { localize } from '../../../../../nls.js';
 export interface ISessionSettings {
 	name: string;
 	model?: string;
-	extendedThinking?: boolean;
+	ultrathink?: boolean;
 }
 
 /**
@@ -117,12 +117,12 @@ export class SessionSettingsPanel extends Disposable {
 			onChange: (value) => { this.currentSettings.model = value || undefined; }
 		});
 
-		// Extended Thinking 오버라이드
+		// Ultrathink 오버라이드
 		this.createToggleSetting(content, {
-			label: localize('extendedThinkingOverride', "Extended Thinking"),
-			description: localize('extendedThinkingOverrideDesc', "Enable extended thinking for this session"),
-			checked: this.currentSettings.extendedThinking || false,
-			onChange: (checked) => { this.currentSettings.extendedThinking = checked; }
+			label: localize('ultrathinkOverride', "Ultrathink"),
+			description: localize('ultrathinkOverrideDesc', "Enable ultrathink mode (adds ultrathink keyword to prompt)"),
+			checked: this.currentSettings.ultrathink || false,
+			onChange: (checked) => { this.currentSettings.ultrathink = checked; }
 		});
 
 		// Continue 섹션

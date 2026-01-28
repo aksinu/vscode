@@ -187,7 +187,7 @@ export type ClaudeExecutionMethod = 'cli' | 'script';
 export interface IClaudeStatusInfo {
 	readonly connectionStatus: ClaudeConnectionStatus;
 	readonly model: string;
-	readonly extendedThinking: boolean;
+	readonly ultrathink: boolean;
 	readonly executionMethod: ClaudeExecutionMethod;
 	readonly scriptPath?: string;
 	readonly lastConnected?: number;

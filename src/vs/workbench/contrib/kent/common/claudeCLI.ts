@@ -78,7 +78,6 @@ export interface IClaudeCLIRequestOptions {
 	readonly allowedTools?: string[];
 	readonly resumeSessionId?: string; // 세션 재개용 (--resume)
 	readonly continueLastSession?: boolean; // 마지막 세션 계속 (--continue)
-	readonly extendedThinking?: boolean; // 확장 사고 모드
 	/** 실행 설정 (로컬 설정에서 로드) */
 	readonly executable?: IClaudeExecutableConfig;
 }

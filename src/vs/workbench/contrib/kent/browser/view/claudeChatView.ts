@@ -264,7 +264,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				getStatusInfo: () => this.claudeService.getStatusInfo?.(),
 				checkConnection: () => this.claudeService.checkConnection?.() ?? Promise.resolve(false),
-				toggleExtendedThinking: () => this.claudeService.toggleExtendedThinking?.() ?? Promise.resolve(),
+				toggleUltrathink: () => this.claudeService.toggleUltrathink?.() ?? Promise.resolve(),
 				openLocalSettings: () => this.localSettingsManager.open(),
 				openSessionSettings: () => this.sessionSettingsPanel.open(this.container),
 				registerDisposable: (d) => this._register(d)
@@ -354,9 +354,9 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.claudeService.setSessionModel?.(settings.model);
 		}
 
-		// Extended Thinking 오버라이드 적용
-		if (settings.extendedThinking !== undefined) {
-			this.claudeService.setSessionExtendedThinking?.(settings.extendedThinking);
+		// Ultrathink 오버라이드 적용
+		if (settings.ultrathink !== undefined) {
+			this.claudeService.setSessionUltrathink?.(settings.ultrathink);
 		}
 
 		this.notificationService.info(localize('sessionSettingsSaved', "Session settings saved"));

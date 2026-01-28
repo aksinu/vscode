@@ -14,7 +14,7 @@ import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
 export interface IStatusBarCallbacks {
 	getStatusInfo(): IClaudeStatusInfo | undefined;
 	checkConnection(): Promise<boolean>;
-	toggleExtendedThinking(): Promise<void>;
+	toggleUltrathink(): Promise<void>;
 	openLocalSettings(): Promise<void>;
 	openSessionSettings(): void;
 	registerDisposable<T extends IDisposable>(disposable: T): T;
@@ -27,6 +27,7 @@ export interface IStatusBarCallbacks {
 export class StatusBarManager extends Disposable {
 
 	private container: HTMLElement;
+	private ultrathinkButton: HTMLButtonElement | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -45,11 +46,27 @@ export class StatusBarManager extends Disposable {
 		// 모델 표시 제거 - CLI에서 현재 모델을 알 수 없어 불확실한 정보 표시 방지
 		// this.updateModel(status);
 		this.updateExecutionMethod(status);
+		this.updateUltrathink(status);
 	}
 
 	// ========== Private Methods ==========
 
 	private createStatusBar(): void {
+		// Ultrathink 토글 버튼 (좌측)
+		this.ultrathinkButton = append(this.container, $('button.claude-ultrathink-toggle')) as HTMLButtonElement;
+		this.ultrathinkButton.title = localize('toggleUltrathink', "Toggle Ultrathink mode");
+		const ultrathinkIcon = append(this.ultrathinkButton, $('span.codicon.codicon-lightbulb'));
+		ultrathinkIcon.setAttribute('aria-hidden', 'true');
+		const ultrathinkText = append(this.ultrathinkButton, $('span.claude-ultrathink-text'));
+		ultrathinkText.textContent = 'Ultrathink';
+
+		this.callbacks.registerDisposable(addDisposableListener(this.ultrathinkButton, EventType.CLICK, async () => {
+			await this.callbacks.toggleUltrathink();
+		}));
+
+		// 구분자
+		append(this.container, $('.claude-status-separator'));
+
 		// 연결 상태
 		const connectionStatus = append(this.container, $('.claude-status-item.connection'));
 		const connectionIcon = append(connectionStatus, $('.claude-status-icon'));
@@ -119,6 +136,15 @@ export class StatusBarManager extends Disposable {
 			} else {
 				execItem.textContent = 'CLI';
 			}
+		}
+	}
+
+	private updateUltrathink(status: IClaudeStatusInfo): void {
+		if (this.ultrathinkButton) {
+			this.ultrathinkButton.classList.toggle('active', status.ultrathink);
+			this.ultrathinkButton.title = status.ultrathink
+				? localize('ultrathinkOn', "Ultrathink ON - Click to disable")
+				: localize('ultrathinkOff', "Ultrathink OFF - Click to enable");
 		}
 	}
 

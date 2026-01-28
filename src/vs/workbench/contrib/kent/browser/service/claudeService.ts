@@ -64,9 +64,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private readonly _fileSnapshotManager: FileSnapshotManager;
 
 	// Status 관련
-	private _extendedThinking = false;
+	private _ultrathink = false;
 	private _sessionModelOverride: string | undefined;
-	private _sessionExtendedThinkingOverride: boolean | undefined;
+	private _sessionUltrathinkOverride: boolean | undefined;
 	private _continueMode = false;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
@@ -575,10 +575,17 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				|| this._localConfig.model
 				|| this.configurationService.getValue<string>('claude.model');
 
-			// Extended Thinking: session override > local config > instance setting
-			const effectiveExtendedThinking = this._sessionExtendedThinkingOverride !== undefined
-				? this._sessionExtendedThinkingOverride
-				: (this._localConfig.extendedThinking ?? this._extendedThinking);
+			// Ultrathink: session override > local config > instance setting
+			const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
+				? this._sessionUltrathinkOverride
+				: (this._localConfig.ultrathink ?? this._ultrathink);
+
+			// Ultrathink 모드일 경우 프롬프트 앞에 "ultrathink:" 키워드 추가
+			let finalPrompt = prompt;
+			if (effectiveUltrathink && prompt.trim()) {
+				finalPrompt = `ultrathink: ${prompt}`;
+				this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink mode enabled, prompt prefixed with ultrathink:');
+			}
 
 			const cliOptions: IClaudeCLIRequestOptions = {
 				model: effectiveModel,
@@ -587,13 +594,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
 					: this.getWorkspaceRoot(),
 				executable: this._localConfig.executable,
-				continueLastSession,
-				extendedThinking: effectiveExtendedThinking
+				continueLastSession
 			};
 
 			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)
 			await Promise.race([
-				this._connection.getChannel().call('sendPrompt', [prompt, cliOptions]),
+				this._connection.getChannel().call('sendPrompt', [finalPrompt, cliOptions]),
 				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 5 minutes')), 300000))
 			]);
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
@@ -687,11 +693,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * 세션별 Extended Thinking 오버라이드 설정
+	 * 세션별 Ultrathink 오버라이드 설정
 	 */
-	setSessionExtendedThinking(enabled: boolean): void {
-		this._sessionExtendedThinkingOverride = enabled;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session extended thinking override:', enabled ? 'ON' : 'OFF');
+	setSessionUltrathink(enabled: boolean): void {
+		this._sessionUltrathinkOverride = enabled;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
 		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
 	}
 
@@ -744,10 +750,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			: undefined;
 		const connInfo = this._connection.getInfo();
 
+		// Ultrathink 현재 값 계산: session override > local config > instance setting
+		const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
+			? this._sessionUltrathinkOverride
+			: (this._localConfig.ultrathink ?? this._ultrathink);
+
 		return {
 			connectionStatus: connInfo.status,
 			model: this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4',
-			extendedThinking: this._extendedThinking,
+			ultrathink: effectiveUltrathink,
 			executionMethod: execMethod,
 			scriptPath,
 			lastConnected: connInfo.lastConnected,
@@ -763,12 +774,23 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * Extended Thinking 토글
+	 * Ultrathink 토글
 	 */
-	async toggleExtendedThinking(): Promise<void> {
-		this._extendedThinking = !this._extendedThinking;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Extended thinking:', this._extendedThinking ? 'ON' : 'OFF');
+	async toggleUltrathink(): Promise<void> {
+		this._ultrathink = !this._ultrathink;
+		// 세션 오버라이드도 함께 토글
+		this._sessionUltrathinkOverride = this._ultrathink;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink:', this._ultrathink ? 'ON' : 'OFF');
 		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+	}
+
+	/**
+	 * Ultrathink 활성화 여부
+	 */
+	isUltrathinkEnabled(): boolean {
+		return this._sessionUltrathinkOverride !== undefined
+			? this._sessionUltrathinkOverride
+			: (this._localConfig.ultrathink ?? this._ultrathink);
 	}
 
 	// ========== File Snapshot / Diff ==========

@@ -1880,3 +1880,47 @@
 	color: var(--vscode-descriptionForeground);
 	margin-bottom: 8px;
 }
+
+/* ========== Ultrathink Toggle Button ========== */
+
+.claude-ultrathink-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: 1px solid var(--vscode-widget-border);
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 11px;
+	transition: all 0.15s ease;
+}
+
+.claude-ultrathink-toggle:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.claude-ultrathink-toggle.active {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-color: var(--vscode-button-background);
+}
+
+.claude-ultrathink-toggle.active:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.claude-ultrathink-toggle .codicon {
+	font-size: 12px;
+}
+
+.claude-ultrathink-toggle.active .codicon {
+	color: var(--vscode-button-foreground);
+}
+
+.claude-ultrathink-text {
+	font-weight: 500;
+	letter-spacing: 0.3px;
+}

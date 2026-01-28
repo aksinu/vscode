@@ -147,14 +147,8 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			claudeArgs.push('--allowedTools', ...options.allowedTools);
 		}
 
-		// Extended Thinking 모드
-		if (options?.extendedThinking) {
-			// Claude CLI의 extended thinking 옵션 (버전에 따라 다를 수 있음)
-			// 참고: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
-			debugLog(' Extended thinking enabled');
-			// 현재 Claude CLI에서 지원하는 경우 여기에 인자 추가
-			// claudeArgs.push('--extended-thinking');
-		}
+		// Ultrathink 모드는 프롬프트에 "ultrathink:" 키워드를 추가하는 방식으로 처리됨
+		// (claudeService.ts에서 프롬프트 전처리)
 
 		// 실행 명령어 및 인자 결정
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);

@@ -121,9 +121,9 @@ export interface IClaudeService {
 	setSessionModel?(model: string): void;
 
 	/**
-	 * 세션별 Extended Thinking 오버라이드 설정
+	 * 세션별 Ultrathink 오버라이드 설정
 	 */
-	setSessionExtendedThinking?(enabled: boolean): void;
+	setSessionUltrathink?(enabled: boolean): void;
 
 	/**
 	 * 마지막 세션 이어서 시작 (--continue)
@@ -189,9 +189,14 @@ export interface IClaudeService {
 	checkConnection?(): Promise<boolean>;
 
 	/**
-	 * Extended Thinking 토글
+	 * Ultrathink 토글
 	 */
-	toggleExtendedThinking?(): Promise<void>;
+	toggleUltrathink?(): Promise<void>;
+
+	/**
+	 * Ultrathink 활성화 여부
+	 */
+	isUltrathinkEnabled?(): boolean;
 
 	// ========== File Changes ==========
 

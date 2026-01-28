@@ -40,8 +40,8 @@ export interface IClaudeLocalConfig {
 	readonly workingDirectory?: string;
 	/** 사용할 모델명 (예: claude-sonnet-4-20250514) */
 	readonly model?: string;
-	/** 확장 사고 모드 활성화 */
-	readonly extendedThinking?: boolean;
+	/** Ultrathink 모드 활성화 (프롬프트에 ultrathink 키워드 추가) */
+	readonly ultrathink?: boolean;
 }
 
 /**

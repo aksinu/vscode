@@ -144,12 +144,12 @@ export class ClaudeSettingsPanel extends Disposable {
 			onChange: (value) => { this.currentConfig = { ...this.currentConfig, model: value || undefined }; }
 		});
 
-		// Extended Thinking 설정
+		// Ultrathink 설정
 		this.createToggleSetting(content, {
-			label: localize('extendedThinking', "Extended Thinking"),
-			description: localize('extendedThinkingDesc', "Enable Claude's extended thinking mode for complex tasks"),
-			checked: this.currentConfig.extendedThinking || false,
-			onChange: (checked) => { this.currentConfig = { ...this.currentConfig, extendedThinking: checked }; }
+			label: localize('ultrathink', "Ultrathink"),
+			description: localize('ultrathinkDesc', "Enable ultrathink mode (adds 'ultrathink:' keyword to prompts)"),
+			checked: this.currentConfig.ultrathink || false,
+			onChange: (checked) => { this.currentConfig = { ...this.currentConfig, ultrathink: checked }; }
 		});
 
 		// Auto Accept 설정
