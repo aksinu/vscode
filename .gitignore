@@ -27,3 +27,4 @@ test-output.json
 nul
 /vx-claude.sh
 /vx-claude.bat
+/.vscode/claude-logs

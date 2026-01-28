@@ -65,6 +65,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	// Status 관련
 	private _extendedThinking = false;
+	private _sessionModelOverride: string | undefined;
+	private _sessionExtendedThinkingOverride: boolean | undefined;
+	private _continueMode = false;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
 	readonly onDidReceiveMessage: Event<IClaudeMessage> = this._onDidReceiveMessage.event;
@@ -473,9 +476,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._sessionManager.startNewSession();
 		}
 
-		// --continue 플래그 감지
-		let continueLastSession = false;
+		// --continue 플래그 감지 (텍스트 또는 버튼)
+		let continueLastSession = this._continueMode;
 		let actualContent = content;
+
+		// 버튼으로 continue 모드 활성화된 경우 초기화
+		if (this._continueMode) {
+			this._continueMode = false;
+			this.logService.info(ClaudeService.LOG_CATEGORY, 'Continue mode (button) activated');
+		}
 
 		if (content.trim().startsWith('--continue') || content.trim().startsWith('-c ')) {
 			continueLastSession = true;
@@ -560,14 +569,26 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Calling channel.call sendPrompt...');
 
+			// 모델 우선순위: options > session override > local config > VS Code config
+			const effectiveModel = options?.model
+				|| this._sessionModelOverride
+				|| this._localConfig.model
+				|| this.configurationService.getValue<string>('claude.model');
+
+			// Extended Thinking: session override > local config > instance setting
+			const effectiveExtendedThinking = this._sessionExtendedThinkingOverride !== undefined
+				? this._sessionExtendedThinkingOverride
+				: (this._localConfig.extendedThinking ?? this._extendedThinking);
+
 			const cliOptions: IClaudeCLIRequestOptions = {
-				model: options?.model || this.configurationService.getValue<string>('claude.model'),
+				model: effectiveModel,
 				systemPrompt: options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt'),
 				workingDir: this._localConfig.workingDirectory
 					? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
 					: this.getWorkspaceRoot(),
 				executable: this._localConfig.executable,
-				continueLastSession
+				continueLastSession,
+				extendedThinking: effectiveExtendedThinking
 			};
 
 			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)
@@ -654,6 +675,33 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	renameSession(sessionId: string, title: string): boolean {
 		return this._sessionManager.renameSession(sessionId, title);
+	}
+
+	/**
+	 * 세션별 모델 오버라이드 설정
+	 */
+	setSessionModel(model: string): void {
+		this._sessionModelOverride = model || undefined;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', model || '(cleared)');
+		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+	}
+
+	/**
+	 * 세션별 Extended Thinking 오버라이드 설정
+	 */
+	setSessionExtendedThinking(enabled: boolean): void {
+		this._sessionExtendedThinkingOverride = enabled;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session extended thinking override:', enabled ? 'ON' : 'OFF');
+		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+	}
+
+	/**
+	 * 마지막 세션 이어서 시작 (--continue)
+	 */
+	async continueLastSession(): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
+		this._continueMode = true;
+		// 다음 sendMessage 호출 시 --continue 플래그 사용됨
 	}
 
 	// ========== Queue ==========

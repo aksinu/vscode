@@ -35,6 +35,8 @@ import { CodeApplyManager } from './claudeCodeApply.js';
 import { SessionPickerUI } from './claudeSessionPicker.js';
 import { OpenFilesBar } from './claudeOpenFilesBar.js';
 import { ConnectionOverlay } from './claudeConnectionOverlay.js';
+import { ClaudeSettingsPanel } from './claudeSettingsPanel.js';
+import { SessionSettingsPanel, ISessionSettings } from './claudeSessionSettingsPanel.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
@@ -69,6 +71,9 @@ export class ClaudeChatViewPane extends ViewPane {
 	private sessionPicker!: SessionPickerUI;
 	private openFilesBar!: OpenFilesBar;
 	private connectionOverlay!: ConnectionOverlay;
+	private settingsPanel!: ClaudeSettingsPanel;
+	private sessionSettingsPanel!: SessionSettingsPanel;
+	private sessionSettings: ISessionSettings = { name: '' };
 
 	private messageRenderer!: ClaudeMessageRenderer;
 	private messageDisposables = new Map<string, DisposableStore>();
@@ -197,9 +202,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.dropOverlay = append(this.container, $('.claude-drop-overlay'));
 		this.dropOverlay.textContent = localize('dropFilesHere', "Drop files here to attach");
 
-		// 열린 파일 버튼 영역 (OpenFilesBar는 createInputEditor에서 초기화)
-		this.openFilesContainer = append(this.container, $('.claude-open-files'));
-
 		// 환영 메시지
 		this.welcomeContainer = append(this.container, $('.claude-welcome'));
 		this.renderWelcome();
@@ -247,17 +249,24 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		);
 
+		// 세션 설정 패널 초기화
+		this.sessionSettingsPanel = this._register(new SessionSettingsPanel({
+			getCurrentSettings: () => this.sessionSettings,
+			onSave: (settings) => this.applySessionSettings(settings),
+			onContinue: () => this.continueLastSession(),
+			getAvailableModels: () => this.getAvailableModels()
+		}));
+
 		// 상태 바 (입력창 위)
 		this.statusBarContainer = append(this.container, $('.claude-status-bar'));
 		this.statusBarManager = this._register(new StatusBarManager(
 			this.statusBarContainer,
-			this.quickInputService,
-			this.notificationService,
 			{
 				getStatusInfo: () => this.claudeService.getStatusInfo?.(),
 				checkConnection: () => this.claudeService.checkConnection?.() ?? Promise.resolve(false),
 				toggleExtendedThinking: () => this.claudeService.toggleExtendedThinking?.() ?? Promise.resolve(),
 				openLocalSettings: () => this.localSettingsManager.open(),
+				openSessionSettings: () => this.sessionSettingsPanel.open(this.container),
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -275,6 +284,9 @@ export class ClaudeChatViewPane extends ViewPane {
 				this.statusBarManager.update(status);
 			}));
 		}
+
+		// 열린 파일 버튼 영역 (입력창 바로 위)
+		this.openFilesContainer = append(this.container, $('.claude-open-files'));
 
 		// 입력 영역
 		this.inputContainer = append(this.container, $('.claude-input-container'));
@@ -298,6 +310,86 @@ export class ClaudeChatViewPane extends ViewPane {
 		this._register(this.onDidBlur(() => {
 			this.panelFocusedKey.set(false);
 		}));
+
+		// 전체 설정 패널 초기화
+		this.settingsPanel = this._register(new ClaudeSettingsPanel(
+			this.fileService,
+			this.workspaceContextService,
+			this.notificationService,
+			{
+				reloadLocalConfig: () => this.claudeService.reloadLocalConfig?.(),
+				getAvailableModels: () => this.getAvailableModels()
+			}
+		));
+
+		// 헤더 액션 설정 (설정 버튼)
+		this.setupHeaderActions();
+	}
+
+	/**
+	 * 사용 가능한 모델 목록 반환
+	 */
+	private getAvailableModels(): string[] {
+		return [
+			'claude-sonnet-4-20250514',
+			'claude-opus-4-20250514',
+			'claude-3-5-sonnet-20241022',
+			'claude-3-5-haiku-20241022'
+		];
+	}
+
+	/**
+	 * 세션 설정 적용
+	 */
+	private applySessionSettings(settings: ISessionSettings): void {
+		this.sessionSettings = settings;
+
+		// 세션 이름이 있으면 제목 업데이트
+		if (settings.name) {
+			this.updateTitle(settings.name);
+		}
+
+		// 모델 오버라이드 적용
+		if (settings.model) {
+			this.claudeService.setSessionModel?.(settings.model);
+		}
+
+		// Extended Thinking 오버라이드 적용
+		if (settings.extendedThinking !== undefined) {
+			this.claudeService.setSessionExtendedThinking?.(settings.extendedThinking);
+		}
+
+		this.notificationService.info(localize('sessionSettingsSaved', "Session settings saved"));
+	}
+
+	/**
+	 * 마지막 세션 이어서 시작 (--continue)
+	 */
+	private continueLastSession(): void {
+		this.claudeService.continueLastSession?.();
+		this.notificationService.info(localize('continuingSession', "Continuing last session..."));
+	}
+
+	/**
+	 * 컨테이너 상단에 설정 버튼 추가
+	 */
+	private setupHeaderActions(): void {
+		// 헤더 바 생성 (컨테이너 최상단)
+		const headerBar = document.createElement('div');
+		headerBar.className = 'claude-header-bar';
+
+		// 설정 버튼
+		const settingsButton = document.createElement('button');
+		settingsButton.className = 'claude-header-settings-btn';
+		settingsButton.title = localize('openGlobalSettings', "Global Settings");
+		settingsButton.innerHTML = '<span class="codicon codicon-settings-gear"></span>';
+
+		this._register(addDisposableListener(settingsButton, EventType.CLICK, async () => {
+			await this.settingsPanel.open(this.container);
+		}));
+
+		headerBar.appendChild(settingsButton);
+		this.container.insertBefore(headerBar, this.container.firstChild);
 	}
 
 	private renderWelcome(): void {
@@ -492,8 +584,11 @@ export class ClaudeChatViewPane extends ViewPane {
 		);
 		this.openFilesBar.update();
 
-		// 열린 에디터 변경 시 업데이트
+		// 보이는 에디터 변경 시 업데이트
 		this._register(this.editorService.onDidVisibleEditorsChange(() => {
+			this.openFilesBar.update();
+		}));
+		this._register(this.editorService.onDidActiveEditorChange(() => {
 			this.openFilesBar.update();
 		}));
 

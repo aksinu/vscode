@@ -115,6 +115,21 @@ export interface IClaudeService {
 	 */
 	renameSession?(sessionId: string, title: string): boolean;
 
+	/**
+	 * 세션별 모델 오버라이드 설정
+	 */
+	setSessionModel?(model: string): void;
+
+	/**
+	 * 세션별 Extended Thinking 오버라이드 설정
+	 */
+	setSessionExtendedThinking?(enabled: boolean): void;
+
+	/**
+	 * 마지막 세션 이어서 시작 (--continue)
+	 */
+	continueLastSession?(): Promise<void>;
+
 	// ========== Queue ==========
 
 	/**

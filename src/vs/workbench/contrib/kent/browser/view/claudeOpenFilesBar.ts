@@ -32,11 +32,11 @@ export class OpenFilesBar {
 
 	/**
 	 * 열린 파일 UI 업데이트
+	 * 현재 보이는 에디터(visible editors)만 표시
 	 */
 	update(): void {
 		// 초기화 전이면 무시
 		if (!this.container) {
-			console.log('[OpenFilesBar] No container');
 			return;
 		}
 
@@ -45,15 +45,13 @@ export class OpenFilesBar {
 			this.container.removeChild(this.container.firstChild);
 		}
 
-		// 열린 에디터 목록 가져오기
-		const openEditors = this.editorService.editors;
+		// 현재 보이는 에디터만 가져오기 (split view면 여러 개)
+		const visibleEditors = this.editorService.visibleEditors;
 		const uniqueFiles = new Map<string, URI>();
 
-		console.log('[OpenFilesBar] Total editors:', openEditors.length);
-
-		for (const editor of openEditors) {
+		for (const editor of visibleEditors) {
 			const resource = editor.resource;
-			console.log('[OpenFilesBar] Editor resource:', resource?.toString(), 'scheme:', resource?.scheme);
+			// file 스키마만 허용 (실제 파일)
 			if (resource && resource.scheme === 'file') {
 				const key = resource.toString();
 				if (!uniqueFiles.has(key)) {
@@ -62,9 +60,7 @@ export class OpenFilesBar {
 			}
 		}
 
-		console.log('[OpenFilesBar] Unique files:', uniqueFiles.size);
-
-		// 열린 파일이 없으면 숨김
+		// 보이는 파일이 없으면 숨김
 		if (uniqueFiles.size === 0) {
 			this.container.style.display = 'none';
 			return;

@@ -6,8 +6,6 @@
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
-import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
-import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
 
 /**
@@ -18,6 +16,7 @@ export interface IStatusBarCallbacks {
 	checkConnection(): Promise<boolean>;
 	toggleExtendedThinking(): Promise<void>;
 	openLocalSettings(): Promise<void>;
+	openSessionSettings(): void;
 	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
 
@@ -31,8 +30,6 @@ export class StatusBarManager extends Disposable {
 
 	constructor(
 		container: HTMLElement,
-		private readonly quickInputService: IQuickInputService,
-		private readonly notificationService: INotificationService,
 		private readonly callbacks: IStatusBarCallbacks
 	) {
 		super();
@@ -70,11 +67,11 @@ export class StatusBarManager extends Disposable {
 
 		// 설정 버튼 (오른쪽)
 		const settingsButton = append(this.container, $('button.claude-status-settings'));
-		settingsButton.title = localize('openSettings', "Open Settings");
+		settingsButton.title = localize('sessionSettings', "Session Settings");
 		append(settingsButton, $('.codicon.codicon-settings-gear'));
 
 		this.callbacks.registerDisposable(addDisposableListener(settingsButton, EventType.CLICK, () => {
-			this.showSettingsQuickPick();
+			this.callbacks.openSessionSettings();
 		}));
 
 		// 초기 상태 업데이트
@@ -125,104 +122,4 @@ export class StatusBarManager extends Disposable {
 		}
 	}
 
-	private async showSettingsQuickPick(): Promise<void> {
-		const status = this.callbacks.getStatusInfo() || {
-			connectionStatus: 'disconnected',
-			model: 'unknown',
-			extendedThinking: false,
-			executionMethod: 'cli'
-		} as IClaudeStatusInfo;
-
-		const connectionIcon = status.connectionStatus === 'connected' ? '$(check)' : '$(close)';
-		const thinkingIcon = status.extendedThinking ? '$(check)' : '$(close)';
-		const execIcon = status.executionMethod === 'script' ? '$(file-code)' : '$(terminal)';
-
-		interface ISettingsQuickPickItem extends IQuickPickItem {
-			id: string;
-		}
-
-		const items: ISettingsQuickPickItem[] = [
-			{
-				id: 'connection',
-				label: `${connectionIcon} Connection`,
-				description: status.connectionStatus === 'connected'
-					? `Connected (v${status.version || 'unknown'})`
-					: status.connectionStatus,
-				detail: status.lastConnected
-					? `Last connected: ${new Date(status.lastConnected).toLocaleString()}`
-					: undefined
-			},
-			{
-				id: 'execution',
-				label: `${execIcon} Execution Method`,
-				description: status.executionMethod === 'script'
-					? `Script: ${status.scriptPath}`
-					: 'CLI (default)'
-			},
-			{
-				id: 'thinking',
-				label: `${thinkingIcon} Extended Thinking`,
-				description: status.extendedThinking ? 'ON' : 'OFF'
-			},
-			{
-				id: 'separator',
-				label: '',
-				kind: 1 // separator
-			} as ISettingsQuickPickItem,
-			{
-				id: 'testConnection',
-				label: '$(sync) Test Connection',
-				detail: 'Check if Claude CLI is available'
-			},
-			{
-				id: 'toggleThinking',
-				label: '$(lightbulb) Toggle Extended Thinking',
-				detail: `Currently ${status.extendedThinking ? 'ON' : 'OFF'}`
-			},
-			{
-				id: 'configureScript',
-				label: '$(file-code) Configure Script',
-				detail: 'Set custom execution script'
-			},
-			{
-				id: 'openJson',
-				label: '$(json) Open claude.local.json',
-				detail: 'Edit local settings directly'
-			}
-		];
-
-		const selected = await this.quickInputService.pick(items, {
-			placeHolder: localize('claudeSettings', "Claude Settings"),
-			canPickMany: false
-		});
-
-		if (!selected) return;
-
-		const selectedItem = selected as ISettingsQuickPickItem;
-
-		switch (selectedItem.id) {
-			case 'testConnection':
-				this.notificationService.info(localize('testingConnection', "Testing connection..."));
-				const connected = await this.callbacks.checkConnection();
-				if (connected) {
-					this.notificationService.info(localize('connectionSuccess', "Connection successful!"));
-				} else {
-					this.notificationService.error(localize('connectionFailed', "Connection failed. Make sure Claude CLI is installed."));
-				}
-				break;
-
-			case 'toggleThinking':
-				await this.callbacks.toggleExtendedThinking();
-				const newStatus = this.callbacks.getStatusInfo();
-				this.notificationService.info(
-					localize('thinkingToggled', "Extended Thinking: {0}", newStatus?.extendedThinking ? 'ON' : 'OFF')
-				);
-				break;
-
-			case 'configureScript':
-			case 'openJson':
-				await this.callbacks.openLocalSettings();
-				break;
-		}
-	}
 }

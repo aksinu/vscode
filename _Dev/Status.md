@@ -9,17 +9,17 @@
 | Item | Value |
 |------|-------|
 | **Phase** | Phase 4 - 고급 UX 기능 |
-| **Status** | File Changes Tracking 구현 완료 |
+| **Status** | OpenFilesBar UI 개선 완료 |
 | **Updated** | 2026-01-28 |
-| **Build** | 🔨 빌드 필요 |
+| **Build** | ✅ 빌드 완료 |
 
 ---
 
 ## Now Working On
 
 ```
-Task: File Changes Tracking 기능 완료
-Status: 구현 완료, 빌드 및 테스트 필요
+Task: 설정 윈도우 구현 완료
+Status: 컴파일 필요
 ```
 
 ### 빌드 & 실행
@@ -69,12 +69,15 @@ yarn compile          # 빌드
 
 ## Remaining
 
+> 상세 내용은 **[Backlog.md](./Backlog.md)** 참조
+
 ### 🎯 VS Code 확장 기능 (Claude CLI 독립적)
-- [ ] 파일 탐색기 우클릭 → Claude로 전송
-- [ ] 에디터 컨텍스트 메뉴 통합
-- [ ] 세션별 변경사항 히스토리 관리
-- [ ] Accept/Reject 변경사항 배치 UI
-- [ ] 워크스페이스 파일 자동 인덱싱
+| # | Feature | Priority | Status |
+|---|---------|----------|--------|
+| 1 | 파일 탐색기 컨텍스트 메뉴 | P1 | Pending |
+| 2 | 에디터 컨텍스트 메뉴 | P1 | Pending |
+| 3 | 세션별 변경사항 히스토리 | P2 | Pending |
+| 4 | Accept/Reject 배치 UI | P3 | Enhancement |
 
 ### ✅ 이미 지원됨 (Claude CLI 기본 기능)
 - [x] **실시간 스트리밍**: `--output-format stream-json` 이미 구현됨
@@ -172,6 +175,22 @@ onDidComplete         ──▶ handleCommandComplete()
 ## Activity Log
 
 ### 2026-01-28
+- **설정 윈도우 구현**
+  - `claudeSettingsPanel.ts`: 전체 설정 모달 (Model, Extended Thinking, Auto Accept, Script)
+  - `claudeSessionSettingsPanel.ts`: 세션별 설정 모달 (Session Name, Model Override, Continue)
+  - `claudeLocalConfig.ts`: model, extendedThinking 필드 추가
+  - `claude.ts`: setSessionModel, setSessionExtendedThinking, continueLastSession 메서드 추가
+  - `claudeService.ts`: 세션 오버라이드 로직 구현
+  - `claudeCLI.ts`: extendedThinking 옵션 추가
+  - `claudeStatusBar.ts`: QuickPick 제거, 세션 설정 윈도우 연동
+  - `claude.css`: 설정 다이얼로그 스타일
+- **OpenFilesBar UI 개선**
+  - 위치 변경: 채팅 상단 → 입력창 바로 위
+  - 표시 대상 변경: 모든 열린 파일 → 현재 보이는 에디터만
+  - `claudeChatView.ts`: openFilesContainer 위치 이동
+  - `claudeOpenFilesBar.ts`: visibleEditors만 사용, 디버그 로그 제거
+- **빌드 환경 수정**
+  - `.vscode/tasks.json`: preLaunch 태스크가 WSL 대신 cmd.exe 사용하도록 수정
 - File Changes Tracking 기능 구현
   - `claudeFileSnapshot.ts`: 스냅샷 매니저
   - `claudeTypes.ts`: IClaudeFileChange, IClaudeFileChangesSummary 타입

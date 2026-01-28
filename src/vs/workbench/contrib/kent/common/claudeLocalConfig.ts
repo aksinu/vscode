@@ -38,6 +38,10 @@ export interface IClaudeLocalConfig {
 	readonly autoAccept?: boolean;
 	/** 작업 디렉토리 (기본: 워크스페이스 루트) */
 	readonly workingDirectory?: string;
+	/** 사용할 모델명 (예: claude-sonnet-4-20250514) */
+	readonly model?: string;
+	/** 확장 사고 모드 활성화 */
+	readonly extendedThinking?: boolean;
 }
 
 /**
