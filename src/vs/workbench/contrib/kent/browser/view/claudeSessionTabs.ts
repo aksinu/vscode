@@ -131,23 +131,56 @@ export class SessionTabs extends Disposable {
 
 	/**
 	 * 세션 제목 가져오기
+	 * 우선순위: 세션 타이틀 > 첫 메시지 기반 > 기본값
 	 */
 	private getSessionTitle(session: IClaudeSession): string {
+		// 1. 명시적으로 설정된 세션 타이틀
 		if (session.title) {
 			return session.title;
 		}
 
-		// 첫 번째 사용자 메시지에서 제목 추출
+		// 2. 첫 번째 사용자 메시지에서 제목 추출
 		const firstUserMsg = session.messages.find(m => m.role === 'user');
 		if (firstUserMsg) {
-			const content = firstUserMsg.content.trim();
-			// 첫 줄만 사용, 최대 20자
-			const firstLine = content.split('\n')[0];
-			return firstLine.length > 20 ? firstLine.substring(0, 20) + '...' : firstLine;
+			return this.extractTitleFromMessage(firstUserMsg.content);
 		}
 
-		// 기본값: 생성 시간
-		return new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		// 3. 기본값: "New Chat"
+		return localize('newChat', "New Chat");
+	}
+
+	/**
+	 * 메시지에서 제목 추출
+	 */
+	private extractTitleFromMessage(content: string): string {
+		const maxLength = 25;
+		const text = content.trim();
+
+		// 첫 줄 추출
+		let firstLine = text.split('\n')[0].trim();
+
+		// 코드블록이나 특수문자로 시작하면 정리
+		if (firstLine.startsWith('```') || firstLine.startsWith('#')) {
+			firstLine = firstLine.replace(/^[`#]+\s*/, '');
+		}
+
+		// 빈 문자열이면 기본값
+		if (!firstLine) {
+			return localize('newChat', "New Chat");
+		}
+
+		// 길이 제한
+		if (firstLine.length > maxLength) {
+			// 단어 경계에서 자르기 시도
+			const truncated = firstLine.substring(0, maxLength);
+			const lastSpace = truncated.lastIndexOf(' ');
+			if (lastSpace > maxLength * 0.6) {
+				return truncated.substring(0, lastSpace) + '...';
+			}
+			return truncated + '...';
+		}
+
+		return firstLine;
 	}
 
 	/**
