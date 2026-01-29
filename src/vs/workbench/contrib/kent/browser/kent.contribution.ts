@@ -34,10 +34,11 @@ const viewContainer = viewContainersRegistry.registerViewContainer({
 	title: localize2('claude', "Claude"),
 	icon: Codicon.comment,
 	order: 100,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [VIEW_CONTAINER_ID, { mergeViewWithContainerWhenSingleView: true }]),
+	// [수정] merge 옵션을 false로 변경하거나 아예 지우세요.
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [VIEW_CONTAINER_ID, { mergeViewWithContainerWhenSingleView: false }]),
 	storageId: VIEW_CONTAINER_ID,
 	hideIfEmpty: false
-}, ViewContainerLocation.AuxiliaryBar, { isDefault: true });
+}, ViewContainerLocation.AuxiliaryBar, { isDefault: true }); // 참고: AuxiliaryBar는 '오른쪽 사이드바'입니다. 왼쪽에 두려면 ViewContainerLocation.Sidebar로 바꾸세요.
 
 // ========== View 등록 ==========
 
