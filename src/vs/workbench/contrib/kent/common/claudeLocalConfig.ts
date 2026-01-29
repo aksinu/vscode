@@ -28,6 +28,11 @@ export interface IClaudeExecutableConfig {
 }
 
 /**
+ * 권한 모드 타입
+ */
+export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits';
+
+/**
  * Claude 로컬 설정 (프로젝트별, .gitignore 대상)
  * 위치: {workspace}/.vscode/claude.local.json
  */
@@ -42,6 +47,27 @@ export interface IClaudeLocalConfig {
 	readonly model?: string;
 	/** Ultrathink 모드 활성화 (프롬프트에 ultrathink 키워드 추가) */
 	readonly ultrathink?: boolean;
+
+	// === 확장 옵션 (Step 2) ===
+
+	/** 에이전트 최대 턴 수 */
+	readonly maxTurns?: number;
+	/** 비용 상한선 (USD) */
+	readonly maxBudgetUsd?: number;
+	/** 대체 모델 (기본 모델 실패 시 사용) */
+	readonly fallbackModel?: string;
+	/** 금지 도구 목록 */
+	readonly disallowedTools?: string[];
+	/** 권한 모드 */
+	readonly permissionMode?: ClaudePermissionMode;
+	/** 베타 기능 목록 */
+	readonly betas?: string[];
+	/** 추가 디렉토리 경로 목록 */
+	readonly addDirs?: string[];
+	/** MCP 설정 파일 경로 */
+	readonly mcpConfig?: string;
+	/** 에이전트 설정 경로 */
+	readonly agents?: string;
 }
 
 /**

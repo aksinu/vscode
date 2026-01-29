@@ -104,6 +104,75 @@ configurationRegistry.registerConfiguration({
 			minimum: 8,
 			maximum: 24,
 			description: localize('claude.fontSize', "Font size for Claude chat messages")
+		},
+		'claude.maxTurns': {
+			type: 'number',
+			default: 50,
+			minimum: 1,
+			maximum: 1000,
+			description: localize('claude.maxTurns', "Maximum number of conversation turns before stopping"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.maxBudgetUsd': {
+			type: 'number',
+			default: 5,
+			minimum: 0.01,
+			description: localize('claude.maxBudgetUsd', "Maximum budget in USD for a single conversation session"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.fallbackModel': {
+			type: 'string',
+			default: 'claude-3-5-haiku-20241022',
+			enum: [
+				'claude-sonnet-4-20250514',
+				'claude-opus-4-20250514',
+				'claude-3-5-sonnet-20241022',
+				'claude-3-5-haiku-20241022'
+			],
+			enumDescriptions: [
+				'Claude Sonnet 4 - Latest, balanced performance',
+				'Claude Opus 4 - Most capable',
+				'Claude 3.5 Sonnet - Fast and efficient',
+				'Claude 3.5 Haiku - Fastest'
+			],
+			description: localize('claude.fallbackModel', "Fallback model to use when primary model is unavailable"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.appendSystemPrompt': {
+			type: 'string',
+			default: '',
+			description: localize('claude.appendSystemPrompt', "Additional text to append to the default system prompt"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.disallowedTools': {
+			type: 'array',
+			items: {
+				type: 'string'
+			},
+			default: [],
+			description: localize('claude.disallowedTools', "List of tool names that Claude is not allowed to use"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.permissionMode': {
+			type: 'string',
+			default: 'default',
+			enum: ['default', 'plan', 'accept-edits'],
+			enumDescriptions: [
+				localize('claude.permissionMode.default', "Default mode - ask for permission on sensitive operations"),
+				localize('claude.permissionMode.plan', "Plan mode - Claude creates a plan before executing"),
+				localize('claude.permissionMode.acceptEdits', "Accept edits mode - automatically accept file edits")
+			],
+			description: localize('claude.permissionMode', "Permission mode for Claude operations"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.betas': {
+			type: 'array',
+			items: {
+				type: 'string'
+			},
+			default: [],
+			description: localize('claude.betas', "Beta features to enable (e.g., 'interleaved-thinking')"),
+			scope: 1 // ConfigurationScope.APPLICATION
 		}
 	}
 });

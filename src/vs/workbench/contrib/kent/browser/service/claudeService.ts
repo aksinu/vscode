@@ -590,6 +590,21 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			// 	this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink mode enabled, prompt prefixed with ultrathink:');
 			// }
 
+			// 로컬 설정 > VS Code 설정 우선순위로 옵션 결정
+			const maxTurns = this._localConfig.maxTurns
+				?? this.configurationService.getValue<number>('claude.maxTurns');
+			const maxBudgetUsd = this._localConfig.maxBudgetUsd
+				?? this.configurationService.getValue<number>('claude.maxBudgetUsd');
+			const fallbackModel = this._localConfig.fallbackModel
+				?? this.configurationService.getValue<string>('claude.fallbackModel');
+			const appendSystemPrompt = this.configurationService.getValue<string>('claude.appendSystemPrompt');
+			const disallowedTools = this._localConfig.disallowedTools
+				?? this.configurationService.getValue<string[]>('claude.disallowedTools');
+			const permissionMode = this._localConfig.permissionMode
+				?? this.configurationService.getValue<'default' | 'plan' | 'accept-edits'>('claude.permissionMode');
+			const betas = this._localConfig.betas
+				?? this.configurationService.getValue<string[]>('claude.betas');
+
 			const cliOptions: IClaudeCLIRequestOptions = {
 				model: effectiveModel,
 				systemPrompt: options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt'),
@@ -597,7 +612,19 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
 					: this.getWorkspaceRoot(),
 				executable: this._localConfig.executable,
-				continueLastSession
+				continueLastSession,
+				// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
+				maxTurns,
+				maxBudgetUsd,
+				fallbackModel,
+				appendSystemPrompt,
+				disallowedTools,
+				permissionMode,
+				betas,
+				// 로컬 설정 전용 옵션
+				addDirs: this._localConfig.addDirs,
+				mcpConfig: this._localConfig.mcpConfig,
+				agents: this._localConfig.agents
 			};
 
 			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)

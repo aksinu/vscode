@@ -28,3 +28,5 @@ nul
 /vx-claude.sh
 /vx-claude.bat
 /.vscode/claude-logs
+.ccwa/
+.ccwa-runtime/

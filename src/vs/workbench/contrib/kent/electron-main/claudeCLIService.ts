@@ -147,6 +147,62 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			claudeArgs.push('--allowedTools', ...options.allowedTools);
 		}
 
+		// 최대 턴 수 제한
+		if (options?.maxTurns !== undefined && options.maxTurns > 0) {
+			claudeArgs.push('--max-turns', String(options.maxTurns));
+		}
+
+		// 비용 상한선 (USD, 소수점 허용)
+		if (options?.maxBudgetUsd !== undefined && options.maxBudgetUsd > 0) {
+			claudeArgs.push('--max-budget-usd', String(options.maxBudgetUsd));
+		}
+
+		// 대체 모델
+		if (options?.fallbackModel) {
+			claudeArgs.push('--fallback-model', options.fallbackModel);
+		}
+
+		// 시스템 프롬프트 추가 (기존에 append)
+		if (options?.appendSystemPrompt && options.appendSystemPrompt.trim() !== '') {
+			claudeArgs.push('--append-system-prompt', options.appendSystemPrompt);
+		}
+
+		// 금지할 도구 목록 (쉼표 구분 또는 여러 번 지정)
+		if (options?.disallowedTools && options.disallowedTools.length > 0) {
+			for (const tool of options.disallowedTools) {
+				claudeArgs.push('--disallowedTools', tool);
+			}
+		}
+
+		// 권한 모드
+		if (options?.permissionMode) {
+			claudeArgs.push('--permission-mode', options.permissionMode);
+		}
+
+		// 베타 기능 목록 (여러 번 지정 가능)
+		if (options?.betas && options.betas.length > 0) {
+			for (const beta of options.betas) {
+				claudeArgs.push('--betas', beta);
+			}
+		}
+
+		// 추가 작업 디렉토리 (여러 번 지정 가능)
+		if (options?.addDirs && options.addDirs.length > 0) {
+			for (const dir of options.addDirs) {
+				claudeArgs.push('--add-dir', dir);
+			}
+		}
+
+		// MCP 설정 파일 경로
+		if (options?.mcpConfig) {
+			claudeArgs.push('--mcp-config', options.mcpConfig);
+		}
+
+		// 에이전트 설정 파일 경로
+		if (options?.agents) {
+			claudeArgs.push('--agents', options.agents);
+		}
+
 		// Ultrathink 모드는 프롬프트에 "ultrathink:" 키워드를 추가하는 방식으로 처리됨
 		// (claudeService.ts에서 프롬프트 전처리)
 

@@ -68,18 +68,107 @@ export interface IClaudeRateLimitInfo {
 }
 
 /**
+ * Claude CLI 권한 모드
+ * - 'default': 기본 권한 모드
+ * - 'plan': 계획 모드 (실행 전 확인)
+ * - 'accept-edits': 편집 자동 수락
+ */
+export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits';
+
+/**
  * Claude CLI 요청 옵션
  */
 export interface IClaudeCLIRequestOptions {
+	/** 작업 디렉토리 경로 */
 	readonly workingDir?: string;
+
+	/** 사용할 모델 이름 */
 	readonly model?: string;
+
+	/** 시스템 프롬프트 (기존 프롬프트 교체) */
 	readonly systemPrompt?: string;
+
+	/** 최대 출력 토큰 수 */
 	readonly maxTokens?: number;
+
+	/** 허용할 도구 목록 */
 	readonly allowedTools?: string[];
-	readonly resumeSessionId?: string; // 세션 재개용 (--resume)
-	readonly continueLastSession?: boolean; // 마지막 세션 계속 (--continue)
+
+	/** 세션 재개용 ID (--resume) */
+	readonly resumeSessionId?: string;
+
+	/** 마지막 세션 계속 여부 (--continue) */
+	readonly continueLastSession?: boolean;
+
 	/** 실행 설정 (로컬 설정에서 로드) */
 	readonly executable?: IClaudeExecutableConfig;
+
+	// ========== 추가된 옵션들 ==========
+
+	/**
+	 * 에이전트 최대 턴 수
+	 * @description 에이전트가 실행할 수 있는 최대 턴(대화 라운드) 수를 제한합니다.
+	 */
+	readonly maxTurns?: number;
+
+	/**
+	 * 비용 상한선 (USD)
+	 * @description API 호출 비용의 상한선을 USD 단위로 설정합니다.
+	 */
+	readonly maxBudgetUsd?: number;
+
+	/**
+	 * 대체 모델
+	 * @description 주 모델이 사용 불가능할 때 사용할 대체 모델을 지정합니다.
+	 */
+	readonly fallbackModel?: string;
+
+	/**
+	 * 시스템 프롬프트 추가 (append)
+	 * @description 기존 시스템 프롬프트를 유지하면서 추가할 프롬프트입니다.
+	 *              systemPrompt는 기존을 교체하고, 이 옵션은 기존에 추가합니다.
+	 */
+	readonly appendSystemPrompt?: string;
+
+	/**
+	 * 금지할 도구 목록
+	 * @description 에이전트가 사용할 수 없는 도구들의 목록입니다.
+	 *              allowedTools와 반대로 특정 도구를 제외합니다.
+	 */
+	readonly disallowedTools?: string[];
+
+	/**
+	 * 권한 모드
+	 * @description 에이전트의 권한 동작 모드를 설정합니다.
+	 *              - 'default': 기본 권한 모드
+	 *              - 'plan': 계획 모드 (실행 전 확인 필요)
+	 *              - 'accept-edits': 파일 편집 자동 수락
+	 */
+	readonly permissionMode?: ClaudePermissionMode;
+
+	/**
+	 * 베타 기능 목록
+	 * @description 활성화할 베타 기능들의 목록입니다.
+	 */
+	readonly betas?: string[];
+
+	/**
+	 * 추가 작업 디렉토리
+	 * @description workingDir 외에 추가로 접근할 디렉토리 목록입니다.
+	 */
+	readonly addDirs?: string[];
+
+	/**
+	 * MCP 설정 파일 경로
+	 * @description Model Context Protocol 설정 파일의 경로입니다.
+	 */
+	readonly mcpConfig?: string;
+
+	/**
+	 * 에이전트 설정 파일 경로
+	 * @description 에이전트 정의 파일의 경로입니다.
+	 */
+	readonly agents?: string;
 }
 
 /**
