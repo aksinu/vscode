@@ -23,6 +23,119 @@ export const CLAUDE_AVAILABLE_MODELS = [
 export const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
 /**
+ * 모델 별칭 매핑 (짧은 이름 → 전체 모델명)
+ */
+export const CLAUDE_MODEL_ALIASES: Record<string, string> = {
+	// Opus 4
+	'opus': 'claude-opus-4-20250514',
+	'opus-4': 'claude-opus-4-20250514',
+	'opus4': 'claude-opus-4-20250514',
+	'o4': 'claude-opus-4-20250514',
+	// Sonnet 4
+	'sonnet': 'claude-sonnet-4-20250514',
+	'sonnet-4': 'claude-sonnet-4-20250514',
+	'sonnet4': 'claude-sonnet-4-20250514',
+	's4': 'claude-sonnet-4-20250514',
+	// Sonnet 3.5
+	'3.5-sonnet': 'claude-3-5-sonnet-20241022',
+	'sonnet-3.5': 'claude-3-5-sonnet-20241022',
+	'sonnet35': 'claude-3-5-sonnet-20241022',
+	's35': 'claude-3-5-sonnet-20241022',
+	// Haiku 3.5
+	'haiku': 'claude-3-5-haiku-20241022',
+	'haiku-3.5': 'claude-3-5-haiku-20241022',
+	'haiku35': 'claude-3-5-haiku-20241022',
+	'h35': 'claude-3-5-haiku-20241022'
+};
+
+/**
+ * 모델 표시 이름 (UI용)
+ */
+export const CLAUDE_MODEL_DISPLAY_NAMES: Record<string, string> = {
+	'claude-opus-4-20250514': 'Opus 4',
+	'claude-sonnet-4-20250514': 'Sonnet 4',
+	'claude-3-5-sonnet-20241022': 'Sonnet 3.5',
+	'claude-3-5-haiku-20241022': 'Haiku 3.5'
+};
+
+/**
+ * 모델명 해석 (별칭 → 전체 모델명)
+ * @param input 사용자 입력 (별칭 또는 전체 모델명)
+ * @returns 전체 모델명 (매칭 안되면 입력값 그대로 반환)
+ */
+export function resolveModelName(input: string | undefined): string {
+	if (!input || input.trim() === '') {
+		return '';
+	}
+
+	const trimmed = input.trim().toLowerCase();
+
+	// 1. 별칭 매핑 확인
+	if (CLAUDE_MODEL_ALIASES[trimmed]) {
+		return CLAUDE_MODEL_ALIASES[trimmed];
+	}
+
+	// 2. 전체 모델명과 정확히 일치하는지 확인
+	const exactMatch = CLAUDE_AVAILABLE_MODELS.find(m => m.toLowerCase() === trimmed);
+	if (exactMatch) {
+		return exactMatch;
+	}
+
+	// 3. 부분 매칭 (예: "opus" → claude-opus-4-...)
+	const partialMatch = CLAUDE_AVAILABLE_MODELS.find(m => m.toLowerCase().includes(trimmed));
+	if (partialMatch) {
+		return partialMatch;
+	}
+
+	// 4. 매칭 안되면 입력값 그대로 반환 (validateClaudeModel에서 처리)
+	return input.trim();
+}
+
+/**
+ * 모델 표시 이름 가져오기 (UI용)
+ */
+export function getModelDisplayName(model: string): string {
+	return CLAUDE_MODEL_DISPLAY_NAMES[model] || model;
+}
+
+/**
+ * UI용 모델 목록 (QuickPick 등)
+ */
+export interface IClaudeModelPickItem {
+	readonly model: string;
+	readonly displayName: string;
+	readonly aliases: string[];
+}
+
+/**
+ * UI용 모델 목록 반환
+ */
+export function getAvailableModelsForUI(): IClaudeModelPickItem[] {
+	return [
+		{
+			model: 'claude-opus-4-20250514',
+			displayName: 'Opus 4',
+			aliases: ['opus', 'opus-4', 'o4']
+		},
+		{
+			model: 'claude-sonnet-4-20250514',
+			displayName: 'Sonnet 4 (Default)',
+			aliases: ['sonnet', 'sonnet-4', 's4']
+		},
+		{
+			model: 'claude-3-5-sonnet-20241022',
+			displayName: 'Sonnet 3.5',
+			aliases: ['sonnet-3.5', 's35']
+		},
+		{
+			model: 'claude-3-5-haiku-20241022',
+			displayName: 'Haiku 3.5',
+			aliases: ['haiku', 'h35']
+		}
+	];
+}
+
+/**
  * 모델 유효성 검증 결과
  */
 export interface IClaudeModelValidationResult {
@@ -32,8 +145,8 @@ export interface IClaudeModelValidationResult {
 }
 
 /**
- * 모델 유효성 검증
- * @param model 검증할 모델명
+ * 모델 유효성 검증 (별칭 지원)
+ * @param model 검증할 모델명 (별칭 또는 전체 모델명)
  * @returns 유효성 검증 결과 (유효하지 않으면 기본 모델로 대체)
  */
 export function validateClaudeModel(model: string | undefined): IClaudeModelValidationResult {
@@ -42,18 +155,19 @@ export function validateClaudeModel(model: string | undefined): IClaudeModelVali
 		return { isValid: true, model: '' };
 	}
 
-	const trimmedModel = model.trim();
+	// 별칭 해석
+	const resolvedModel = resolveModelName(model);
 
 	// 유효한 모델인지 확인
-	if (CLAUDE_AVAILABLE_MODELS.includes(trimmedModel as typeof CLAUDE_AVAILABLE_MODELS[number])) {
-		return { isValid: true, model: trimmedModel };
+	if (CLAUDE_AVAILABLE_MODELS.includes(resolvedModel as typeof CLAUDE_AVAILABLE_MODELS[number])) {
+		return { isValid: true, model: resolvedModel };
 	}
 
 	// 유효하지 않은 모델 - 경고와 함께 기본 모델 반환
 	return {
 		isValid: false,
 		model: CLAUDE_DEFAULT_MODEL,
-		warning: `Unknown model "${trimmedModel}". Using default model "${CLAUDE_DEFAULT_MODEL}" instead.`
+		warning: `Unknown model "${model}". Using default model "${CLAUDE_DEFAULT_MODEL}" instead.`
 	};
 }
 
@@ -168,7 +282,7 @@ export interface IClaudeContext {
  */
 export interface IClaudeAttachment {
 	readonly id: string;
-	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics' | 'workspace' | 'image';
+	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics' | 'workspace' | 'image' | 'code-reference';
 	readonly uri?: URI;
 	readonly name: string;
 	readonly content?: string;
@@ -176,6 +290,28 @@ export interface IClaudeAttachment {
 	readonly imageData?: string;
 	/** 이미지 MIME 타입 (type === 'image'일 때) */
 	readonly mimeType?: string;
+	/** 코드 참조 정보 (type === 'code-reference'일 때) */
+	readonly codeReference?: IClaudeCodeReference;
+}
+
+/**
+ * 코드 참조 정보 (에디터에서 복사한 코드)
+ */
+export interface IClaudeCodeReference {
+	/** 참조 유형 */
+	readonly type: 'code-reference';
+	/** 파일 경로 */
+	readonly filePath: string;
+	/** 파일 이름 */
+	readonly fileName: string;
+	/** 시작 줄 번호 */
+	readonly startLine: number;
+	/** 종료 줄 번호 */
+	readonly endLine: number;
+	/** 코드 내용 */
+	readonly content: string;
+	/** 언어 ID (syntax highlighting용) */
+	readonly languageId?: string;
 }
 
 /**

@@ -13,7 +13,7 @@ import { basename } from '../../../../../base/common/resources.js';
 import { localize } from '../../../../../nls.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
-import { IClaudeAttachment } from '../../common/claudeTypes.js';
+import { IClaudeAttachment, IClaudeCodeReference } from '../../common/claudeTypes.js';
 
 /**
  * AttachmentManager 콜백 인터페이스
@@ -157,6 +157,40 @@ export class AttachmentManager extends Disposable {
 	}
 
 	/**
+	 * 코드 참조 첨부 (에디터에서 복사한 코드)
+	 */
+	addCodeReference(ref: IClaudeCodeReference): void {
+		// 같은 파일의 같은 범위가 이미 첨부되어 있는지 확인
+		const existing = this._attachments.find(a =>
+			a.type === 'code-reference' &&
+			a.codeReference?.filePath === ref.filePath &&
+			a.codeReference?.startLine === ref.startLine &&
+			a.codeReference?.endLine === ref.endLine
+		);
+
+		if (existing) {
+			this.notificationService.info(localize('codeReferenceAlreadyAttached', "Code reference already attached"));
+			return;
+		}
+
+		const lineRange = ref.startLine === ref.endLine
+			? `L${ref.startLine}`
+			: `L${ref.startLine}-${ref.endLine}`;
+
+		const attachment: IClaudeAttachment = {
+			id: generateUuid(),
+			type: 'code-reference',
+			name: `${ref.fileName} (${lineRange})`,
+			content: ref.content,
+			codeReference: ref
+		};
+
+		this._attachments.push(attachment);
+		this.updateUI();
+		this.notificationService.info(localize('codeReferenceAttached', "Code reference attached: {0} {1}", ref.fileName, lineRange));
+	}
+
+	/**
 	 * 첨부파일 제거
 	 */
 	remove(id: string): void {
@@ -252,6 +286,11 @@ export class AttachmentManager extends Disposable {
 		for (const attachment of this._attachments) {
 			const tag = append(this.container, $('.claude-attachment-tag'));
 
+			// 코드 참조는 특별한 스타일 적용
+			if (attachment.type === 'code-reference') {
+				tag.classList.add('code-reference');
+			}
+
 			// 아이콘
 			const icon = append(tag, $('.claude-attachment-icon'));
 			let iconClass = Codicon.file;
@@ -261,13 +300,22 @@ export class AttachmentManager extends Disposable {
 				iconClass = Codicon.folderLibrary;
 			} else if (attachment.type === 'image') {
 				iconClass = Codicon.fileMedia;
+			} else if (attachment.type === 'code-reference') {
+				iconClass = Codicon.code;
 			}
 			icon.classList.add(...ThemeIcon.asClassNameArray(iconClass));
 
 			// 파일명
 			const name = append(tag, $('.claude-attachment-name'));
 			name.textContent = attachment.name;
-			name.title = attachment.uri?.fsPath || attachment.name;
+
+			// 툴팁: 코드 참조인 경우 미리보기 표시
+			if (attachment.type === 'code-reference' && attachment.codeReference) {
+				const preview = attachment.codeReference.content.substring(0, 200);
+				name.title = `${attachment.codeReference.filePath}\n\n${preview}${attachment.codeReference.content.length > 200 ? '...' : ''}`;
+			} else {
+				name.title = attachment.uri?.fsPath || attachment.name;
+			}
 
 			// 삭제 버튼
 			const removeBtn = append(tag, $('.claude-attachment-remove'));

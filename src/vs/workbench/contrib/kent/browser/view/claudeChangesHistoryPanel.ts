@@ -254,7 +254,7 @@ export class ChangesHistoryPanel extends Disposable {
 		}
 	}
 
-	private getChangeTypeIcon(changeType: 'created' | 'modified' | 'deleted'): Codicon {
+	private getChangeTypeIcon(changeType: 'created' | 'modified' | 'deleted'): typeof Codicon.diffAdded {
 		switch (changeType) {
 			case 'created':
 				return Codicon.diffAdded;

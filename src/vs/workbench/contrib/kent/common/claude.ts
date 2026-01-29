@@ -126,6 +126,16 @@ export interface IClaudeService {
 	setSessionUltrathink?(enabled: boolean): void;
 
 	/**
+	 * 세션별 Auto Accept 오버라이드 설정
+	 */
+	setSessionAutoAccept?(enabled: boolean): void;
+
+	/**
+	 * Auto Accept 활성화 여부
+	 */
+	isAutoAcceptEnabled?(): boolean;
+
+	/**
 	 * 마지막 세션 이어서 시작 (--continue)
 	 */
 	continueLastSession?(): Promise<void>;

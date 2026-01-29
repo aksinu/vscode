@@ -232,9 +232,10 @@ export class InputEditorManager extends Disposable {
 		}));
 
 		// 클립보드 붙여넣기 이벤트 (이미지 지원)
+		// capture: true로 Monaco 에디터보다 먼저 이벤트를 처리
 		this.callbacks.registerDisposable(addDisposableListener(this.editorContainer, EventType.PASTE, (e: ClipboardEvent) => {
 			this.callbacks.onPaste(e);
-		}));
+		}, true /* useCapture */));
 
 		// 키보드 이벤트 처리
 		this._register(this.editor.onKeyDown(e => {

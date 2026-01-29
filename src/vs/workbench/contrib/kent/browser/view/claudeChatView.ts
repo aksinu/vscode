@@ -391,6 +391,11 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.claudeService.setSessionUltrathink?.(settings.ultrathink);
 		}
 
+		// Auto Accept 오버라이드 적용
+		if (settings.autoAccept !== undefined) {
+			this.claudeService.setSessionAutoAccept?.(settings.autoAccept);
+		}
+
 		this.notificationService.info(localize('sessionSettingsSaved', "Session settings saved"));
 	}
 
@@ -997,7 +1002,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			return;
 		}
 
-		// 이미지 파일 찾기 (items 또는 files에서)
+		// 1. 이미지 파일 체크 (동기적으로 먼저 확인)
 		let imageFile: File | null = null;
 
 		// DataTransferItemList에서 이미지 찾기
@@ -1018,13 +1023,84 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		}
 
-		// 이미지가 있으면 첨부
+		// 이미지가 있으면 즉시 기본 동작 차단 (텍스트 삽입 방지)
 		if (imageFile) {
 			e.preventDefault();
 			e.stopPropagation();
+			// 비동기 작업은 이벤트 차단 후 수행
 			await this.attachmentManager.addImage(imageFile);
+			return;
 		}
-		// 텍스트는 기본 동작 유지
+
+		// 2. VS Code 에디터에서 복사한 코드인지 확인 (코드 참조 기능)
+		const vsCodeData = clipboardData.getData('vscode-editor-data');
+		if (vsCodeData) {
+			try {
+				const metadata = JSON.parse(vsCodeData);
+				const plainText = clipboardData.getData('text/plain');
+
+				// 코드 참조로 변환할 수 있는지 확인
+				if (this.tryAddCodeReference(metadata, plainText)) {
+					e.preventDefault();
+					e.stopPropagation();
+					return;
+				}
+			} catch {
+				// 파싱 실패 시 기본 텍스트 붙여넣기
+			}
+		}
+
+		// 3. 일반 텍스트는 기본 동작 유지
+	}
+
+	/**
+	 * VS Code 에디터 메타데이터에서 코드 참조 생성 시도
+	 * @returns 코드 참조로 변환 성공 여부
+	 */
+	private tryAddCodeReference(metadata: unknown, content: string): boolean {
+		// VS Code 클립보드 메타데이터 구조 확인
+		if (!metadata || typeof metadata !== 'object') {
+			return false;
+		}
+
+		const meta = metadata as Record<string, unknown>;
+
+		// mode (언어 ID)가 있어야 에디터에서 복사한 것
+		if (!meta.mode || typeof meta.mode !== 'string') {
+			return false;
+		}
+
+		// 현재 활성 에디터에서 선택 영역 정보 가져오기
+		const activeEditor = this.editorService.activeTextEditorControl;
+		if (!activeEditor || !('getModel' in activeEditor) || !('getSelection' in activeEditor)) {
+			return false;
+		}
+
+		const model = (activeEditor as { getModel: () => { uri?: URI } | null }).getModel();
+		const selection = (activeEditor as { getSelection: () => { startLineNumber: number; endLineNumber: number } | null }).getSelection();
+
+		if (!model?.uri || !selection) {
+			return false;
+		}
+
+		// 파일 경로와 라인 범위 추출
+		const filePath = model.uri.fsPath;
+		const fileName = filePath.split(/[/\\]/).pop() || filePath;
+		const startLine = selection.startLineNumber;
+		const endLine = selection.endLineNumber;
+
+		// 코드 참조로 첨부
+		this.attachmentManager.addCodeReference?.({
+			type: 'code-reference',
+			filePath,
+			fileName,
+			startLine,
+			endLine,
+			content,
+			languageId: meta.mode as string
+		});
+
+		return true;
 	}
 
 	// ========== 드래그/드롭 ==========

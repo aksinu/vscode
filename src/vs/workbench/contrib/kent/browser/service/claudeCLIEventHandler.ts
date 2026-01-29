@@ -21,6 +21,7 @@ export interface ICLIEventHandlerCallbacks {
 	// 상태
 	setState(state: 'idle' | 'sending' | 'streaming' | 'error'): void;
 	getLocalConfig(): IClaudeLocalConfig;
+	isAutoAcceptEnabled(): boolean;
 
 	// 메시지
 	getCurrentMessageId(): string | undefined;
@@ -400,10 +401,8 @@ export class CLIEventHandler extends Disposable {
 			multiSelect: q.multiSelect
 		}));
 
-		const localConfig = this.callbacks.getLocalConfig();
-
-		// Auto Accept 모드: 첫 번째 옵션 자동 선택
-		if (localConfig.autoAccept && questions.length > 0 && questions[0].options.length > 0) {
+		// Auto Accept 모드: 첫 번째 옵션 자동 선택 (세션 설정 > 로컬 설정)
+		if (this.callbacks.isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled, selecting:', firstOption);
 
@@ -454,10 +453,8 @@ export class CLIEventHandler extends Disposable {
 			multiSelect: q.multiSelect
 		}));
 
-		const localConfig = this.callbacks.getLocalConfig();
-
-		// Auto Accept 모드
-		if (localConfig.autoAccept && questions.length > 0 && questions[0].options.length > 0) {
+		// Auto Accept 모드 (세션 설정 > 로컬 설정)
+		if (this.callbacks.isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled (input_request), selecting:', firstOption);
 

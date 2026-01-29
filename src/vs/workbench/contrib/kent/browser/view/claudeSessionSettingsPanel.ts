@@ -6,7 +6,7 @@
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
-import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
+import { validateClaudeModel, CLAUDE_DEFAULT_MODEL, getAvailableModelsForUI, resolveModelName, getModelDisplayName } from '../../common/claudeTypes.js';
 
 /**
  * 세션 설정 데이터
@@ -15,6 +15,7 @@ export interface ISessionSettings {
 	name: string;
 	model?: string;
 	ultrathink?: boolean;
+	autoAccept?: boolean;
 }
 
 /**
@@ -120,6 +121,14 @@ export class SessionSettingsPanel extends Disposable {
 			onChange: (checked) => { this.currentSettings.ultrathink = checked; }
 		});
 
+		// Auto Accept 설정
+		this.createToggleSetting(content, {
+			label: localize('autoAccept', "Auto Accept"),
+			description: localize('autoAcceptDesc', "Automatically accept AskUser prompts (tool permissions)"),
+			checked: this.currentSettings.autoAccept || false,
+			onChange: (checked) => { this.currentSettings.autoAccept = checked; }
+		});
+
 		// Continue 섹션
 		const continueSection = append(content, $('.claude-settings-section'));
 		const continueTitle = append(continueSection, $('.claude-settings-section-title'));
@@ -210,7 +219,7 @@ export class SessionSettingsPanel extends Disposable {
 	}
 
 	/**
-	 * 모델 설정 필드 생성 (유효성 검증 포함)
+	 * 모델 설정 필드 생성 (드롭다운 + 커스텀 입력)
 	 */
 	private createModelSetting(container: HTMLElement): HTMLElement {
 		const item = append(container, $('.claude-settings-item'));
@@ -219,42 +228,125 @@ export class SessionSettingsPanel extends Disposable {
 		const label = append(info, $('.claude-settings-label'));
 		label.textContent = localize('modelOverride', "Model Override");
 		const desc = append(info, $('.claude-settings-desc'));
-		desc.textContent = localize('modelOverrideDesc', "Override the default model for this session (leave empty for default)");
+		desc.textContent = localize('modelOverrideDesc', "Override the default model for this session");
 		const hint = append(info, $('.claude-settings-hint'));
-		hint.textContent = `Available: ${this.callbacks.getAvailableModels().join(', ')}`;
+		hint.textContent = localize('modelHint', "Short names: opus, sonnet, haiku, s35...");
 
 		// 경고 메시지 요소
 		this.modelWarningElement = append(info, $('.claude-settings-warning'));
 		this.modelWarningElement.style.display = 'none';
 
 		const control = append(item, $('.claude-settings-control'));
-		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;
-		input.type = 'text';
-		input.placeholder = 'claude-sonnet-4-20250514';
-		input.value = this.currentSettings.model || '';
 
-		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
-			const value = input.value.trim();
-			this.currentSettings.model = value || undefined;
+		// 드롭다운 + 커스텀 입력 컨테이너
+		const modelSelector = append(control, $('.claude-model-selector'));
 
-			// 유효성 검증
+		// 드롭다운
+		const select = append(modelSelector, $('select.claude-settings-select')) as HTMLSelectElement;
+
+		// 기본 옵션: 비어있음 (기본 모델 사용)
+		const defaultOption = append(select, $('option')) as HTMLOptionElement;
+		defaultOption.value = '';
+		defaultOption.textContent = localize('useDefault', "(Use default)");
+
+		// 모델 목록 추가
+		const models = getAvailableModelsForUI();
+		for (const model of models) {
+			const option = append(select, $('option')) as HTMLOptionElement;
+			option.value = model.model;
+			option.textContent = `${model.displayName} (${model.aliases[0]})`;
+		}
+
+		// 커스텀 옵션
+		const customOption = append(select, $('option')) as HTMLOptionElement;
+		customOption.value = '__custom__';
+		customOption.textContent = localize('custom', "Custom...");
+
+		// 커스텀 입력 필드 (처음에는 숨김)
+		const customInput = append(modelSelector, $('input.claude-settings-input.claude-model-custom')) as HTMLInputElement;
+		customInput.type = 'text';
+		customInput.placeholder = localize('enterModel', "Enter model name or alias");
+		customInput.style.display = 'none';
+
+		// 현재 설정된 모델 확인 및 선택
+		const currentModel = this.currentSettings.model;
+		if (currentModel) {
+			// 별칭 해석
+			const resolved = resolveModelName(currentModel);
+			// 목록에 있는지 확인
+			const inList = models.some(m => m.model === resolved);
+			if (inList) {
+				select.value = resolved;
+			} else {
+				select.value = '__custom__';
+				customInput.value = currentModel;
+				customInput.style.display = 'block';
+			}
+		}
+
+		// 드롭다운 변경 이벤트
+		this.disposables.push(addDisposableListener(select, EventType.CHANGE, () => {
+			const value = select.value;
+
+			if (value === '__custom__') {
+				customInput.style.display = 'block';
+				customInput.focus();
+				// 커스텀 입력 대기 - 현재 설정은 그대로 유지
+			} else {
+				customInput.style.display = 'none';
+				customInput.value = '';
+				this.currentSettings.model = value || undefined;
+				this.updateModelWarning('');
+			}
+		}));
+
+		// 커스텀 입력 변경 이벤트
+		this.disposables.push(addDisposableListener(customInput, EventType.INPUT, () => {
+			const value = customInput.value.trim();
 			if (value) {
+				// 별칭 해석 시도
+				const resolved = resolveModelName(value);
+				this.currentSettings.model = resolved;
+
+				// 유효성 검증
 				const validation = validateClaudeModel(value);
-				if (!validation.isValid && this.modelWarningElement) {
-					this.modelWarningElement.textContent = `⚠️ ${validation.warning}`;
-					this.modelWarningElement.style.display = 'block';
-					input.classList.add('invalid');
-				} else if (this.modelWarningElement) {
-					this.modelWarningElement.style.display = 'none';
-					input.classList.remove('invalid');
+				if (!validation.isValid) {
+					this.updateModelWarning(validation.warning || '');
+				} else {
+					// 해석된 모델명 표시
+					const displayName = getModelDisplayName(resolved);
+					if (displayName !== resolved) {
+						this.updateModelWarning(`→ ${displayName}`, false);
+					} else {
+						this.updateModelWarning('');
+					}
 				}
-			} else if (this.modelWarningElement) {
-				this.modelWarningElement.style.display = 'none';
-				input.classList.remove('invalid');
+			} else {
+				this.currentSettings.model = undefined;
+				this.updateModelWarning('');
 			}
 		}));
 
 		return item;
+	}
+
+	/**
+	 * 모델 경고/정보 메시지 업데이트
+	 */
+	private updateModelWarning(message: string, isError: boolean = true): void {
+		if (!this.modelWarningElement) {
+			return;
+		}
+
+		if (message) {
+			this.modelWarningElement.textContent = isError ? `⚠️ ${message}` : `✓ ${message}`;
+			this.modelWarningElement.style.display = 'block';
+			this.modelWarningElement.style.color = isError
+				? 'var(--vscode-errorForeground)'
+				: 'var(--vscode-textLink-foreground)';
+		} else {
+			this.modelWarningElement.style.display = 'none';
+		}
 	}
 
 	private createToggleSetting(container: HTMLElement, options: {

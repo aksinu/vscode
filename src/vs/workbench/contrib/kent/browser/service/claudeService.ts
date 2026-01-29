@@ -8,7 +8,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IClaudeService, IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary, resolveModelName, getModelDisplayName } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { RateLimitManager } from './claudeRateLimitManager.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
@@ -69,6 +69,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _ultrathink = false;
 	private _sessionModelOverride: string | undefined;
 	private _sessionUltrathinkOverride: boolean | undefined;
+	private _sessionAutoAcceptOverride: boolean | undefined;
 	private _continueMode = false;
 
 	private readonly _onDidReceiveMessage = this._register(new Emitter<IClaudeMessage>());
@@ -183,6 +184,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			// 상태
 			setState: (state) => this.setState(state),
 			getLocalConfig: () => this._localConfig,
+			isAutoAcceptEnabled: () => this.isAutoAcceptEnabled(),
 
 			// 메시지
 			getCurrentMessageId: () => this._currentMessageId,
@@ -627,10 +629,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Calling channel.call sendPrompt...');
 
 			// 모델 우선순위: options > session override > local config > VS Code config
-			const effectiveModel = options?.model
+			// resolveModelName으로 별칭 해석 (예: "opus" → "claude-opus-4-20250514")
+			const rawModel = options?.model
 				|| this._sessionModelOverride
 				|| this._localConfig.model
 				|| this.configurationService.getValue<string>('claude.model');
+			const effectiveModel = resolveModelName(rawModel);
 
 
 			//UltraThink 더이상 사용 XXXX
@@ -771,11 +775,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * 세션별 모델 오버라이드 설정
+	 * 세션별 모델 오버라이드 설정 (별칭 지원)
 	 */
 	setSessionModel(model: string): void {
-		this._sessionModelOverride = model || undefined;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', model || '(cleared)');
+		// 별칭 해석 (예: "opus" → "claude-opus-4-20250514")
+		const resolvedModel = model ? resolveModelName(model) : undefined;
+		this._sessionModelOverride = resolvedModel || undefined;
+		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', displayName, resolvedModel ? `(${resolvedModel})` : '');
 		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
 	}
 
@@ -786,6 +793,23 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._sessionUltrathinkOverride = enabled;
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
 		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+	}
+
+	/**
+	 * 세션별 Auto Accept 오버라이드 설정
+	 */
+	setSessionAutoAccept(enabled: boolean): void {
+		this._sessionAutoAcceptOverride = enabled;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session auto-accept override:', enabled ? 'ON' : 'OFF');
+	}
+
+	/**
+	 * Auto Accept 활성화 여부 (세션 오버라이드 > 로컬 설정)
+	 */
+	isAutoAcceptEnabled(): boolean {
+		return this._sessionAutoAcceptOverride !== undefined
+			? this._sessionAutoAcceptOverride
+			: (this._localConfig.autoAccept ?? false);
 	}
 
 	/**

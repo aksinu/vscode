@@ -112,6 +112,13 @@ export class ClaudeContextBuilder {
 					parts.push(`[Image attached: ${attachment.name}]`);
 					parts.push(`Image data (base64, ${attachment.mimeType || 'image/png'}):`);
 					parts.push(`data:${attachment.mimeType || 'image/png'};base64,${attachment.imageData}`);
+				} else if (attachment.type === 'code-reference' && attachment.codeReference) {
+					// 코드 참조 - 파일 경로와 라인 범위 명시
+					const ref = attachment.codeReference;
+					const lineRange = ref.startLine === ref.endLine
+						? `line ${ref.startLine}`
+						: `lines ${ref.startLine}-${ref.endLine}`;
+					parts.push(`Code from ${ref.filePath} (${lineRange}):\n\`\`\`${ref.languageId || ''}\n${ref.content}\n\`\`\``);
 				} else if (attachment.content) {
 					parts.push(`File: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``);
 				} else {

@@ -289,7 +289,11 @@ export class AskClaudeAboutSelection extends Action2 {
 			return;
 		}
 
-		const selectedText = model.getValueInRange(selection);
+		// ITextModel의 getValueInRange 사용 (타입 가드)
+		if (!('getValueInRange' in model)) {
+			return;
+		}
+		const selectedText = (model as { getValueInRange: (range: typeof selection) => string }).getValueInRange(selection);
 		const fileName = editorService.activeEditor?.getName() || 'unknown';
 
 		// Claude 패널 열기

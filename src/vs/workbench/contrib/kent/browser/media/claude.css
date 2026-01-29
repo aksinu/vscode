@@ -677,6 +677,16 @@
 	background-color: var(--vscode-toolbar-hoverBackground);
 }
 
+/* 코드 참조 첨부 - 특별한 스타일 */
+.claude-attachment-tag.code-reference {
+	background-color: var(--vscode-textCodeBlock-background);
+	border: 1px solid var(--vscode-editorWidget-border);
+}
+
+.claude-attachment-tag.code-reference .claude-attachment-icon {
+	color: var(--vscode-symbolIcon-functionForeground);
+}
+
 /* ========== Tool Status Bar (하단 고정) ========== */
 
 .claude-tool-status-bar {
@@ -2154,6 +2164,33 @@
 /* Invalid Input */
 .claude-settings-input.invalid {
 	border-color: var(--vscode-inputValidation-warningBorder);
+}
+
+/* Model Selector */
+.claude-model-selector {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.claude-settings-select {
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border);
+	color: var(--vscode-input-foreground);
+	padding: 6px 10px;
+	border-radius: 4px;
+	font-size: 13px;
+	width: 180px;
+	cursor: pointer;
+}
+
+.claude-settings-select:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder);
+}
+
+.claude-model-custom {
+	width: 180px;
 }
 
 /* ========== Ultrathink Toggle Button ========== */

@@ -18,12 +18,12 @@
 ## Now Working On
 
 ```
-Task: 메시지 큐 고급 기능 ✅ 구현 완료
-- 큐 최대 크기 제한 (10개)
-- 메시지 편집/순서 변경 (드래그앤드롭)
-- 컨텍스트 미리보기 (첨부파일 뱃지)
-- 큐 영속성 (Storage 저장)
-Status: 컴파일 필요
+Task: 클립보드 붙여넣기 기능 개선 (SPEC_006)
+Phase 1: 이미지 붙여넣기 버그 수정
+- 스크린샷 Ctrl+V 시 "image.png" 텍스트 중복 삽입 방지
+Phase 2: 코드 참조 붙여넣기 기능
+- IDE 코드 복사 → 참조(📄 file.ts L10-20) 형태로 표시
+Status: Phase 1 구현 중
 ```
 
 ### 빌드 & 실행
@@ -172,13 +172,56 @@ onDidComplete         ──▶ handleCommandComplete()
 | SPEC_002 | Claude Features 명세 |
 | SPEC_003 | File Attachment 기능 |
 | SPEC_004 | Status & Settings |
-| SPEC_005 | File Changes Tracking ★ |
+| SPEC_005 | File Changes Tracking |
+| SPEC_006 | Clipboard Enhancements ★ |
 
 ---
 
 ## Activity Log
 
 ### 2026-01-29
+- **클립보드 붙여넣기 기능 개선 (SPEC_006)**
+  - Phase 1: 이미지 붙여넣기 버그 수정
+    - `claudeInputEditor.ts`: paste 이벤트 capture phase로 변경
+    - `claudeChatView.ts`: `handlePaste()` 이미지 감지 시 즉시 preventDefault
+  - Phase 2: 코드 참조 붙여넣기 기능
+    - `claudeTypes.ts`: `IClaudeCodeReference` 타입 추가
+    - `IClaudeAttachment.type`에 `'code-reference'` 추가
+    - `claudeChatView.ts`: `tryAddCodeReference()` - VS Code 클립보드 메타데이터 파싱
+    - `claudeAttachmentManager.ts`: `addCodeReference()` 메서드 추가
+    - `claudeContextBuilder.ts`: 코드 참조 포맷팅 추가
+    - `claude.css`: `.claude-attachment-tag.code-reference` 스타일
+  - 스펙 문서: `_Dev/Specs/SPEC_006_ClipboardEnhancements.md`
+- **Auto Accept 세션별 설정 기능 구현**
+  - `claudeSessionSettingsPanel.ts`:
+    - `ISessionSettings`에 `autoAccept?: boolean` 추가
+    - Auto Accept 토글 UI 추가
+  - `claudeService.ts`:
+    - `_sessionAutoAcceptOverride` 프로퍼티 추가
+    - `setSessionAutoAccept()` 메서드 구현
+    - `isAutoAcceptEnabled()` 메서드 구현 (세션 > 로컬 설정 우선순위)
+    - CLIEventHandler 콜백에 `isAutoAcceptEnabled` 연결
+  - `claudeCLIEventHandler.ts`:
+    - `ICLIEventHandlerCallbacks`에 `isAutoAcceptEnabled()` 추가
+    - `handleAskUserQuestion()`, `handleInputRequest()` 모두 세션 설정 반영
+  - `claudeChatView.ts`:
+    - `applySessionSettings()`에 Auto Accept 적용 추가
+  - `claude.ts`: 인터페이스에 `setSessionAutoAccept`, `isAutoAcceptEnabled` 메서드 추가
+- **모델 별칭 기능 구현**
+  - `claudeTypes.ts`:
+    - `CLAUDE_MODEL_ALIASES` - 짧은 별칭 매핑 (opus, sonnet, haiku...)
+    - `CLAUDE_MODEL_DISPLAY_NAMES` - UI 표시 이름
+    - `resolveModelName()` - 별칭 → 전체 모델명 해석
+    - `getModelDisplayName()` - 모델명 → 표시 이름
+    - `getAvailableModelsForUI()` - UI용 모델 목록
+    - `validateClaudeModel()` - 별칭 지원 추가
+  - `claudeService.ts`:
+    - `sendMessageInternal()` - `resolveModelName()` 적용
+    - `setSessionModel()` - 별칭 해석 + 로그에 표시 이름 출력
+  - `claudeSessionSettingsPanel.ts`:
+    - `createModelSetting()` - 드롭다운 UI로 변경
+    - 커스텀 입력 + 실시간 별칭 해석 피드백
+  - `claude.css`: 드롭다운 스타일 추가
 - **메시지 큐 고급 기능 구현**
   - `claudeService.ts`:
     - `MAX_QUEUE_SIZE = 10` - 큐 최대 크기 제한
