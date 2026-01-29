@@ -143,6 +143,8 @@ export interface IClaudeMessage {
 	readonly usage?: IClaudeUsageInfo;
 	/** 파일 변경사항 (assistant 메시지, 완료 후) */
 	readonly fileChanges?: IClaudeFileChangesSummary;
+	/** 큐가 가득 차서 거부됨 */
+	readonly queueRejected?: boolean;
 }
 
 /**

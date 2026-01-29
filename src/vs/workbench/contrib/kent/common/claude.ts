@@ -147,6 +147,21 @@ export interface IClaudeService {
 	 */
 	clearQueue(): void;
 
+	/**
+	 * 큐 최대 크기 반환
+	 */
+	getMaxQueueSize?(): number;
+
+	/**
+	 * 큐에 대기 중인 메시지 수정
+	 */
+	updateQueuedMessage?(id: string, newContent: string): boolean;
+
+	/**
+	 * 큐 순서 변경 (드래그 앤 드롭용)
+	 */
+	reorderQueue?(fromIndex: number, toIndex: number): boolean;
+
 	// ========== Config ==========
 
 	/**
@@ -201,12 +216,12 @@ export interface IClaudeService {
 	// ========== File Changes ==========
 
 	/**
-	 * 변경된 파일 목록 가져오기
+	 * 변경된 파일 목록 가져오기 (현재 명령)
 	 */
 	getChangedFiles?(): IClaudeFileChange[];
 
 	/**
-	 * 변경사항 요약 가져오기
+	 * 변경사항 요약 가져오기 (현재 명령)
 	 */
 	getFileChangesSummary?(): IClaudeFileChangesSummary;
 
@@ -224,4 +239,82 @@ export interface IClaudeService {
 	 * 모든 파일 변경사항 되돌리기
 	 */
 	revertAllFiles?(): Promise<number>;
+
+	/**
+	 * 파일 변경사항 수락 (스냅샷 제거)
+	 */
+	acceptFile?(fileChange: IClaudeFileChange): void;
+
+	/**
+	 * 모든 파일 변경사항 수락
+	 */
+	acceptAllFiles?(): void;
+
+	/**
+	 * 선택된 파일들 되돌리기
+	 */
+	revertSelectedFiles?(fileChanges: IClaudeFileChange[]): Promise<number>;
+
+	/**
+	 * 선택된 파일들 수락
+	 */
+	acceptSelectedFiles?(fileChanges: IClaudeFileChange[]): void;
+
+	/**
+	 * 세션 전체 변경사항 히스토리 가져오기
+	 * 각 메시지별로 변경된 파일 목록을 시간순으로 반환
+	 */
+	getSessionChangesHistory?(): IClaudeSessionChangesHistory;
+}
+
+/**
+ * 세션 변경사항 히스토리
+ */
+export interface IClaudeSessionChangesHistory {
+	/** 세션 ID */
+	readonly sessionId: string;
+	/** 총 변경된 파일 수 (고유) */
+	readonly totalFilesChanged: number;
+	/** 총 추가된 라인 */
+	readonly totalLinesAdded: number;
+	/** 총 삭제된 라인 */
+	readonly totalLinesRemoved: number;
+	/** 메시지별 변경 항목 (시간순) */
+	readonly entries: IClaudeChangesHistoryEntry[];
+	/** 파일별 변경 요약 */
+	readonly filesSummary: IClaudeFileChangeSummaryItem[];
+}
+
+/**
+ * 변경 히스토리 항목 (메시지 단위)
+ */
+export interface IClaudeChangesHistoryEntry {
+	/** 메시지 ID */
+	readonly messageId: string;
+	/** 타임스탬프 */
+	readonly timestamp: number;
+	/** 사용자 프롬프트 (요약) */
+	readonly prompt: string;
+	/** 변경된 파일들 */
+	readonly changes: IClaudeFileChange[];
+}
+
+/**
+ * 파일별 변경 요약 항목
+ */
+export interface IClaudeFileChangeSummaryItem {
+	/** 파일 경로 */
+	readonly filePath: string;
+	/** 파일 이름 */
+	readonly fileName: string;
+	/** 변경 횟수 */
+	readonly changeCount: number;
+	/** 최종 상태 */
+	readonly finalState: 'created' | 'modified' | 'deleted';
+	/** 총 추가 라인 */
+	readonly totalLinesAdded: number;
+	/** 총 삭제 라인 */
+	readonly totalLinesRemoved: number;
+	/** 마지막 변경 시간 */
+	readonly lastModified: number;
 }

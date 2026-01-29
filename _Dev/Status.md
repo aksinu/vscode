@@ -10,7 +10,7 @@
 |------|-------|
 | **Phase** | Phase 4 - 고급 UX 기능 |
 | **Status** | OpenFilesBar UI 개선 완료 |
-| **Updated** | 2026-01-28 |
+| **Updated** | 2026-01-29 |
 | **Build** | ✅ 빌드 완료 |
 
 ---
@@ -18,7 +18,11 @@
 ## Now Working On
 
 ```
-Task: 설정 윈도우 구현 완료
+Task: 메시지 큐 고급 기능 ✅ 구현 완료
+- 큐 최대 크기 제한 (10개)
+- 메시지 편집/순서 변경 (드래그앤드롭)
+- 컨텍스트 미리보기 (첨부파일 뱃지)
+- 큐 영속성 (Storage 저장)
 Status: 컴파일 필요
 ```
 
@@ -74,10 +78,10 @@ yarn compile          # 빌드
 ### 🎯 VS Code 확장 기능 (Claude CLI 독립적)
 | # | Feature | Priority | Status |
 |---|---------|----------|--------|
-| 1 | 파일 탐색기 컨텍스트 메뉴 | P1 | Pending |
-| 2 | 에디터 컨텍스트 메뉴 | P1 | Pending |
-| 3 | 세션별 변경사항 히스토리 | P2 | Pending |
-| 4 | Accept/Reject 배치 UI | P3 | Enhancement |
+| 1 | 파일 탐색기 컨텍스트 메뉴 | P1 | ✅ Done |
+| 2 | 에디터 컨텍스트 메뉴 | P1 | ✅ Done |
+| 3 | 세션별 변경사항 히스토리 | P2 | ✅ Done |
+| 4 | Accept/Reject 배치 UI | P3 | ✅ Done |
 
 ### ✅ 이미 지원됨 (Claude CLI 기본 기능)
 - [x] **실시간 스트리밍**: `--output-format stream-json` 이미 구현됨
@@ -173,6 +177,89 @@ onDidComplete         ──▶ handleCommandComplete()
 ---
 
 ## Activity Log
+
+### 2026-01-29
+- **메시지 큐 고급 기능 구현**
+  - `claudeService.ts`:
+    - `MAX_QUEUE_SIZE = 10` - 큐 최대 크기 제한
+    - `addToQueue()` - 큐 가득 차면 거부 + `queueRejected` 플래그 반환
+    - `updateQueuedMessage(id, newContent)` - 대기 중 메시지 수정
+    - `reorderQueue(fromIndex, toIndex)` - 드래그앤드롭 순서 변경
+    - `loadQueue()`, `saveQueue()` - Storage 영속성 (재시작 시 복원)
+  - `claudeChatView.ts`:
+    - `updateQueueUI()` 전면 개선:
+      - 드래그 핸들 + 드래그앤드롭 이벤트 처리
+      - 편집 버튼 + 인라인 편집 다이얼로그
+      - 컨텍스트 미리보기 (첨부파일 뱃지)
+    - `submitInput()` - 큐 가득 참 경고 + 입력 복원
+    - `showQueueItemEditDialog()` - QuickInput으로 메시지 편집
+  - `claude.ts`: 새 인터페이스 메서드 추가
+    - `getMaxQueueSize()`, `updateQueuedMessage()`, `reorderQueue()`
+  - `claudeTypes.ts`: `IClaudeMessage.queueRejected` 속성 추가
+  - `claude.css`: 새 스타일 추가
+    - `.claude-queue-item-drag` - 드래그 핸들
+    - `.claude-queue-item-edit` - 편집 버튼
+    - `.claude-queue-item-context` - 첨부파일 뱃지
+    - `.dragging`, `.drop-target` - 드래그앤드롭 상태
+- **대화 Pending 기능 개선** (이전)
+  - `claudeChatView.ts`:
+    - `submitInput()`에서 idle 체크 제거 → 서비스가 알아서 큐에 추가
+    - `updateQueueUI()` 개선 - 순서 번호, 대기 아이콘, 상태 메시지
+    - 큐에 메시지 추가 시 토스트 알림
+  - `claude.css`: Pending 큐 UI 스타일 전면 개선
+    - 스피너 애니메이션
+    - 순서 배지 (#1, #2...)
+    - 상태 메시지 ("Waiting for current request...")
+    - 호버 효과 개선
+- **Accept/Reject 배치 UI 구현**
+  - `claudeMessageRenderer.ts`: 파일 변경 UI 개선
+    - 체크박스로 파일 선택 기능
+    - Accept All / Reject All 버튼 (배치 액션 바)
+    - Accept Selected / Reject Selected 버튼 (선택 액션 바)
+    - 개별 파일 Accept 버튼
+  - `claudeFileSnapshot.ts`: accept 관련 메서드 추가
+    - `acceptFile()`, `acceptAll()`
+    - `revertFiles()`, `acceptFiles()`
+  - `claudeService.ts`: Accept 메서드 구현
+  - `claude.ts`: 인터페이스에 Accept 메서드 추가
+  - `claude.css`: 배치 UI 스타일 추가
+- **세션 변경사항 히스토리 기능 구현**
+  - `claude.ts`: 새 인터페이스 추가
+    - `IClaudeSessionChangesHistory`: 세션 전체 변경 히스토리
+    - `IClaudeChangesHistoryEntry`: 메시지별 변경 항목
+    - `IClaudeFileChangeSummaryItem`: 파일별 변경 요약
+  - `claudeService.ts`: `getSessionChangesHistory()` 메서드 구현
+  - `claudeChangesHistoryPanel.ts`: 새 파일 - Changes History UI 패널
+    - Timeline 뷰: 시간순 변경 이력
+    - Files 뷰: 파일별 변경 통계
+  - `claudeChatView.ts`: Changes 버튼 및 패널 통합
+  - `claude.css`: Changes History 패널 스타일 추가
+- **컨텍스트 메뉴 기능 구현**
+  - `claudeActions.ts`: 4개 컨텍스트 메뉴 액션 추가
+    - `AttachFileToClaude`: Explorer에서 파일 우클릭 → "Add to Claude"
+    - `AttachFolderToClaude`: Explorer에서 폴더 우클릭 → "Add Folder to Claude"
+    - `AskClaudeAboutSelection`: 에디터에서 선택 → "Ask Claude About Selection" (Ctrl+Shift+A)
+    - `AttachCurrentFileToClaude`: 에디터/탭에서 "Add File to Claude"
+  - `claudeChatView.ts`: 외부 API 메서드 추가
+    - `attachFiles(files: URI[])`: 파일 첨부
+    - `setInputWithContext(selectedText, fileName)`: 선택 영역으로 입력 설정
+- **CLI 옵션 기능 확인 완료**
+  - 모든 레이어에서 이미 구현됨 (인터페이스, 설정 스키마, CLI 인자, 서비스)
+- **IClaudeCLIRequestOptions 인터페이스 확장**
+  - `claudeCLI.ts`: 모든 CLI 옵션 추가
+  - 새 타입: `ClaudePermissionMode` ('default' | 'plan' | 'accept-edits')
+  - 추가된 옵션 (10개):
+    - `maxTurns`: 에이전트 최대 턴 수
+    - `maxBudgetUsd`: 비용 상한선 (USD)
+    - `fallbackModel`: 대체 모델
+    - `appendSystemPrompt`: 시스템 프롬프트 추가 (기존 유지)
+    - `disallowedTools`: 금지할 도구 목록
+    - `permissionMode`: 권한 모드
+    - `betas`: 베타 기능 목록
+    - `addDirs`: 추가 작업 디렉토리
+    - `mcpConfig`: MCP 설정 파일 경로
+    - `agents`: 에이전트 설정 파일 경로
+  - 기존 옵션에도 JSDoc 주석 추가
 
 ### 2026-01-28
 - **설정 윈도우 구현**

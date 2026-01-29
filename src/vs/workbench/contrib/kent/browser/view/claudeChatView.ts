@@ -7,6 +7,7 @@ import { $, append, addDisposableListener, EventType } from '../../../../../base
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { URI } from '../../../../../base/common/uri.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
 import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ILanguageService } from '../../../../../editor/common/languages/language.js';
@@ -38,6 +39,7 @@ import { ConnectionOverlay } from './claudeConnectionOverlay.js';
 import { ClaudeSettingsPanel } from './claudeSettingsPanel.js';
 import { SessionSettingsPanel, ISessionSettings } from './claudeSessionSettingsPanel.js';
 import { SessionTabs } from './claudeSessionTabs.js';
+import { ChangesHistoryPanel } from './claudeChangesHistoryPanel.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
@@ -76,6 +78,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private sessionSettingsPanel!: SessionSettingsPanel;
 	private sessionTabs!: SessionTabs;
 	private sessionSettings: ISessionSettings = { name: '' };
+	private changesHistoryPanel!: ChangesHistoryPanel;
 
 	private messageRenderer!: ClaudeMessageRenderer;
 	private messageDisposables = new Map<string, DisposableStore>();
@@ -147,6 +150,21 @@ export class ClaudeChatViewPane extends ViewPane {
 					return this.claudeService.revertAllFiles();
 				}
 				return 0;
+			},
+			onAcceptFile: (fileChange) => {
+				this.claudeService.acceptFile?.(fileChange);
+			},
+			onAcceptAllFiles: () => {
+				this.claudeService.acceptAllFiles?.();
+			},
+			onRevertSelectedFiles: async (fileChanges) => {
+				if (this.claudeService.revertSelectedFiles) {
+					return this.claudeService.revertSelectedFiles(fileChanges);
+				}
+				return 0;
+			},
+			onAcceptSelectedFiles: (fileChanges) => {
+				this.claudeService.acceptSelectedFiles?.(fileChanges);
 			}
 		}));
 
@@ -185,7 +203,16 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.sessionTabs?.render();
 		}));
 
+		let previousQueueLength = 0;
 		this._register(this.claudeService.onDidChangeQueue(queue => {
+			// 큐에 새 메시지가 추가되면 알림
+			if (queue.length > previousQueueLength) {
+				const position = queue.length;
+				this.notificationService.info(
+					localize('messageQueued', "Message queued (#{0}). Will be sent when current request completes.", position)
+				);
+			}
+			previousQueueLength = queue.length;
 			this.updateQueueUI(queue);
 		}));
 
@@ -382,6 +409,18 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 헤더 바 생성 (컨테이너 최상단)
 		const headerBar = append(this.container, $('.claude-header-bar'));
 
+		// Changes History 버튼
+		const changesButton = append(headerBar, $('button.claude-changes-history-btn'));
+		changesButton.title = localize('showChangesHistory', "Show Session Changes");
+		const changesIcon = append(changesButton, $('span.codicon.codicon-git-compare'));
+		changesIcon.setAttribute('aria-hidden', 'true');
+		const changesLabel = append(changesButton, $('span'));
+		changesLabel.textContent = localize('changes', "Changes");
+
+		this._register(addDisposableListener(changesButton, EventType.CLICK, () => {
+			this.toggleChangesHistory();
+		}));
+
 		// 설정 버튼
 		const settingsButton = append(headerBar, $('button.claude-header-settings-btn'));
 		settingsButton.title = localize('openGlobalSettings', "Global Settings");
@@ -396,6 +435,13 @@ export class ClaudeChatViewPane extends ViewPane {
 		if (this.container.firstChild !== headerBar) {
 			this.container.insertBefore(headerBar, this.container.firstChild);
 		}
+
+		// Changes History 패널 생성
+		this.changesHistoryPanel = this._register(new ChangesHistoryPanel(this.container, {
+			onShowDiff: (change) => this.claudeService.showFileDiff?.(change),
+			onRevertFile: (change) => this.claudeService.revertFile?.(change),
+			onClose: () => this.changesHistoryPanel.hide()
+		}));
 
 		// 세션 탭 생성 (헤더 바 다음)
 		this.sessionTabs = this._register(new SessionTabs(this.container, {
@@ -542,38 +588,164 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 헤더
 		const header = append(this.queueContainer, $('.claude-queue-header'));
-		const headerText = append(header, $('span'));
-		headerText.textContent = localize('queuedMessages', "Queued ({0}):", queue.length);
+		const headerIcon = append(header, $('.codicon.codicon-loading.claude-queue-spinner'));
+		headerIcon.setAttribute('aria-hidden', 'true');
+		const headerText = append(header, $('span.claude-queue-title'));
+		headerText.textContent = localize('pendingMessages', "{0} message(s) pending", queue.length);
 
 		// 전체 취소 버튼
 		const clearButton = append(header, $('button.claude-queue-clear'));
-		clearButton.title = localize('clearQueue', "Clear queue");
+		clearButton.title = localize('clearQueue', "Clear all pending");
 		append(clearButton, $('.codicon.codicon-close-all'));
 
 		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
 			this.claudeService.clearQueue();
 		}));
 
+		// 상태 메시지
+		const statusMessage = append(this.queueContainer, $('.claude-queue-status'));
+		statusMessage.textContent = localize('waitingForPrevious', "Waiting for current request to complete...");
+
 		// 큐 아이템들
 		const list = append(this.queueContainer, $('.claude-queue-list'));
 
-		for (const item of queue) {
-			const itemElement = append(list, $('.claude-queue-item'));
+		// 드래그 앤 드롭 상태
+		let draggedIndex: number | null = null;
 
-			// 메시지 내용 (요약)
+		queue.forEach((item, index) => {
+			const itemElement = append(list, $('.claude-queue-item'));
+			itemElement.dataset.index = String(index);
+
+			// 드래그 앤 드롭 활성화
+			itemElement.draggable = true;
+
+			// 드래그 핸들
+			const dragHandle = append(itemElement, $('.claude-queue-item-drag'));
+			dragHandle.title = localize('dragToReorder', "Drag to reorder");
+			append(dragHandle, $('.codicon.codicon-gripper'));
+
+			// 순서 번호
+			const orderBadge = append(itemElement, $('.claude-queue-item-order'));
+			orderBadge.textContent = `#${index + 1}`;
+
+			// 대기 아이콘
+			const waitIcon = append(itemElement, $('.codicon.codicon-clock.claude-queue-item-icon'));
+			waitIcon.setAttribute('aria-hidden', 'true');
+
+			// 메시지 내용 (요약) - 클릭하여 편집
 			const content = append(itemElement, $('.claude-queue-item-content'));
-			const preview = item.content.length > 50 ? item.content.substring(0, 50) + '...' : item.content;
+			const preview = item.content.length > 60 ? item.content.substring(0, 60) + '...' : item.content;
 			content.textContent = preview;
-			content.title = item.content;
+			content.title = localize('clickToEdit', "Click to edit: {0}", item.content);
+
+			// 컨텍스트 미리보기 (첨부파일이 있으면 표시)
+			if (item.context?.attachments && item.context.attachments.length > 0) {
+				const contextBadge = append(itemElement, $('.claude-queue-item-context'));
+				contextBadge.title = localize('attachments', "{0} attachment(s)", item.context.attachments.length);
+				append(contextBadge, $('.codicon.codicon-attach'));
+				const countSpan = append(contextBadge, $('span'));
+				countSpan.textContent = String(item.context.attachments.length);
+			}
+
+			// 편집 버튼
+			const editButton = append(itemElement, $('button.claude-queue-item-edit'));
+			editButton.title = localize('editMessage', "Edit message");
+			append(editButton, $('.codicon.codicon-edit'));
 
 			// 개별 삭제 버튼
 			const removeButton = append(itemElement, $('button.claude-queue-item-remove'));
 			removeButton.title = localize('removeFromQueue', "Remove from queue");
 			append(removeButton, $('.codicon.codicon-close'));
 
-			this._register(addDisposableListener(removeButton, EventType.CLICK, () => {
+			// 편집 클릭 이벤트
+			this._register(addDisposableListener(editButton, EventType.CLICK, (e) => {
+				e.stopPropagation();
+				this.showQueueItemEditDialog(item);
+			}));
+
+			// 내용 클릭 이벤트 (편집)
+			this._register(addDisposableListener(content, EventType.CLICK, (e) => {
+				e.stopPropagation();
+				this.showQueueItemEditDialog(item);
+			}));
+
+			// 삭제 클릭 이벤트
+			this._register(addDisposableListener(removeButton, EventType.CLICK, (e) => {
+				e.stopPropagation();
 				this.claudeService.removeFromQueue(item.id);
 			}));
+
+			// 드래그 시작
+			this._register(addDisposableListener(itemElement, EventType.DRAG_START, (e: DragEvent) => {
+				draggedIndex = index;
+				itemElement.classList.add('dragging');
+				if (e.dataTransfer) {
+					e.dataTransfer.effectAllowed = 'move';
+					e.dataTransfer.setData('text/plain', String(index));
+				}
+			}));
+
+			// 드래그 종료
+			this._register(addDisposableListener(itemElement, EventType.DRAG_END, () => {
+				draggedIndex = null;
+				itemElement.classList.remove('dragging');
+				// 모든 드롭 인디케이터 제거
+				list.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+			}));
+
+			// 드래그 오버
+			this._register(addDisposableListener(itemElement, EventType.DRAG_OVER, (e: DragEvent) => {
+				e.preventDefault();
+				if (e.dataTransfer) {
+					e.dataTransfer.dropEffect = 'move';
+				}
+				if (draggedIndex !== null && draggedIndex !== index) {
+					itemElement.classList.add('drop-target');
+				}
+			}));
+
+			// 드래그 리브
+			this._register(addDisposableListener(itemElement, EventType.DRAG_LEAVE, () => {
+				itemElement.classList.remove('drop-target');
+			}));
+
+			// 드롭
+			this._register(addDisposableListener(itemElement, EventType.DROP, (e: DragEvent) => {
+				e.preventDefault();
+				itemElement.classList.remove('drop-target');
+
+				const fromIndexStr = e.dataTransfer?.getData('text/plain');
+				if (fromIndexStr !== undefined) {
+					const fromIndex = parseInt(fromIndexStr, 10);
+					if (!isNaN(fromIndex) && fromIndex !== index) {
+						this.claudeService.reorderQueue?.(fromIndex, index);
+					}
+				}
+			}));
+		});
+	}
+
+	/**
+	 * 큐 아이템 편집 다이얼로그 표시
+	 */
+	private async showQueueItemEditDialog(item: IClaudeQueuedMessage): Promise<void> {
+		const result = await this.quickInputService.input({
+			title: localize('editQueuedMessage', "Edit Queued Message"),
+			value: item.content,
+			prompt: localize('editPrompt', "Modify the message content"),
+			validateInput: async (value) => {
+				if (!value.trim()) {
+					return localize('emptyMessage', "Message cannot be empty");
+				}
+				return null;
+			}
+		});
+
+		if (result !== undefined && result.trim() !== item.content) {
+			const success = this.claudeService.updateQueuedMessage?.(item.id, result.trim());
+			if (success) {
+				this.notificationService.info(localize('messageUpdated', "Message updated"));
+			}
 		}
 	}
 
@@ -699,12 +871,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			return;
 		}
 
-		// 요청 진행 중이면 무시
-		if (this.claudeService.getState() !== 'idle') {
-			return;
-		}
-
-		// 입력 초기화
+		// 입력 초기화 (요청 진행 중이면 큐에 추가됨)
 		this.inputEditorManager.setValue('');
 
 		// 컨텍스트: 수동 첨부파일만 포함 (자동 컨텍스트 비활성화)
@@ -721,7 +888,19 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.attachmentManager.clear();
 
 		try {
-			await this.claudeService.sendMessage(content, { context });
+			const result = await this.claudeService.sendMessage(content, { context });
+
+			// 큐가 가득 찬 경우 경고
+			if (result.queueRejected) {
+				const maxSize = this.claudeService.getMaxQueueSize?.() ?? 10;
+				this.notificationService.warn(
+					localize('queueFull', "Queue is full (max {0} messages). Please wait for current request to complete.", maxSize)
+				);
+				// 입력창에 내용 복원
+				this.inputEditorManager.setValue(content);
+				return;
+			}
+
 			this.scrollToBottom();
 		} catch (error) {
 			// 에러는 서비스에서 처리됨
@@ -1117,5 +1296,71 @@ export class ClaudeChatViewPane extends ViewPane {
 				this.updateTitle(newName);
 			}
 		}
+	}
+
+	// ========== 외부 API (컨텍스트 메뉴에서 호출) ==========
+
+	/**
+	 * 파일 첨부 (컨텍스트 메뉴에서 호출)
+	 * @param files 첨부할 파일 URI 목록
+	 */
+	public attachFiles(files: URI[]): void {
+		if (!this.attachmentManager) {
+			return;
+		}
+
+		for (const file of files) {
+			this.attachmentManager.addFile(file);
+		}
+
+		// 입력창에 포커스
+		this.inputEditorManager?.focus();
+	}
+
+	/**
+	 * 선택 영역을 컨텍스트로 설정 (에디터 컨텍스트 메뉴에서 호출)
+	 * @param selectedText 선택된 텍스트
+	 * @param fileName 파일 이름
+	 */
+	public setInputWithContext(selectedText: string, fileName: string): void {
+		if (!this.inputEditorManager) {
+			return;
+		}
+
+		// 프롬프트 생성: 선택 영역에 대해 질문할 수 있도록
+		const prompt = `\`${fileName}\`의 다음 코드에 대해:\n\n\`\`\`\n${selectedText}\n\`\`\`\n\n`;
+
+		this.inputEditorManager.setValue(prompt);
+		this.inputEditorManager.focus();
+
+		// 커서를 끝으로 이동
+		const editor = this.inputEditor;
+		if (editor) {
+			const model = editor.getModel();
+			if (model) {
+				const lastLine = model.getLineCount();
+				const lastColumn = model.getLineMaxColumn(lastLine);
+				editor.setPosition({ lineNumber: lastLine, column: lastColumn });
+			}
+		}
+	}
+
+	// ========== Changes History ==========
+
+	/**
+	 * Changes History 패널 토글
+	 */
+	private toggleChangesHistory(): void {
+		if (!this.changesHistoryPanel) {
+			return;
+		}
+
+		const history = this.claudeService.getSessionChangesHistory?.();
+		if (!history) {
+			this.notificationService.info(localize('noChangesHistory', "No changes history available"));
+			return;
+		}
+
+		this.changesHistoryPanel.toggle(history);
 	}
 }

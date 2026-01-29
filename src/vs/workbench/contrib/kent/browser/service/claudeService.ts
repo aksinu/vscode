@@ -7,11 +7,11 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IClaudeService } from '../../common/claude.js';
+import { IClaudeService, IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../common/claude.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { RateLimitManager } from './claudeRateLimitManager.js';
-import { IStorageService } from '../../../../../platform/storage/common/storage.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { URI } from '../../../../../base/common/uri.js';
@@ -31,6 +31,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
 
 	private static readonly LOG_CATEGORY = 'ClaudeService';
+	private static readonly MAX_QUEUE_SIZE = 10;
+	private static readonly QUEUE_STORAGE_KEY = 'claude.messageQueue';
 
 	private _state: ClaudeServiceState = 'idle';
 	private _currentMessageId: string | undefined;
@@ -96,7 +98,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	constructor(
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IMainProcessService mainProcessService: IMainProcessService,
-		@IStorageService storageService: IStorageService,
+		@IStorageService private readonly storageService: IStorageService,
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IClaudeLogService private readonly logService: IClaudeLogService,
@@ -279,6 +281,45 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		// 세션 초기화 (저장된 세션 로드 + 현재 세션 설정)
 		this._sessionManager.initialize();
+
+		// 큐 복원 (저장된 큐 로드)
+		this.loadQueue();
+	}
+
+	// ========== Queue Persistence ==========
+
+	/**
+	 * 저장된 큐 로드
+	 */
+	private loadQueue(): void {
+		try {
+			const data = this.storageService.get(ClaudeService.QUEUE_STORAGE_KEY, StorageScope.WORKSPACE);
+			if (data) {
+				const parsed = JSON.parse(data) as IClaudeQueuedMessage[];
+				if (Array.isArray(parsed)) {
+					this._messageQueue = parsed;
+					this.logService.info(ClaudeService.LOG_CATEGORY, 'Queue loaded:', this._messageQueue.length, 'messages');
+					// UI에 알림
+					if (this._messageQueue.length > 0) {
+						this._onDidChangeQueue.fire([...this._messageQueue]);
+					}
+				}
+			}
+		} catch (e) {
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to load queue:', e);
+		}
+	}
+
+	/**
+	 * 큐 저장
+	 */
+	private saveQueue(): void {
+		try {
+			const data = JSON.stringify(this._messageQueue);
+			this.storageService.store(ClaudeService.QUEUE_STORAGE_KEY, data, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		} catch (e) {
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save queue:', e);
+		}
 	}
 
 	// ========== Local Config ==========
@@ -356,6 +397,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const nextMessage = this._messageQueue.shift();
 			if (nextMessage) {
 				this._onDidChangeQueue.fire([...this._messageQueue]);
+				this.saveQueue();
 				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Processing queued message:', nextMessage.content.substring(0, 50));
 
 				await this.sendMessageInternal(nextMessage.content, { context: nextMessage.context });
@@ -449,6 +491,20 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	private addToQueue(content: string, options?: IClaudeSendRequestOptions): IClaudeMessage {
+		// 큐 크기 제한 체크
+		if (this._messageQueue.length >= ClaudeService.MAX_QUEUE_SIZE) {
+			this.logService.warn(ClaudeService.LOG_CATEGORY, 'Queue is full, cannot add more messages');
+			// 큐가 가득 찬 경우에도 메시지 반환 (UI에서 알림 표시용)
+			return {
+				id: generateUuid(),
+				role: 'user',
+				content,
+				timestamp: Date.now(),
+				context: options?.context,
+				queueRejected: true // 큐 거부됨 표시
+			};
+		}
+
 		const queuedMessage: IClaudeQueuedMessage = {
 			id: generateUuid(),
 			content,
@@ -458,6 +514,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		this._messageQueue.push(queuedMessage);
 		this._onDidChangeQueue.fire([...this._messageQueue]);
+		this.saveQueue();
 
 		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Message queued:', content.substring(0, 50), 'Queue size:', this._messageQueue.length);
 
@@ -751,6 +808,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		if (index !== -1) {
 			this._messageQueue.splice(index, 1);
 			this._onDidChangeQueue.fire([...this._messageQueue]);
+			this.saveQueue();
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Removed from queue:', id);
 		}
 	}
@@ -758,7 +816,54 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	clearQueue(): void {
 		this._messageQueue = [];
 		this._onDidChangeQueue.fire([]);
+		this.saveQueue();
 		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue cleared');
+	}
+
+	/**
+	 * 큐 최대 크기 반환
+	 */
+	getMaxQueueSize(): number {
+		return ClaudeService.MAX_QUEUE_SIZE;
+	}
+
+	/**
+	 * 큐에 대기 중인 메시지 수정
+	 */
+	updateQueuedMessage(id: string, newContent: string): boolean {
+		const index = this._messageQueue.findIndex(m => m.id === id);
+		if (index === -1) {
+			return false;
+		}
+
+		// 기존 메시지 교체 (immutable 방식)
+		const oldMessage = this._messageQueue[index];
+		this._messageQueue[index] = {
+			...oldMessage,
+			content: newContent
+		};
+		this._onDidChangeQueue.fire([...this._messageQueue]);
+		this.saveQueue();
+		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue message updated:', id);
+		return true;
+	}
+
+	/**
+	 * 큐 순서 변경
+	 */
+	reorderQueue(fromIndex: number, toIndex: number): boolean {
+		if (fromIndex < 0 || fromIndex >= this._messageQueue.length ||
+			toIndex < 0 || toIndex >= this._messageQueue.length ||
+			fromIndex === toIndex) {
+			return false;
+		}
+
+		const [item] = this._messageQueue.splice(fromIndex, 1);
+		this._messageQueue.splice(toIndex, 0, item);
+		this._onDidChangeQueue.fire([...this._messageQueue]);
+		this.saveQueue();
+		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue reordered:', fromIndex, '->', toIndex);
+		return true;
 	}
 
 	// ========== Status ==========
@@ -881,5 +986,130 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	async revertAllFiles(): Promise<number> {
 		return this._fileSnapshotManager.revertAll();
+	}
+
+	/**
+	 * 파일 변경사항 수락 (스냅샷 제거)
+	 */
+	acceptFile(fileChange: IClaudeFileChange): void {
+		this._fileSnapshotManager.acceptFile(fileChange.filePath);
+	}
+
+	/**
+	 * 모든 파일 변경사항 수락
+	 */
+	acceptAllFiles(): void {
+		this._fileSnapshotManager.acceptAll();
+	}
+
+	/**
+	 * 선택된 파일들 되돌리기
+	 */
+	async revertSelectedFiles(fileChanges: IClaudeFileChange[]): Promise<number> {
+		const filePaths = fileChanges.map(fc => fc.filePath);
+		return this._fileSnapshotManager.revertFiles(filePaths);
+	}
+
+	/**
+	 * 선택된 파일들 수락
+	 */
+	acceptSelectedFiles(fileChanges: IClaudeFileChange[]): void {
+		const filePaths = fileChanges.map(fc => fc.filePath);
+		this._fileSnapshotManager.acceptFiles(filePaths);
+	}
+
+	// ========== Session Changes History ==========
+
+	/**
+	 * 세션 전체 변경사항 히스토리 가져오기
+	 */
+	getSessionChangesHistory(): IClaudeSessionChangesHistory {
+		const session = this._sessionManager.currentSession;
+		if (!session) {
+			return {
+				sessionId: '',
+				totalFilesChanged: 0,
+				totalLinesAdded: 0,
+				totalLinesRemoved: 0,
+				entries: [],
+				filesSummary: []
+			};
+		}
+
+		const entries: IClaudeChangesHistoryEntry[] = [];
+		const filesMap = new Map<string, IClaudeFileChangeSummaryItem>();
+		let totalLinesAdded = 0;
+		let totalLinesRemoved = 0;
+
+		// 메시지를 시간순으로 순회
+		const messages = session.messages;
+		for (let i = 0; i < messages.length; i++) {
+			const msg = messages[i];
+
+			// assistant 메시지에서 fileChanges 추출
+			if (msg.role === 'assistant' && msg.fileChanges && msg.fileChanges.changes.length > 0) {
+				// 이전 user 메시지에서 프롬프트 가져오기
+				let prompt = '';
+				for (let j = i - 1; j >= 0; j--) {
+					if (messages[j].role === 'user') {
+						prompt = messages[j].content;
+						// 프롬프트 요약 (100자)
+						if (prompt.length > 100) {
+							prompt = prompt.substring(0, 100) + '...';
+						}
+						break;
+					}
+				}
+
+				entries.push({
+					messageId: msg.id,
+					timestamp: msg.timestamp,
+					prompt,
+					changes: msg.fileChanges.changes
+				});
+
+				// 파일별 통계 업데이트
+				for (const change of msg.fileChanges.changes) {
+					const existing = filesMap.get(change.filePath);
+					if (existing) {
+						filesMap.set(change.filePath, {
+							filePath: change.filePath,
+							fileName: change.fileName,
+							changeCount: existing.changeCount + 1,
+							finalState: change.changeType,
+							totalLinesAdded: existing.totalLinesAdded + change.linesAdded,
+							totalLinesRemoved: existing.totalLinesRemoved + change.linesRemoved,
+							lastModified: msg.timestamp
+						});
+					} else {
+						filesMap.set(change.filePath, {
+							filePath: change.filePath,
+							fileName: change.fileName,
+							changeCount: 1,
+							finalState: change.changeType,
+							totalLinesAdded: change.linesAdded,
+							totalLinesRemoved: change.linesRemoved,
+							lastModified: msg.timestamp
+						});
+					}
+
+					totalLinesAdded += change.linesAdded;
+					totalLinesRemoved += change.linesRemoved;
+				}
+			}
+		}
+
+		// 파일 요약을 배열로 변환 (수정 횟수 내림차순)
+		const filesSummary = Array.from(filesMap.values())
+			.sort((a, b) => b.changeCount - a.changeCount);
+
+		return {
+			sessionId: session.id,
+			totalFilesChanged: filesMap.size,
+			totalLinesAdded,
+			totalLinesRemoved,
+			entries,
+			filesSummary
+		};
 	}
 }

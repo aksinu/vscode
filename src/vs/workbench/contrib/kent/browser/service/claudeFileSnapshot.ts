@@ -366,6 +366,53 @@ export class FileSnapshotManager extends Disposable {
 	}
 
 	/**
+	 * 파일 변경 수락 (스냅샷 제거)
+	 * 변경사항을 확정하고 스냅샷을 정리
+	 */
+	acceptFile(filePath: string): void {
+		if (this._snapshots.has(filePath)) {
+			this._snapshots.delete(filePath);
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY, 'Accepted file:', filePath);
+			this._onDidChangeFiles.fire(this.getChangesSummary());
+		}
+	}
+
+	/**
+	 * 모든 파일 변경 수락
+	 */
+	acceptAll(): void {
+		const count = this._snapshots.size;
+		this._snapshots.clear();
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `Accepted all ${count} files`);
+		this._onDidChangeFiles.fire(this.getChangesSummary());
+	}
+
+	/**
+	 * 여러 파일 되돌리기
+	 */
+	async revertFiles(filePaths: string[]): Promise<number> {
+		let revertedCount = 0;
+		for (const filePath of filePaths) {
+			const success = await this.revertFile(filePath);
+			if (success) {
+				revertedCount++;
+			}
+		}
+		return revertedCount;
+	}
+
+	/**
+	 * 여러 파일 수락
+	 */
+	acceptFiles(filePaths: string[]): void {
+		for (const filePath of filePaths) {
+			this._snapshots.delete(filePath);
+		}
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `Accepted ${filePaths.length} files`);
+		this._onDidChangeFiles.fire(this.getChangesSummary());
+	}
+
+	/**
 	 * 스냅샷 초기화
 	 */
 	clear(): void {
