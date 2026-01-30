@@ -532,6 +532,15 @@ export class ClaudeMessageRenderer extends Disposable {
 			cacheValue.textContent = this.formatNumber(usage.cacheReadTokens);
 		}
 
+		// 서브에이전트 정보 (있으면)
+		if (usage.subagents && usage.subagents.length > 0) {
+			const subagentItem = append(tokensElement, $('.claude-usage-item.subagent'));
+			subagentItem.title = localize('subagentsUsed', "Subagents used: {0}", usage.subagents.map(s => s.type).join(', '));
+			append(subagentItem, $('.codicon.codicon-server-process'));
+			const subagentValue = append(subagentItem, $('span'));
+			subagentValue.textContent = `${usage.subagents.length}`;
+		}
+
 		// 비용 (있으면)
 		if (usage.totalCostUsd !== undefined && usage.totalCostUsd > 0) {
 			const costElement = append(usageElement, $('.claude-usage-cost'));

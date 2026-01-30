@@ -228,6 +228,15 @@ export interface IClaudeAskUserRequest {
 }
 
 /**
+ * 서브에이전트 사용 정보
+ */
+export interface IClaudeSubagentUsage {
+	readonly type: string;  // 'Explore', 'Plan', 'Bash', 'general-purpose' 등
+	readonly description?: string;
+	readonly status: 'completed' | 'error';
+}
+
+/**
  * Claude 토큰 사용량 정보
  */
 export interface IClaudeUsageInfo {
@@ -236,6 +245,8 @@ export interface IClaudeUsageInfo {
 	readonly cacheReadTokens?: number;
 	readonly cacheCreationTokens?: number;
 	readonly totalCostUsd?: number;
+	/** 서브에이전트 사용 정보 */
+	readonly subagents?: IClaudeSubagentUsage[];
 }
 
 /**

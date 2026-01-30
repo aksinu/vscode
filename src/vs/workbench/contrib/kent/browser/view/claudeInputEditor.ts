@@ -29,7 +29,7 @@ export interface IInputEditorCallbacks {
 }
 
 // 입력 에디터 상수
-const INPUT_EDITOR_MIN_HEIGHT = 44; // 최소 높이 (1줄 + 패딩)
+const INPUT_EDITOR_MIN_HEIGHT = 68; // 최소 높이 (2줄 + 패딩)
 const INPUT_EDITOR_MAX_HEIGHT = 200; // 최대 높이 (약 8줄)
 
 /**

@@ -6,7 +6,7 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo, IClaudeSubagentUsage } from '../../common/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
@@ -135,14 +135,18 @@ export class CLIEventHandler extends Disposable {
 
 		// result 이벤트에서 usage 정보 추출
 		if (event.type === 'result' && event.usage) {
+			// 서브에이전트 정보 추출 (Task 도구 사용 내역)
+			const subagents = this.extractSubagentUsage();
+
 			this.callbacks.setUsage({
 				inputTokens: event.usage.input_tokens || 0,
 				outputTokens: event.usage.output_tokens || 0,
 				cacheReadTokens: event.usage.cache_read_input_tokens,
 				cacheCreationTokens: event.usage.cache_creation_input_tokens,
-				totalCostUsd: event.total_cost_usd
+				totalCostUsd: event.total_cost_usd,
+				subagents: subagents.length > 0 ? subagents : undefined
 			});
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage, 'subagents:', subagents);
 		}
 
 		// 텍스트 컨텐츠 추출
@@ -535,6 +539,30 @@ export class CLIEventHandler extends Disposable {
 		}
 
 		return text;
+	}
+
+	/**
+	 * 서브에이전트 사용 정보 추출 (Task 도구 사용 내역)
+	 */
+	private extractSubagentUsage(): IClaudeSubagentUsage[] {
+		const toolActions = this.callbacks.getToolActions();
+		const subagents: IClaudeSubagentUsage[] = [];
+
+		for (const action of toolActions) {
+			if (action.tool === 'Task' && action.input) {
+				const input = action.input as Record<string, unknown>;
+				const subagentType = (input.subagent_type || input.subagentType || 'unknown') as string;
+				const description = (input.description || input.prompt || '') as string;
+
+				subagents.push({
+					type: subagentType,
+					description: description.length > 50 ? description.substring(0, 50) + '...' : description,
+					status: action.status === 'error' ? 'error' : 'completed'
+				});
+			}
+		}
+
+		return subagents;
 	}
 
 	private updateCurrentMessage(): void {
