@@ -71,9 +71,11 @@ export class FileSnapshotManager extends Disposable {
 	 * tool_use 이벤트에서 호출
 	 */
 	async captureBeforeEdit(filePath: string): Promise<void> {
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureBeforeEdit called: ${filePath}`);
+
 		// 이미 스냅샷이 있으면 스킵 (같은 파일을 여러 번 수정할 수 있음)
 		if (this._snapshots.has(filePath)) {
-			this.logService.debug(FileSnapshotManager.LOG_CATEGORY, 'Snapshot already exists for:', filePath);
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] Snapshot already exists for: ${filePath}`);
 			return;
 		}
 
@@ -124,9 +126,11 @@ export class FileSnapshotManager extends Disposable {
 	 * tool_result 이벤트에서 호출
 	 */
 	async captureAfterEdit(filePath: string): Promise<void> {
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAfterEdit called: ${filePath}`);
+
 		const snapshot = this._snapshots.get(filePath);
 		if (!snapshot) {
-			this.logService.debug(FileSnapshotManager.LOG_CATEGORY, 'No snapshot found for:', filePath);
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] No snapshot found for: ${filePath}`);
 			return;
 		}
 
@@ -161,17 +165,22 @@ export class FileSnapshotManager extends Disposable {
 	 */
 	getChangedFiles(): IClaudeFileChange[] {
 		const changes: IClaudeFileChange[] = [];
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] getChangedFiles: ${this._snapshots.size} snapshots`);
 
 		for (const [filePath, snapshot] of this._snapshots) {
 			// 수정 후 내용이 없으면 아직 캡처되지 않은 것
 			if (snapshot.modifiedContent === undefined) {
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] ${filePath}: modifiedContent is undefined, skipping`);
 				continue;
 			}
 
 			// 변경이 없으면 스킵
 			if (snapshot.originalContent === snapshot.modifiedContent) {
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] ${filePath}: no change, skipping`);
 				continue;
 			}
+
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] ${filePath}: has changes`);
 
 			// 라인 수 계산
 			const originalLines = snapshot.originalContent ? snapshot.originalContent.split('\n') : [];

@@ -270,11 +270,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// CLI 이벤트 구독 (CLIEventHandler로 위임)
 		this._register(channel.listen<IClaudeCLIStreamEvent>('onDidReceiveData')(event => {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.type, event);
-			this._cliEventHandler.handleData(event);
+			this._cliEventHandler.handleData(event).catch(error => {
+				this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
+			});
 		}));
 		this._register(channel.listen<void>('onDidComplete')(() => {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI complete');
-			this._cliEventHandler.handleComplete();
+			this._cliEventHandler.handleComplete().catch(error => {
+				this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
+			});
 		}));
 		this._register(channel.listen<string>('onDidError')(error => {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI error:', error);
@@ -959,12 +963,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	private async handleCommandComplete(): Promise<void> {
 		const changesSummary = this._fileSnapshotManager.getChangesSummary();
-		this.logService.debug(ClaudeService.LOG_CATEGORY, `Command complete, ${changesSummary.changes.length} files changed`);
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Command complete, snapshots: ${this._fileSnapshotManager.snapshotCount}, changes: ${changesSummary.changes.length}`);
+
+		// 디버깅: 스냅샷 상태 출력
+		for (const change of changesSummary.changes) {
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] - ${change.filePath}: ${change.changeType}, +${change.linesAdded}/-${change.linesRemoved}`);
+		}
 
 		// 현재 메시지에 파일 변경사항 추가
 		if (changesSummary.changes.length > 0 && this._currentMessageId && this._sessionManager.hasCurrentSession()) {
 			const messages = this._sessionManager.getMessages();
 			const currentMessage = messages.find(m => m.id === this._currentMessageId);
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${this._currentMessageId}, found: ${!!currentMessage}`);
 
 			if (currentMessage) {
 				const updatedMessage: IClaudeMessage = {
@@ -973,7 +983,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				};
 				this._sessionManager.updateMessage(updatedMessage);
 				this._onDidUpdateMessage.fire(updatedMessage);
+				this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Message updated with ${changesSummary.changes.length} file changes`);
 			}
+		} else {
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Skipping - changes: ${changesSummary.changes.length}, msgId: ${this._currentMessageId}, hasSession: ${this._sessionManager.hasCurrentSession()}`);
 		}
 	}
 

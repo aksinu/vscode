@@ -102,8 +102,7 @@ export class AttachmentManager extends Disposable {
 
 			this._attachments.push(attachment);
 			this.updateUI();
-
-			this.notificationService.info(localize('fileAttached', "Attached: {0}", attachment.name));
+			// 알림 제거 - 첨부 태그가 UI에 표시되므로 별도 알림 불필요
 		} catch (error) {
 			this.notificationService.error(localize('attachError', "Failed to attach file: {0}", (error as Error).message));
 		}
@@ -133,8 +132,7 @@ export class AttachmentManager extends Disposable {
 
 			this._attachments.push(attachment);
 			this.updateUI();
-
-			this.notificationService.info(localize('imagePasted', "Image pasted: {0}", fileName));
+			// 알림 제거 - 첨부 태그가 UI에 표시되므로 별도 알림 불필요
 		} catch (error) {
 			console.error('[AttachmentManager] Failed to add image:', error);
 			this.notificationService.error(localize('imagePasteError', "Failed to paste image: {0}", (error as Error).message));
@@ -155,7 +153,7 @@ export class AttachmentManager extends Disposable {
 
 		this._attachments.push(attachment);
 		this.updateUI();
-		this.notificationService.info(localize('workspaceAttached', "Workspace context attached"));
+		// 알림 제거 - 첨부 태그가 UI에 표시되므로 별도 알림 불필요
 	}
 
 	/**
@@ -189,7 +187,7 @@ export class AttachmentManager extends Disposable {
 
 		this._attachments.push(attachment);
 		this.updateUI();
-		this.notificationService.info(localize('codeReferenceAttached', "Code reference attached: {0} {1}", ref.fileName, lineRange));
+		// 알림 제거 - 첨부 태그가 UI에 표시되므로 별도 알림 불필요
 	}
 
 	/**

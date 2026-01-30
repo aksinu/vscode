@@ -7,6 +7,7 @@ import { $, append, addDisposableListener, EventType } from '../../../../../base
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
 import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
+import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
 
 /**
  * StatusBarManager 콜백 인터페이스
@@ -17,6 +18,8 @@ export interface IStatusBarCallbacks {
 	toggleUltrathink(): Promise<void>;
 	openLocalSettings(): Promise<void>;
 	openSessionSettings(): void;
+	cyclePermissionMode(): Promise<void>;
+	getPermissionMode(): ClaudePermissionMode;
 	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
 
@@ -28,6 +31,7 @@ export class StatusBarManager extends Disposable {
 
 	private container: HTMLElement;
 	private ultrathinkButton: HTMLButtonElement | undefined;
+	private permissionModeButton: HTMLButtonElement | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -47,6 +51,7 @@ export class StatusBarManager extends Disposable {
 		// this.updateModel(status);
 		this.updateExecutionMethod(status);
 		this.updateUltrathink(status);
+		this.updatePermissionMode();
 	}
 
 	// ========== Private Methods ==========
@@ -62,6 +67,22 @@ export class StatusBarManager extends Disposable {
 
 		this.callbacks.registerDisposable(addDisposableListener(this.ultrathinkButton, EventType.CLICK, async () => {
 			await this.callbacks.toggleUltrathink();
+		}));
+
+		// 구분자
+		append(this.container, $('.claude-status-separator'));
+
+		// Permission Mode 토글 버튼
+		this.permissionModeButton = append(this.container, $('button.claude-permission-mode-toggle')) as HTMLButtonElement;
+		this.permissionModeButton.title = localize('cyclePermissionMode', "Click to cycle permission mode");
+		const permissionIcon = append(this.permissionModeButton, $('span.claude-permission-mode-icon'));
+		permissionIcon.textContent = '○';
+		const permissionText = append(this.permissionModeButton, $('span.claude-permission-mode-text'));
+		permissionText.textContent = 'Default';
+
+		this.callbacks.registerDisposable(addDisposableListener(this.permissionModeButton, EventType.CLICK, async () => {
+			await this.callbacks.cyclePermissionMode();
+			this.updatePermissionMode();
 		}));
 
 		// 구분자
@@ -145,6 +166,38 @@ export class StatusBarManager extends Disposable {
 			this.ultrathinkButton.title = status.ultrathink
 				? localize('ultrathinkOn', "Ultrathink ON - Click to disable")
 				: localize('ultrathinkOff', "Ultrathink OFF - Click to enable");
+		}
+	}
+
+	private updatePermissionMode(): void {
+		if (!this.permissionModeButton) return;
+
+		const mode = this.callbacks.getPermissionMode();
+		const icon = this.permissionModeButton.querySelector('.claude-permission-mode-icon');
+		const text = this.permissionModeButton.querySelector('.claude-permission-mode-text');
+
+		// 모든 모드 클래스 제거
+		this.permissionModeButton.classList.remove('mode-default', 'mode-plan', 'mode-accept-edits');
+
+		switch (mode) {
+			case 'plan':
+				this.permissionModeButton.classList.add('mode-plan');
+				if (icon) icon.textContent = '◐';
+				if (text) text.textContent = 'Plan';
+				this.permissionModeButton.title = localize('permissionModePlan', "Plan mode - Click to switch to Accept-Edits");
+				break;
+			case 'accept-edits':
+				this.permissionModeButton.classList.add('mode-accept-edits');
+				if (icon) icon.textContent = '●';
+				if (text) text.textContent = 'Accept';
+				this.permissionModeButton.title = localize('permissionModeAcceptEdits', "Accept-Edits mode - Click to switch to Default");
+				break;
+			default: // 'default'
+				this.permissionModeButton.classList.add('mode-default');
+				if (icon) icon.textContent = '○';
+				if (text) text.textContent = 'Default';
+				this.permissionModeButton.title = localize('permissionModeDefault', "Default mode - Click to switch to Plan");
+				break;
 		}
 	}
 

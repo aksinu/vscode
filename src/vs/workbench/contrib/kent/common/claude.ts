@@ -6,6 +6,7 @@
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, IClaudeToolAction } from './claudeTypes.js';
+import { IClaudeLocalConfig } from './claudeLocalConfig.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 
@@ -173,6 +174,11 @@ export interface IClaudeService {
 	reorderQueue?(fromIndex: number, toIndex: number): boolean;
 
 	// ========== Config ==========
+
+	/**
+	 * 로컬 설정 가져오기
+	 */
+	getLocalConfig?(): IClaudeLocalConfig;
 
 	/**
 	 * 로컬 설정 다시 로드

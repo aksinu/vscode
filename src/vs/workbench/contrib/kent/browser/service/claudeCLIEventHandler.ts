@@ -82,6 +82,9 @@ export class CLIEventHandler extends Disposable {
 
 	private static readonly LOG_CATEGORY = 'CLIEventHandler';
 
+	// 현재 진행 중인 데이터 처리 작업 (race condition 방지용)
+	private _pendingDataOperation: Promise<void> = Promise.resolve();
+
 	constructor(
 		private readonly callbacks: ICLIEventHandlerCallbacks,
 		private readonly logService: IClaudeLogService
@@ -92,7 +95,7 @@ export class CLIEventHandler extends Disposable {
 	/**
 	 * CLI 데이터 이벤트 처리
 	 */
-	handleData(event: IClaudeCLIStreamEvent): void {
+	async handleData(event: IClaudeCLIStreamEvent): Promise<void> {
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleData:', event.type, event.subtype || '');
 
 		// 데이터를 받으면 연결된 것으로 판단
@@ -121,15 +124,17 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
-		// 도구 사용 이벤트 처리
+		// 도구 사용 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 체이닝)
 		if (event.type === 'tool_use') {
-			this.handleToolUse(event);
+			this._pendingDataOperation = this._pendingDataOperation.then(() => this.handleToolUse(event));
+			await this._pendingDataOperation;
 			return;
 		}
 
-		// 도구 결과 이벤트 처리
+		// 도구 결과 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 체이닝)
 		if (event.type === 'tool_result') {
-			this.handleToolResult(event);
+			this._pendingDataOperation = this._pendingDataOperation.then(() => this.handleToolResult(event));
+			await this._pendingDataOperation;
 			return;
 		}
 
@@ -161,8 +166,15 @@ export class CLIEventHandler extends Disposable {
 	/**
 	 * CLI 완료 이벤트 처리
 	 */
-	handleComplete(): void {
+	async handleComplete(): Promise<void> {
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete started, waiting for pending operations...');
+
+		// 진행 중인 데이터 처리 작업이 완료될 때까지 대기 (race condition 방지)
+		await this._pendingDataOperation;
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: pending operations done');
+
 		if (!this.callbacks.getCurrentMessageId() || !this.callbacks.hasCurrentSession()) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: no message or session, returning');
 			return;
 		}
 
@@ -205,6 +217,11 @@ export class CLIEventHandler extends Disposable {
 		// 응답 성공 시 연결 확인
 		this.callbacks.confirmConnected();
 
+		// 파일 변경사항 처리 (상태 리셋 전에 호출해야 함! await 필수!)
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] Calling onCommandComplete...');
+		await this.callbacks.onCommandComplete();
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] onCommandComplete done');
+
 		// 세션 저장
 		this.callbacks.saveSessions();
 
@@ -214,9 +231,7 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCurrentToolAction(undefined);
 		this.callbacks.setCliSessionId(undefined);
 		this.callbacks.setUsage(undefined);
-
-		// 파일 변경사항 Diff 표시
-		this.callbacks.onCommandComplete();
+		this._pendingDataOperation = Promise.resolve(); // 리셋
 
 		// 큐에 대기 중인 메시지 처리
 		this.callbacks.processQueue();
@@ -319,8 +334,9 @@ export class CLIEventHandler extends Disposable {
 		}
 	}
 
-	private handleToolUse(event: IClaudeCLIStreamEvent): void {
+	private async handleToolUse(event: IClaudeCLIStreamEvent): Promise<void> {
 		const toolName = event.tool_name || 'unknown';
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolUse: ${toolName}`);
 
 		// AskUserQuestion 도구 처리
 		if (toolName === 'AskUserQuestion') {
@@ -338,12 +354,17 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCurrentToolAction(toolAction);
 		this.callbacks.addToolAction(toolAction);
 
-		// 파일 수정 도구인 경우 스냅샷 캡처
-		if (this.isFileModifyTool(toolName)) {
+		// 파일 수정 도구인 경우 스냅샷 캡처 (await 필수!)
+		const isFileTool = this.isFileModifyTool(toolName);
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] isFileModifyTool(${toolName}): ${isFileTool}`);
+
+		if (isFileTool) {
 			const filePath = this.extractFilePath(toolName, event.tool_input);
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] extractFilePath: ${filePath || 'null'}`);
 			if (filePath) {
-				this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Capturing file before edit:', filePath);
-				this.callbacks.captureFileBeforeEdit(filePath);
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] Capturing BEFORE edit: ${filePath}`);
+				await this.callbacks.captureFileBeforeEdit(filePath);
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] BEFORE capture done: ${filePath}`);
 			}
 		}
 
@@ -486,8 +507,10 @@ export class CLIEventHandler extends Disposable {
 		this.updateCurrentMessage();
 	}
 
-	private handleToolResult(event: IClaudeCLIStreamEvent): void {
+	private async handleToolResult(event: IClaudeCLIStreamEvent): Promise<void> {
 		const currentToolAction = this.callbacks.getCurrentToolAction();
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: currentTool=${currentToolAction?.tool || 'null'}, is_error=${event.is_error}`);
+
 		if (currentToolAction) {
 			this.callbacks.updateToolAction(currentToolAction.id, {
 				status: event.is_error ? 'error' : 'completed',
@@ -495,12 +518,17 @@ export class CLIEventHandler extends Disposable {
 				error: event.is_error ? event.tool_result : undefined
 			});
 
-			// 파일 수정 도구의 결과인 경우 수정 후 내용 캡처
-			if (this.isFileModifyTool(currentToolAction.tool) && !event.is_error) {
+			// 파일 수정 도구의 결과인 경우 수정 후 내용 캡처 (await 필수!)
+			const isFileTool = this.isFileModifyTool(currentToolAction.tool);
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] isFileModifyTool(${currentToolAction.tool}): ${isFileTool}, is_error: ${event.is_error}`);
+
+			if (isFileTool && !event.is_error) {
 				const filePath = this.extractFilePath(currentToolAction.tool, currentToolAction.input);
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] extractFilePath for result: ${filePath || 'null'}`);
 				if (filePath) {
-					this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Capturing file after edit:', filePath);
-					this.callbacks.captureFileAfterEdit(filePath);
+					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] Capturing AFTER edit: ${filePath}`);
+					await this.callbacks.captureFileAfterEdit(filePath);
+					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] AFTER capture done: ${filePath}`);
 				}
 			}
 

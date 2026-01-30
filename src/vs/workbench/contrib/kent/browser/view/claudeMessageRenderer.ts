@@ -535,7 +535,12 @@ export class ClaudeMessageRenderer extends Disposable {
 		// 서브에이전트 정보 (있으면)
 		if (usage.subagents && usage.subagents.length > 0) {
 			const subagentItem = append(tokensElement, $('.claude-usage-item.subagent'));
-			subagentItem.title = localize('subagentsUsed', "Subagents used: {0}", usage.subagents.map(s => s.type).join(', '));
+			// 각 에이전트 타입과 설명을 줄바꿈으로 구분하여 툴팁에 표시
+			const tooltipLines = usage.subagents.map((s, i) => {
+				const desc = s.description ? `: ${s.description}` : '';
+				return `${i + 1}. ${s.type}${desc}`;
+			});
+			subagentItem.title = `Subagents used:\n${tooltipLines.join('\n')}`;
 			append(subagentItem, $('.codicon.codicon-server-process'));
 			const subagentValue = append(subagentItem, $('span'));
 			subagentValue.textContent = `${usage.subagents.length}`;
