@@ -34,8 +34,7 @@ import { AttachmentManager } from './claudeAttachmentManager.js';
 import { LocalSettingsManager } from './claudeLocalSettings.js';
 import { InputEditorManager } from './claudeInputEditor.js';
 import { CodeApplyManager } from './claudeCodeApply.js';
-// SessionPickerUI는 탭 UI로 대체됨
-// import { SessionPickerUI } from './claudeSessionPicker.js';
+import { SessionPickerUI } from './claudeSessionPicker.js';
 import { OpenFilesBar } from './claudeOpenFilesBar.js';
 import { ConnectionOverlay } from './claudeConnectionOverlay.js';
 import { ClaudeSettingsPanel } from './claudeSettingsPanel.js';
@@ -74,6 +73,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private localSettingsManager!: LocalSettingsManager;
 	private inputEditorManager!: InputEditorManager;
 	private codeApplyManager!: CodeApplyManager;
+	private sessionPicker!: SessionPickerUI;
 	private openFilesBar!: OpenFilesBar;
 	private connectionOverlay!: ConnectionOverlay;
 	private settingsPanel!: ClaudeSettingsPanel;
@@ -123,6 +123,18 @@ export class ClaudeChatViewPane extends ViewPane {
 				registerDisposable: (d) => this._register(d)
 			}
 		));
+
+		// 세션 선택 UI 생성
+		this.sessionPicker = new SessionPickerUI(
+			this.claudeService,
+			this.quickInputService,
+			this.notificationService,
+			{
+				clearMessages: () => this.clearMessages(),
+				appendMessage: (message) => this.appendMessage(message),
+				updateWelcomeVisibility: () => this.updateWelcomeVisibility()
+			}
+		);
 
 		// 메시지 렌더러 생성
 		this.messageRenderer = this._register(this.instantiationService.createInstance(ClaudeMessageRenderer, {
@@ -178,13 +190,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			if (state === 'error') {
 				this.handleConnectionLost();
 			}
-
-			// 상태가 idle로 변경되면 입력창 다시 활성화
-			if (state === 'idle') {
-				this.updateInputStateForSession(this.claudeService.getCurrentSession()?.id);
-			}
-
-			// 세션 탭은 세션 변경 이벤트에서만 렌더링 (무한 루프 방지)
 		}));
 
 		this._register(this.claudeService.onDidChangeSession((session) => {
@@ -198,18 +203,10 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.updateWelcomeVisibility();
 			// 세션 탭 갱신
 			this.sessionTabs?.render();
-
-			// 세션별 상태에 따른 UI 업데이트 (이벤트 발생 없이 직접 업데이트)
-			const state = this.claudeService.getState();
-			const inProgress = state === 'sending' || state === 'streaming';
-			this.requestInProgressKey.set(inProgress);
-			this.updateLoadingState(state === 'sending');
-			this.updateSendButton(inProgress);
 		}));
 
 		this._register(this.claudeService.onDidChangeQueue(queue => {
 			this.updateQueueUI(queue);
-			// 세션 탭 렌더링은 세션 변경 이벤트에서만 (무한 루프 방지)
 		}));
 
 	}
@@ -413,16 +410,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.toggleChangesHistory();
 		}));
 
-		// Clear 버튼
-		const clearButton = append(headerBar, $('button.claude-header-clear-btn'));
-		clearButton.title = localize('clearSession', "Clear current session");
-		const clearIcon = append(clearButton, $('span.codicon.codicon-clear-all'));
-		clearIcon.setAttribute('aria-hidden', 'true');
-
-		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
-			this.clearCurrentSession();
-		}));
-
 		// 설정 버튼
 		const settingsButton = append(headerBar, $('button.claude-header-settings-btn'));
 		settingsButton.title = localize('openGlobalSettings', "Global Settings");
@@ -449,12 +436,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.sessionTabs = this._register(new SessionTabs(this.container, {
 			getSessions: () => this.claudeService.getSessions(),
 			getCurrentSession: () => this.claudeService.getCurrentSession(),
-			getSessionState: (sessionId) => this.claudeService.getSessionState?.(sessionId) ?? 'idle',
-			getSessionQueueCount: (sessionId) => {
-				const sessions = this.claudeService.getSessions();
-				const session = sessions.find(s => s.id === sessionId);
-				return session?.queue?.length ?? 0;
-			},
 			onNewSession: () => this.createNewSession(),
 			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
 			onDeleteSession: (sessionId) => this.deleteSession(sessionId),
@@ -792,13 +773,13 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.attachCurrentEditorFile();
 		}));
 
-		// Clear 버튼 (세션 클리어)
-		const clearFooterButton = append(inputFooter, $('button.claude-footer-button'));
-		clearFooterButton.title = localize('clearSession', "Clear current session");
-		append(clearFooterButton, $('.codicon.codicon-clear-all'));
+		// 세션 관리 버튼
+		const sessionButton = append(inputFooter, $('button.claude-footer-button'));
+		sessionButton.title = localize('manageSessions', "Manage sessions");
+		append(sessionButton, $('.codicon.codicon-layers'));
 
-		this._register(addDisposableListener(clearFooterButton, EventType.CLICK, () => {
-			this.clearCurrentSession();
+		this._register(addDisposableListener(sessionButton, EventType.CLICK, () => {
+			this.sessionPicker.show();
 		}));
 
 		// 설정 버튼
@@ -1173,16 +1154,6 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	/**
-	 * 세션별 입력 상태 업데이트 (동시 채팅 지원)
-	 * CLI가 다른 세션에서 사용 중이어도 현재 세션에서 입력 가능
-	 */
-	private updateInputStateForSession(_sessionId?: string): void {
-		// 연결이 되어 있으면 항상 입력 가능 (메시지는 큐에 추가됨)
-		const isConnected = this.claudeService.getStatusInfo?.().connectionStatus === 'connected';
-		this.setInputEnabled(isConnected);
-	}
-
-	/**
 	 * Claude CLI 연결 초기화
 	 * 최대 3회 자동 재시도, 실패 시 수동 재시도 버튼 표시
 	 */
@@ -1352,22 +1323,6 @@ export class ClaudeChatViewPane extends ViewPane {
 				editor.setPosition({ lineNumber: lastLine, column: lastColumn });
 			}
 		}
-	}
-
-	// ========== Clear Session ==========
-
-	/**
-	 * 현재 세션 클리어
-	 */
-	private clearCurrentSession(): void {
-		// 히스토리 클리어
-		this.claudeService.clearHistory();
-
-		// 메시지 영역 클리어
-		this.clearMessages();
-
-		// Welcome 화면 표시
-		this.updateWelcomeVisibility();
 	}
 
 	// ========== Changes History ==========

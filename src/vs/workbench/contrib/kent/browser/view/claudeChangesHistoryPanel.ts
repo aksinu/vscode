@@ -148,24 +148,20 @@ export class ChangesHistoryPanel extends Disposable {
 		const summary = append(this.contentContainer, $('.changes-history-summary'));
 
 		const stats = append(summary, $('.changes-stats'));
-
-		// Files count
-		const filesItem = append(stats, $('span.stat-item'));
-		append(filesItem, $('span.codicon.codicon-file'));
-		const filesText = append(filesItem, $('span'));
-		filesText.textContent = ` ${history.totalFilesChanged} ${localize('filesChanged', "files")}`;
-
-		// Additions
-		const additionsItem = append(stats, $('span.stat-item.additions'));
-		append(additionsItem, $('span.codicon.codicon-diff-added'));
-		const additionsText = append(additionsItem, $('span'));
-		additionsText.textContent = ` +${history.totalLinesAdded}`;
-
-		// Deletions
-		const deletionsItem = append(stats, $('span.stat-item.deletions'));
-		append(deletionsItem, $('span.codicon.codicon-diff-removed'));
-		const deletionsText = append(deletionsItem, $('span'));
-		deletionsText.textContent = ` -${history.totalLinesRemoved}`;
+		stats.innerHTML = `
+			<span class="stat-item">
+				<span class="codicon codicon-file"></span>
+				${history.totalFilesChanged} ${localize('filesChanged', "files")}
+			</span>
+			<span class="stat-item additions">
+				<span class="codicon codicon-diff-added"></span>
+				+${history.totalLinesAdded}
+			</span>
+			<span class="stat-item deletions">
+				<span class="codicon codicon-diff-removed"></span>
+				-${history.totalLinesRemoved}
+			</span>
+		`;
 	}
 
 	private renderTimeline(entries: IClaudeChangesHistoryEntry[]): void {

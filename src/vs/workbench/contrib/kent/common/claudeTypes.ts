@@ -351,21 +351,6 @@ export interface IClaudeSendRequestOptions {
 }
 
 /**
- * 세션별 서비스 상태
- */
-export type ClaudeSessionState = 'idle' | 'sending' | 'streaming' | 'error';
-
-/**
- * 세션별 대기 큐 메시지
- */
-export interface IClaudeSessionQueuedMessage {
-	readonly id: string;
-	readonly content: string;
-	readonly context?: IClaudeContext;
-	readonly timestamp: number;
-}
-
-/**
  * Claude 세션
  */
 export interface IClaudeSession {
@@ -375,10 +360,6 @@ export interface IClaudeSession {
 	readonly messages: IClaudeMessage[];
 	/** 이전 세션에서 로드된 메시지 개수 (구분선 표시용) */
 	readonly previousMessageCount?: number;
-	/** 세션별 상태 (동시 채팅 지원용) */
-	state?: ClaudeSessionState;
-	/** 세션별 대기 큐 (동시 채팅 지원용) */
-	queue?: IClaudeSessionQueuedMessage[];
 }
 
 /**
