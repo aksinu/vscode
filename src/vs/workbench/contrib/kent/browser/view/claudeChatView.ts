@@ -913,6 +913,12 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	private appendMessage(message: IClaudeMessage): void {
+		// 이미 DOM에 있으면 중복 추가 방지
+		const existing = this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`);
+		if (existing) {
+			return;
+		}
+
 		const messageContainer = $('.claude-message-wrapper');
 		messageContainer.dataset.messageId = message.id;
 
@@ -945,6 +951,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 기존 메시지 컨테이너 찾기
 		const existingContainer = this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement;
 		if (!existingContainer) {
+			// 기존 컨테이너가 없으면 새로 추가 (타이밍 이슈 대응)
+			this.appendMessage(message);
 			return;
 		}
 
