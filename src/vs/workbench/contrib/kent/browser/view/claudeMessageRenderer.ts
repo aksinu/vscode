@@ -94,11 +94,6 @@ export class ClaudeMessageRenderer extends Disposable {
 		copyMessageButton.addEventListener('click', copyMessageHandler);
 		disposables.add({ dispose: () => copyMessageButton.removeEventListener('click', copyMessageHandler) });
 
-		// 현재 도구 액션 표시 (스트리밍 중)
-		if (message.currentToolAction || (message.isStreaming && message.toolActions && message.toolActions.length > 0)) {
-			this.renderCurrentToolAction(message, messageElement);
-		}
-
 		// 컨텐츠
 		const contentElement = append(messageElement, $('.claude-message-content'));
 
@@ -114,6 +109,11 @@ export class ClaudeMessageRenderer extends Disposable {
 		} else {
 			// 일반 텍스트
 			contentElement.textContent = message.content;
+		}
+
+		// 현재 도구 액션 표시 (스트리밍 중) - 컨텐츠 하단에 표시
+		if (message.currentToolAction || (message.isStreaming && message.toolActions && message.toolActions.length > 0)) {
+			this.renderCurrentToolAction(message, messageElement);
 		}
 
 		// 완료된 도구 액션 목록 표시

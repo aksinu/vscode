@@ -8,6 +8,7 @@ import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../base/common/buffer.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
 import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ILanguageService } from '../../../../../editor/common/languages/language.js';
@@ -64,6 +65,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private openFilesContainer!: HTMLElement;
 	private statusBarContainer!: HTMLElement;
 	private sendButton!: HTMLButtonElement;
+	private stopButton!: HTMLButtonElement;
 	private autocompleteContainer!: HTMLElement;
 	private autocompleteManager!: AutocompleteManager;
 	private statusBarManager!: StatusBarManager;
@@ -203,16 +205,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.sessionTabs?.render();
 		}));
 
-		let previousQueueLength = 0;
 		this._register(this.claudeService.onDidChangeQueue(queue => {
-			// 큐에 새 메시지가 추가되면 알림
-			if (queue.length > previousQueueLength) {
-				const position = queue.length;
-				this.notificationService.info(
-					localize('messageQueued', "Message queued (#{0}). Will be sent when current request completes.", position)
-				);
-			}
-			previousQueueLength = queue.length;
 			this.updateQueueUI(queue);
 		}));
 
@@ -749,13 +742,23 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		));
 
-		// 전송/취소 버튼
+		// 중지 버튼 (스트리밍 중에만 표시)
+		this.stopButton = append(inputWrapper, $('button.claude-stop-button')) as HTMLButtonElement;
+		this.stopButton.title = localize('cancelRequest', "Cancel request");
+		append(this.stopButton, $('.codicon.codicon-stop-circle'));
+		this.stopButton.style.display = 'none';
+
+		this._register(addDisposableListener(this.stopButton, EventType.CLICK, () => {
+			this.claudeService.cancelRequest();
+		}));
+
+		// 전송 버튼
 		this.sendButton = append(inputWrapper, $('button.claude-send-button')) as HTMLButtonElement;
 		this.sendButton.title = localize('sendMessage', "Send message");
 		append(this.sendButton, $('.codicon.codicon-send'));
 
 		this._register(addDisposableListener(this.sendButton, EventType.CLICK, () => {
-			this.handleSendButtonClick();
+			this.submitInput();
 		}));
 
 		// 하단 툴바 (입력창 아래, 오른쪽 정렬)
@@ -1129,37 +1132,11 @@ export class ClaudeChatViewPane extends ViewPane {
 
 	// ========== 전송/취소 버튼 ==========
 
-	private handleSendButtonClick(): void {
-		const state = this.claudeService.getState();
-		if (state === 'sending' || state === 'streaming') {
-			// 취소
-			this.claudeService.cancelRequest();
-			this.notificationService.info(localize('requestCancelled', "Request cancelled"));
-		} else {
-			// 전송
-			this.submitInput();
-		}
-	}
-
 	private updateSendButton(inProgress: boolean): void {
-		if (!this.sendButton) {
-			return;
+		// 중지 버튼: 스트리밍 중에만 표시
+		if (this.stopButton) {
+			this.stopButton.style.display = inProgress ? 'flex' : 'none';
 		}
-
-		// 아이콘 변경
-		const icon = this.sendButton.querySelector('.codicon');
-		if (icon) {
-			icon.classList.remove('codicon-send', 'codicon-stop-circle');
-			icon.classList.add(inProgress ? 'codicon-stop-circle' : 'codicon-send');
-		}
-
-		// 타이틀 변경
-		this.sendButton.title = inProgress
-			? localize('cancelRequest', "Cancel request")
-			: localize('sendMessage', "Send message");
-
-		// 스타일 변경
-		this.sendButton.classList.toggle('cancel-mode', inProgress);
 	}
 
 	// ========== 연결 초기화 ==========
@@ -1390,16 +1367,6 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 로컬 설정 파일 업데이트
 		await this.updateLocalConfigPermissionMode(nextMode);
-
-		// 알림
-		const modeNames: Record<ClaudePermissionMode, string> = {
-			'default': localize('permissionModeDefaultName', "Default"),
-			'plan': localize('permissionModePlanName', "Plan"),
-			'accept-edits': localize('permissionModeAcceptEditsName', "Accept-Edits")
-		};
-		this.notificationService.info(
-			localize('permissionModeChanged', "Permission mode changed to: {0}", modeNames[nextMode])
-		);
 	}
 
 	/**
@@ -1428,7 +1395,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 			// 파일 쓰기
 			const newContent = JSON.stringify(config, null, '\t');
-			await this.fileService.writeFile(configPath, new TextEncoder().encode(newContent));
+			await this.fileService.writeFile(configPath, VSBuffer.fromString(newContent));
 
 			// 설정 리로드
 			await this.claudeService.reloadLocalConfig?.();

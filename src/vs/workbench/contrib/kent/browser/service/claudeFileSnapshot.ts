@@ -137,26 +137,49 @@ export class FileSnapshotManager extends Disposable {
 		try {
 			const uri = snapshot.uri;
 
+			// 파일이 쓰여질 시간을 약간 대기 (파일 시스템 동기화)
+			await new Promise(resolve => setTimeout(resolve, 200));
+
 			// 열려있는 에디터 모델에서 먼저 확인
 			const model = this.modelService.getModel(uri);
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAfterEdit: model exists? ${!!model}, uri: ${uri.toString()}`);
+
 			if (model) {
 				snapshot.modifiedContent = model.getValue();
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAfterEdit: got content from model (${snapshot.modifiedContent?.length || 0} chars)`);
 			} else {
 				// 파일 시스템에서 읽기
 				try {
 					const content = await this.fileService.readFile(uri);
 					snapshot.modifiedContent = content.value.toString();
-				} catch {
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAfterEdit: got content from file system (${snapshot.modifiedContent?.length || 0} chars)`);
+				} catch (e) {
 					// 파일이 삭제된 경우
 					snapshot.modifiedContent = '';
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAfterEdit: file read failed, setting empty`, e);
 				}
 			}
 
-			this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
-				`Captured modified content for: ${filePath} (${snapshot.modifiedContent?.length || 0} chars)`);
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+				`[FileChanges] captureAfterEdit done: ${filePath} (${snapshot.modifiedContent?.length || 0} chars)`);
 
 		} catch (error) {
 			this.logService.error(FileSnapshotManager.LOG_CATEGORY, 'Failed to capture modified content:', filePath, error);
+		}
+	}
+
+	/**
+	 * 아직 캡처되지 않은 수정 후 내용을 모두 캡처
+	 * handleComplete에서 tool_result가 누락된 경우를 위해
+	 */
+	async captureAllPendingModifications(): Promise<void> {
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAllPendingModifications: ${this._snapshots.size} snapshots`);
+
+		for (const [filePath, snapshot] of this._snapshots) {
+			if (snapshot.modifiedContent === undefined) {
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] Capturing pending modification for: ${filePath}`);
+				await this.captureAfterEdit(filePath);
+			}
 		}
 	}
 

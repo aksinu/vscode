@@ -509,7 +509,7 @@ export class CLIEventHandler extends Disposable {
 
 	private async handleToolResult(event: IClaudeCLIStreamEvent): Promise<void> {
 		const currentToolAction = this.callbacks.getCurrentToolAction();
-		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: currentTool=${currentToolAction?.tool || 'null'}, is_error=${event.is_error}`);
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: currentTool=${currentToolAction?.tool || 'null'}, is_error=${event.is_error}, tool_result_length=${String(event.tool_result || '').length}`);
 
 		if (currentToolAction) {
 			this.callbacks.updateToolAction(currentToolAction.id, {
@@ -520,21 +520,25 @@ export class CLIEventHandler extends Disposable {
 
 			// 파일 수정 도구의 결과인 경우 수정 후 내용 캡처 (await 필수!)
 			const isFileTool = this.isFileModifyTool(currentToolAction.tool);
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] isFileModifyTool(${currentToolAction.tool}): ${isFileTool}, is_error: ${event.is_error}`);
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: isFileModifyTool(${currentToolAction.tool})=${isFileTool}, is_error=${event.is_error}`);
 
 			if (isFileTool && !event.is_error) {
 				const filePath = this.extractFilePath(currentToolAction.tool, currentToolAction.input);
-				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] extractFilePath for result: ${filePath || 'null'}`);
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: extractFilePath=${filePath || 'null'}, input=${JSON.stringify(currentToolAction.input)}`);
 				if (filePath) {
-					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] Capturing AFTER edit: ${filePath}`);
+					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: Calling captureFileAfterEdit for ${filePath}`);
 					await this.callbacks.captureFileAfterEdit(filePath);
-					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] AFTER capture done: ${filePath}`);
+					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: captureFileAfterEdit DONE for ${filePath}`);
 				}
+			} else {
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: SKIPPED capture (isFileTool=${isFileTool}, is_error=${event.is_error})`);
 			}
 
 			this.callbacks.setCurrentToolAction(undefined);
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use completed:', currentToolAction.tool);
 			this.updateCurrentMessage();
+		} else {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: NO currentToolAction, skipping`);
 		}
 	}
 

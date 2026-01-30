@@ -962,6 +962,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 * 명령 완료 시 호출 - 변경된 파일 정보 수집
 	 */
 	private async handleCommandComplete(): Promise<void> {
+		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
+		await this._fileSnapshotManager.captureAllPendingModifications();
+
 		const changesSummary = this._fileSnapshotManager.getChangesSummary();
 		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Command complete, snapshots: ${this._fileSnapshotManager.snapshotCount}, changes: ${changesSummary.changes.length}`);
 
