@@ -26,6 +26,7 @@ import { IClaudeLogService } from '../../common/claudeLogService.js';
 import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { ITextFileService } from '../../../../services/textfile/common/textfiles.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -105,7 +106,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		@IClaudeLogService private readonly logService: IClaudeLogService,
 		@IModelService private readonly modelService: IModelService,
 		@ITextModelService private readonly textModelService: ITextModelService,
-		@IEditorService private readonly editorService: IEditorService
+		@IEditorService private readonly editorService: IEditorService,
+		@ITextFileService private readonly textFileService: ITextFileService
 	) {
 		super();
 
@@ -126,6 +128,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.modelService,
 			this.textModelService,
 			this.editorService,
+			this.textFileService,
 			this.logService
 		));
 

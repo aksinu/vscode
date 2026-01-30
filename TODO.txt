@@ -1,26 +1,4 @@
-- DIFF 기능(변경사항 확인 및 REVERT) - 구현 실패
-:
-[Claude][ClaudeService] Local config loaded: Object
-claudeLogService.js:sourcemap:163 [Claude][ClaudeService] Local config loaded: Object
-claudeLogService.js:sourcemap:163 [Claude][ClaudeService] Local config loaded: Object
-claudeLogService.js:sourcemap:163 [Claude][CLIEventHandler] [FileChanges] handleComplete started, waiting for pending operations...
-claudeLogService.js:sourcemap:163 [Claude][CLIEventHandler] [FileChanges] handleComplete: pending operations done
-claudeLogService.js:sourcemap:163 [Claude][CLIEventHandler] [FileChanges] Calling onCommandComplete...
-claudeLogService.js:sourcemap:163 [Claude][FileSnapshot] [FileChanges] getChangedFiles: 1 snapshots
-claudeLogService.js:sourcemap:163 [Claude][FileSnapshot] [FileChanges] d:\_______________Kent\vscode\test1.md: modifiedContent is undefined, skipping
-claudeLogService.js:sourcemap:163 [Claude][ClaudeService] [FileChanges] Command complete, snapshots: 1, changes: 0
-claudeLogService.js:sourcemap:163 [Claude][ClaudeService] [FileChanges] Skipping - changes: 0, msgId: dc2848ba-fe08-4595-86d8-fba147463279, hasSession: true
-claudeLogService.js:sourcemap:163 [Claude][CLIEventHandler] [FileChanges] onCommandComplete done
-이건 로그
-
-"C:\Users\Kent.K\Pictures\Screenshots\스크린샷 2026-01-30 163745.png"
-이건 스샷.
-
-
- - 클로드 응답 중간에 내가 채팅입력 -> 기능 구현 완료.
- :다만 "C:\Users\Kent.K\Pictures\Screenshots\스크린샷 2026-01-30 163518.png"
- 요기서 보면 중지버튼만 남아있고 전송 버튼이 없어서 헷갈림, 전송버튼도 추가했으면 함.
- 그리고 새로운 메시지 펜딩 혹은 삭제됬을시 우하단 팝업 삭제해줘.
-
- - 클로드모드 (플랜 모드 등) 토글할수 있게 채팅입력창에 토글버튼 넣어두자. -> 기능 구현 완료
- : 마찬가지로 default/permission/plan 변경시 우하단 팝업 안뜨게 해줘.
+- DIFF 기능(변경사항 확인 및 REVERT) - 구현 확인
+: 세부기능 들어가자.
+1) file changes가 나오고나서 스크롤이 밑으로 안가서 내가 직접 내려야 확인이 가능해
+2) revert all 누르면 문서가 이전으로 바뀌고 나서 자동으로 저장까지 되게 해줘.

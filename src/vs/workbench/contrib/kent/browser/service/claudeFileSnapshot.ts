@@ -10,6 +10,7 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { ITextFileService } from '../../../../services/textfile/common/textfiles.js';
 import { basename } from '../../../../../base/common/resources.js';
 import { localize } from '../../../../../nls.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
@@ -52,6 +53,7 @@ export class FileSnapshotManager extends Disposable {
 		private readonly modelService: IModelService,
 		private readonly textModelService: ITextModelService,
 		private readonly editorService: IEditorService,
+		private readonly textFileService: ITextFileService,
 		private readonly logService: IClaudeLogService
 	) {
 		super();
@@ -294,18 +296,20 @@ export class FileSnapshotManager extends Disposable {
 				} catch {
 					// 이미 삭제되었거나 없는 경우 무시
 				}
-			} else {
+				} else {
 				// 기존 파일은 원본으로 복원
-				const content = VSBuffer.fromString(snapshot.originalContent);
-				await this.fileService.writeFile(uri, content);
-
-				// 에디터가 열려있으면 새로고침
 				const model = this.modelService.getModel(uri);
 				if (model) {
+					// 에디터가 열려있으면 모델 업데이트 후 저장
 					model.setValue(snapshot.originalContent);
+					await this.textFileService.save(uri);
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY, 'Reverted and saved file (via model):', filePath);
+				} else {
+					// 에디터가 없으면 파일 시스템에 직접 쓰기
+					const content = VSBuffer.fromString(snapshot.originalContent);
+					await this.fileService.writeFile(uri, content);
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY, 'Reverted file (direct write):', filePath);
 				}
-
-				this.logService.info(FileSnapshotManager.LOG_CATEGORY, 'Reverted file:', filePath);
 			}
 
 			// 스냅샷에서 제거

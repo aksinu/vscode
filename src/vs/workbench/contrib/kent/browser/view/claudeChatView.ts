@@ -896,8 +896,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		const disposables = this.messageRenderer.renderMessage(message, existingContainer);
 		this.messageDisposables.set(message.id, disposables);
 
-		// 스트리밍 중이면 스크롤
-		if (message.isStreaming) {
+		// 스트리밍 중이거나 파일 변경사항이 있으면 스크롤
+		if (message.isStreaming || message.fileChanges) {
 			this.scrollToBottom();
 		}
 	}
