@@ -1731,7 +1731,8 @@
 	border-bottom: 1px solid var(--vscode-widget-border);
 }
 
-.claude-header-settings-btn {
+.claude-header-settings-btn,
+.claude-header-clear-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1746,7 +1747,8 @@
 	transition: opacity 0.1s, background-color 0.1s;
 }
 
-.claude-header-settings-btn:hover {
+.claude-header-settings-btn:hover,
+.claude-header-clear-btn:hover {
 	opacity: 1;
 	background: var(--vscode-toolbar-hoverBackground);
 }
@@ -1879,6 +1881,45 @@
 	border-radius: 2px;
 	width: 100px;
 	outline: none;
+}
+
+/* 세션 상태 인디케이터 */
+.claude-session-tab-status {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-right: 2px;
+}
+
+.claude-session-tab-status.idle {
+	display: none;
+}
+
+.claude-session-tab-status.sending,
+.claude-session-tab-status.streaming {
+	background-color: var(--vscode-terminal-ansiYellow);
+	animation: claude-pulse 1s infinite;
+}
+
+.claude-session-tab-status.error {
+	background-color: var(--vscode-errorForeground);
+}
+
+/* 세션 탭에 대기 중인 메시지 뱃지 */
+.claude-session-tab-queue-badge {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-radius: 8px;
+	font-size: 10px;
+	font-weight: 600;
+	flex-shrink: 0;
 }
 
 /* ========== Settings Panel Overlay ========== */

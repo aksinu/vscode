@@ -7,7 +7,7 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { IClaudeMessage, IClaudeSession } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSession, ClaudeSessionState, IClaudeSessionQueuedMessage, IClaudeContext } from '../../common/claudeTypes.js';
 
 /**
  * 세션 관리자
@@ -85,13 +85,28 @@ export class ClaudeSessionManager extends Disposable {
 					this._currentSession = this._sessions[this._sessions.length - 1];
 				}
 
+				// VS Code 재시작 시 모든 세션의 상태 초기화
+				for (const session of this._sessions) {
+					// 상태를 idle로 초기화 (이전 streaming/sending 상태 제거)
+					(session as { state?: ClaudeSessionState }).state = 'idle';
+					// 큐를 빈 배열로 초기화 (이전 pending 메시지 제거)
+					(session as { queue?: IClaudeSessionQueuedMessage[] }).queue = [];
+
+					// 메시지의 fileChanges 클리어 (스냅샷이 메모리에만 저장되어 revert 불가)
+					for (const message of session.messages) {
+						if (message.fileChanges) {
+							(message as { fileChanges?: undefined }).fileChanges = undefined;
+						}
+					}
+				}
+
 				// 이전 메시지 개수 기록 (구분선 표시용)
 				if (this._currentSession && this._currentSession.messages.length > 0) {
 					(this._currentSession as { previousMessageCount?: number }).previousMessageCount = this._currentSession.messages.length;
 					console.log('[SessionManager] Previous message count:', this._currentSession.previousMessageCount);
 				}
 
-				console.log('[SessionManager] Loaded sessions:', this._sessions.length);
+				console.log('[SessionManager] Loaded sessions:', this._sessions.length, '(states reset to idle)');
 			}
 		} catch (e) {
 			console.error('[SessionManager] Failed to load sessions:', e);
@@ -269,5 +284,140 @@ export class ClaudeSessionManager extends Disposable {
 	 */
 	fireSessionChange(): void {
 		this._onDidChangeSession.fire(this._currentSession);
+	}
+
+	// ========== 세션별 상태 관리 (동시 채팅 지원) ==========
+
+	/**
+	 * 세션 상태 가져오기
+	 */
+	getSessionState(sessionId?: string): ClaudeSessionState {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+		return session?.state ?? 'idle';
+	}
+
+	/**
+	 * 세션 상태 설정
+	 */
+	setSessionState(state: ClaudeSessionState, sessionId?: string): void {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+
+		if (session) {
+			(session as { state?: ClaudeSessionState }).state = state;
+			// 상태 변경 시 저장하지 않음 (일시적 상태)
+		}
+	}
+
+	/**
+	 * 현재 세션이 busy 상태인지 확인
+	 */
+	isSessionBusy(sessionId?: string): boolean {
+		const state = this.getSessionState(sessionId);
+		return state === 'sending' || state === 'streaming';
+	}
+
+	// ========== 세션별 큐 관리 ==========
+
+	/**
+	 * 세션 큐 가져오기
+	 */
+	getSessionQueue(sessionId?: string): IClaudeSessionQueuedMessage[] {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+		return session?.queue ?? [];
+	}
+
+	/**
+	 * 세션 큐에 메시지 추가
+	 * @returns 추가된 메시지 또는 null (큐가 가득 찬 경우)
+	 */
+	addToSessionQueue(content: string, context?: IClaudeContext, sessionId?: string, maxSize: number = 10): IClaudeSessionQueuedMessage | null {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+
+		if (!session) {
+			return null;
+		}
+
+		// 큐 초기화
+		if (!session.queue) {
+			(session as { queue?: IClaudeSessionQueuedMessage[] }).queue = [];
+		}
+
+		// 큐 크기 제한
+		if (session.queue!.length >= maxSize) {
+			return null;
+		}
+
+		const queuedMessage: IClaudeSessionQueuedMessage = {
+			id: generateUuid(),
+			content,
+			context,
+			timestamp: Date.now()
+		};
+
+		session.queue!.push(queuedMessage);
+		return queuedMessage;
+	}
+
+	/**
+	 * 세션 큐에서 다음 메시지 가져오기 (제거)
+	 */
+	shiftSessionQueue(sessionId?: string): IClaudeSessionQueuedMessage | undefined {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+
+		if (!session?.queue || session.queue.length === 0) {
+			return undefined;
+		}
+
+		return session.queue.shift();
+	}
+
+	/**
+	 * 세션 큐에서 특정 메시지 제거
+	 */
+	removeFromSessionQueue(messageId: string, sessionId?: string): boolean {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+
+		if (!session?.queue) {
+			return false;
+		}
+
+		const index = session.queue.findIndex(m => m.id === messageId);
+		if (index !== -1) {
+			session.queue.splice(index, 1);
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 세션 큐 클리어
+	 */
+	clearSessionQueue(sessionId?: string): void {
+		const session = sessionId
+			? this._sessions.find(s => s.id === sessionId)
+			: this._currentSession;
+
+		if (session?.queue) {
+			session.queue.length = 0;
+		}
+	}
+
+	/**
+	 * 특정 세션 가져오기
+	 */
+	getSession(sessionId: string): IClaudeSession | undefined {
+		return this._sessions.find(s => s.id === sessionId);
 	}
 }

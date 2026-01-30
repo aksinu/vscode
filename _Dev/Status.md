@@ -18,12 +18,13 @@
 ## Now Working On
 
 ```
-Task: 클립보드 붙여넣기 기능 개선 (SPEC_006)
-Phase 1: 이미지 붙여넣기 버그 수정
-- 스크린샷 Ctrl+V 시 "image.png" 텍스트 중복 삽입 방지
-Phase 2: 코드 참조 붙여넣기 기능
-- IDE 코드 복사 → 참조(📄 file.ts L10-20) 형태로 표시
-Status: Phase 1 구현 중
+Task: 동시 채팅 버그 수정 완료
+- 큐 시스템 통일 (세션별 큐만 사용) ✅
+- processAllSessionQueues() 구현 ✅
+- 전역 큐 제거 (_messageQueue 및 관련 코드 정리) ✅
+- sendMessageInternal()에 targetSessionId 파라미터 추가 ✅
+- switchSession() 세션 전환 시 큐 UI 갱신 ✅
+Status: 완료
 ```
 
 ### 빌드 & 실행
@@ -178,6 +179,64 @@ onDidComplete         ──▶ handleCommandComplete()
 ---
 
 ## Activity Log
+
+### 2026-01-30
+- **동시 채팅 버그 수정**
+  - **문제 현상**:
+    1. Claude 응답 없음 (Waiting for response... 상태로 멈춤)
+    2. A 세션 진행 중 B 세션 진행 안됨 (메시지 pending)
+    3. B 세션에서 pending된 메시지가 A 세션에 나타남
+  - **근본 원인**: 전역 큐(_messageQueue)와 세션 큐(session.queue) 혼재
+  - **수정 내용** (`claudeService.ts`):
+    - 전역 큐 제거: `_messageQueue`, `QUEUE_STORAGE_KEY`, `loadQueue()`, `saveQueue()` 삭제
+    - `processAllSessionQueues()` 구현: 모든 세션에서 가장 오래된 메시지를 찾아 순차 처리
+    - `sendMessageInternal()`: `targetSessionId` 파라미터 추가하여 특정 세션으로 메시지 전송
+    - `switchSession()`: 세션 전환 시 해당 세션의 큐와 상태로 UI 업데이트
+    - 큐 관련 메서드 (`getQueuedMessages`, `removeFromQueue`, `clearQueue`, `updateQueuedMessage`, `reorderQueue`) 세션 큐 기반으로 변경
+    - import 정리: `StorageScope`, `StorageTarget` 제거, `IClaudeSessionQueuedMessage` 추가
+- **채팅 세션 관리 기능 개선**
+  - **Clear 버튼 구현** (헤더 바)
+    - `claudeChatView.ts`: `setupHeaderActions()`에 Clear 버튼 추가
+    - `clearCurrentSession()` 메서드 추가 - clearHistory() 호출 + UI 클리어
+    - `claude.css`: `.claude-header-clear-btn` 스타일 추가
+  - **푸터 버튼 재구성**
+    - `claudeChatView.ts`: 세션 관리 버튼 → Clear 버튼으로 교체
+    - 세션 관리는 탭 UI로 충분하므로 제거
+  - **동시 채팅 기능 구현**
+    - `claudeTypes.ts`:
+      - `ClaudeSessionState` 타입 추가 (세션별 상태)
+      - `IClaudeSessionQueuedMessage` 인터페이스 추가
+      - `IClaudeSession`에 `state`, `queue` 필드 추가
+    - `claudeSessionManager.ts`:
+      - 세션별 상태 관리 메서드: `getSessionState()`, `setSessionState()`, `isSessionBusy()`
+      - 세션별 큐 관리 메서드: `getSessionQueue()`, `addToSessionQueue()`, `shiftSessionQueue()`, `removeFromSessionQueue()`, `clearSessionQueue()`
+    - `claudeService.ts`:
+      - 전역 CLI 상태(`_globalCliState`)와 활성 세션 ID(`_activeSessionId`) 분리
+      - `getState()`: 현재 세션 상태 반환 (활성 CLI 세션이면 전역 상태)
+      - `setState()`: 세션별 상태 업데이트 + UI 이벤트
+      - `getSessionState()`: 특정 세션 상태 조회
+      - `isCliBusy()`: CLI 사용 중 확인
+      - `addToSessionQueue()`: 세션 큐에 메시지 추가
+      - `processGlobalSessionQueue()`: 모든 세션 큐 처리
+      - `switchSession()`: 세션 전환 시 상태 동기화
+    - `claude.ts`: 인터페이스에 `getSessionState()`, `isCliBusy()` 메서드 추가
+    - `claudeSessionTabs.ts`:
+      - 콜백에 `getSessionState()`, `getSessionQueueCount()` 추가
+      - 세션 상태 인디케이터 표시 (idle/sending/streaming/error)
+      - 대기 중 메시지 뱃지 표시
+    - `claudeChatView.ts`:
+      - 세션 전환 시 상태 동기화
+      - `updateInputStateForSession()`: 세션별 입력 상태 관리
+      - 상태/큐 변경 시 세션 탭 자동 갱신
+    - `claude.css`:
+      - `.claude-session-tab-status`: 세션 상태 인디케이터 스타일
+      - `.claude-session-tab-queue-badge`: 큐 뱃지 스타일
+  - **VS Code 재시작 시 상태 정리 버그 수정**
+    - `claudeSessionManager.ts`: `loadSessions()`에서 세션 로드 시 상태 초기화
+      - 모든 세션의 `state`를 `'idle'`로 초기화
+      - 모든 세션의 `queue`를 빈 배열로 초기화
+      - 모든 메시지의 `fileChanges`를 undefined로 초기화 (스냅샷 없이 revert 불가)
+      - 이전 streaming/sending 상태, pending 메시지, 파일 변경사항 제거
 
 ### 2026-01-29
 - **클립보드 붙여넣기 기능 개선 (SPEC_006)**

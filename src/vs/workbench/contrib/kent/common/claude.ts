@@ -51,9 +51,19 @@ export interface IClaudeService {
 	// ========== State ==========
 
 	/**
-	 * 현재 서비스 상태
+	 * 현재 서비스 상태 (현재 세션 기준)
 	 */
 	getState(): ClaudeServiceState;
+
+	/**
+	 * 특정 세션의 상태 가져오기
+	 */
+	getSessionState?(sessionId: string): ClaudeServiceState;
+
+	/**
+	 * CLI가 현재 사용 중인지 확인
+	 */
+	isCliBusy?(): boolean;
 
 	/**
 	 * 현재 세션

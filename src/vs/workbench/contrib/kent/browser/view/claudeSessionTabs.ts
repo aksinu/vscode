@@ -7,7 +7,7 @@ import { $, append, addDisposableListener, EventType, clearNode } from '../../..
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { localize } from '../../../../../nls.js';
-import { IClaudeSession } from '../../common/claudeTypes.js';
+import { IClaudeSession, ClaudeSessionState } from '../../common/claudeTypes.js';
 
 /**
  * 세션 탭 이벤트
@@ -22,6 +22,8 @@ export interface ISessionTabEvent {
 export interface ISessionTabsCallbacks {
 	getSessions(): IClaudeSession[];
 	getCurrentSession(): IClaudeSession | undefined;
+	getSessionState?(sessionId: string): ClaudeSessionState;
+	getSessionQueueCount?(sessionId: string): number;
 	onNewSession(): void;
 	onSwitchSession(sessionId: string): void;
 	onDeleteSession(sessionId: string): void;
@@ -97,11 +99,24 @@ export class SessionTabs extends Disposable {
 		}
 		tab.dataset.sessionId = session.id;
 
+		// 세션 상태 인디케이터 (동시 채팅 지원)
+		const sessionState = this.callbacks.getSessionState?.(session.id) ?? 'idle';
+		const statusIndicator = append(tab, $('.claude-session-tab-status'));
+		statusIndicator.classList.add(sessionState);
+
 		// 탭 제목
 		const title = this.getSessionTitle(session);
 		const titleElement = append(tab, $('.claude-session-tab-title'));
 		titleElement.textContent = title;
 		titleElement.title = title;
+
+		// 대기 중인 메시지 뱃지
+		const queueCount = this.callbacks.getSessionQueueCount?.(session.id) ?? 0;
+		if (queueCount > 0) {
+			const queueBadge = append(tab, $('.claude-session-tab-queue-badge'));
+			queueBadge.textContent = String(queueCount);
+			queueBadge.title = localize('pendingMessages', "{0} message(s) pending", queueCount);
+		}
 
 		// 닫기 버튼 (세션이 2개 이상일 때만)
 		const sessions = this.callbacks.getSessions();
