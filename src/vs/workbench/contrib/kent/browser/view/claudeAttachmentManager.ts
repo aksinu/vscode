@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
+import { DataTransfers } from '../../../../../base/browser/dnd.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
@@ -14,6 +15,7 @@ import { localize } from '../../../../../nls.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IClaudeAttachment, IClaudeCodeReference } from '../../common/claudeTypes.js';
+import { CodeDataTransfers, getPathForFile } from '../../../../../platform/dnd/browser/dnd.js';
 
 /**
  * AttachmentManager 콜백 인터페이스
@@ -221,31 +223,95 @@ export class AttachmentManager extends Disposable {
 	 */
 	async handleDrop(e: DragEvent): Promise<void> {
 		const dataTransfer = e.dataTransfer;
-		if (!dataTransfer) return;
+		if (!dataTransfer) {
+			return;
+		}
 
-		// VS Code 내부 드래그 (탐색기에서)
+		const addedUris = new Set<string>(); // 중복 방지
+
+		// 1. VS Code ResourceURLs (탐색기에서 여러 파일 드래그)
+		const resourcesData = dataTransfer.getData(DataTransfers.RESOURCES);
+		if (resourcesData) {
+			try {
+				const resources: string[] = JSON.parse(resourcesData);
+				for (const resourceStr of resources) {
+					if (resourceStr && resourceStr.indexOf(':') > 0) {
+						const uri = URI.parse(resourceStr);
+						if (!addedUris.has(uri.toString())) {
+							addedUris.add(uri.toString());
+							await this.addFile(uri);
+						}
+					}
+				}
+			} catch {
+				// 무효한 JSON 무시
+			}
+		}
+
+		// 2. CodeEditors (에디터 탭 드래그)
+		const editorsData = dataTransfer.getData(CodeDataTransfers.EDITORS);
+		if (editorsData) {
+			try {
+				const editors: Array<{ resource?: string }> = JSON.parse(editorsData);
+				for (const editor of editors) {
+					if (editor.resource) {
+						const uri = URI.parse(editor.resource);
+						if (!addedUris.has(uri.toString())) {
+							addedUris.add(uri.toString());
+							await this.addFile(uri);
+						}
+					}
+				}
+			} catch {
+				// 무효한 JSON 무시
+			}
+		}
+
+		// 3. CodeFiles (파일 경로 배열)
+		const codeFilesData = dataTransfer.getData(CodeDataTransfers.FILES);
+		if (codeFilesData) {
+			try {
+				const codeFiles: string[] = JSON.parse(codeFilesData);
+				for (const filePath of codeFiles) {
+					const uri = URI.file(filePath);
+					if (!addedUris.has(uri.toString())) {
+						addedUris.add(uri.toString());
+						await this.addFile(uri);
+					}
+				}
+			} catch {
+				// 무효한 JSON 무시
+			}
+		}
+
+		// 4. text/uri-list (표준 형식)
 		const uriList = dataTransfer.getData('text/uri-list');
 		if (uriList) {
 			const uris = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
 			for (const uriStr of uris) {
 				try {
 					const uri = URI.parse(uriStr.trim());
-					await this.addFile(uri);
+					if (!addedUris.has(uri.toString())) {
+						addedUris.add(uri.toString());
+						await this.addFile(uri);
+					}
 				} catch {
 					// 무효한 URI 무시
 				}
 			}
-			return;
 		}
 
-		// 외부 파일 드롭
+		// 5. 네이티브 파일 드롭 (외부에서 드래그)
 		if (dataTransfer.files && dataTransfer.files.length > 0) {
 			for (let i = 0; i < dataTransfer.files.length; i++) {
 				const file = dataTransfer.files[i];
-				const filePath = (file as File & { path?: string }).path;
+				const filePath = getPathForFile(file);
 				if (filePath) {
 					const uri = URI.file(filePath);
-					await this.addFile(uri);
+					if (!addedUris.has(uri.toString())) {
+						addedUris.add(uri.toString());
+						await this.addFile(uri);
+					}
 				}
 			}
 		}

@@ -48,7 +48,7 @@ import { ITextModelService } from '../../../../../editor/common/services/resolve
 
 export class ClaudeChatViewPane extends ViewPane {
 
-	static readonly ID = 'workbench.panel.claude.chat';
+	static readonly ID = 'workbench.view.kent.claudeChat';
 	static readonly TITLE = localize('claudeChat', "Claude Chat");
 
 	private container!: HTMLElement;

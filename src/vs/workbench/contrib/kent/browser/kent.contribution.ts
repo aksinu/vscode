@@ -25,7 +25,8 @@ registerSingleton(IClaudeService, ClaudeService, InstantiationType.Delayed);
 
 // ========== View Container 등록 ==========
 
-const VIEW_CONTAINER_ID = 'workbench.view.claude';
+// 중요: VS Code 기본 Chat과 ID 충돌을 피하기 위해 'kent' 네임스페이스 사용
+const VIEW_CONTAINER_ID = 'workbench.view.kent.claude';
 
 const viewContainersRegistry = Registry.as<IViewContainersRegistry>(ViewExtensions.ViewContainersRegistry);
 
@@ -34,11 +35,10 @@ const viewContainer = viewContainersRegistry.registerViewContainer({
 	title: localize2('claude', "Claude"),
 	icon: Codicon.comment,
 	order: 100,
-	// [수정] merge 옵션을 false로 변경하거나 아예 지우세요.
 	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [VIEW_CONTAINER_ID, { mergeViewWithContainerWhenSingleView: false }]),
-	storageId: VIEW_CONTAINER_ID,
+	storageId: `${VIEW_CONTAINER_ID}.state`,  // 새 storage ID로 이전 위치 설정 무시
 	hideIfEmpty: false
-}, ViewContainerLocation.AuxiliaryBar, { isDefault: true }); // 참고: AuxiliaryBar는 '오른쪽 사이드바'입니다. 왼쪽에 두려면 ViewContainerLocation.Sidebar로 바꾸세요.
+}, ViewContainerLocation.AuxiliaryBar, { isDefault: true });
 
 // ========== View 등록 ==========
 

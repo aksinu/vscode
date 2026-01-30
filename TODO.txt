@@ -1,0 +1,27 @@
+1. 여러개 첨부 - 빌드 확인 필요
+
+2. DIFF 기능(변경사항 확인 및 REVERT) - 구현 필요
+"
+🔍 이제 확인할 것:
+Claude 채팅 UI에서 이 메시지 하단에 "File Changes" 섹션이 나타나는지 확인
+diff-test-file.md 파일이 변경된 파일로 표시되는지 확인
+"View Diff" 버튼이 있는지 확인
+클릭했을 때 diff 뷰어가 열리는지 확인
+만약 여전히 표시되지 않는다면:
+
+VS Code의 Output 패널 열기 (Ctrl+Shift+U)
+우상단 드롭다운에서 "Claude" 선택
+다음과 같은 로그 메시지들을 찾아보기:
+"Capturing file before edit"
+"Tool use started"
+"Tool use completed"
+"Command complete, X files changed"
+"handleCommandComplete - file changes"
+"
+
+3. CHAT | CLAUDE 탭 중 CLAUDE 에 채팅창이 떠야하는데 CHAT 내에 뜨는 버그 - 확인 필요.
+
+4. 서브에이전트 활용 내용 추가 (- 토큰 사용량 밑에.)
+
+5. 채팅창 두줄 이상으로 좀 넉넉하게.
+"C:\Users\Kent.K\Pictures\Screenshots\스크린샷 2026-01-30 134118.png"<- 캡쳐본. 지금 입력창 너무 적음. 두줄 글자가 잘림.
