@@ -8,22 +8,25 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 4 - 고급 UX 기능 |
-| **Status** | OpenFilesBar UI 개선 완료 |
-| **Updated** | 2026-01-29 |
-| **Build** | ✅ 빌드 완료 |
+| **Phase** | Phase 5 - Multi-Chat CLI |
+| **Status** | 멀티 채팅 CLI 연결 구현 완료 |
+| **Updated** | 2026-01-30 |
+| **Build** | ⚠️ 컴파일 필요 |
 
 ---
 
 ## Now Working On
 
 ```
-Task: 클립보드 붙여넣기 기능 개선 (SPEC_006)
-Phase 1: 이미지 붙여넣기 버그 수정
-- 스크린샷 Ctrl+V 시 "image.png" 텍스트 중복 삽입 방지
-Phase 2: 코드 참조 붙여넣기 기능
-- IDE 코드 복사 → 참조(📄 file.ts L10-20) 형태로 표시
-Status: Phase 1 구현 중
+Task: Multi-Chat CLI Connection (Sprint)
+Status: ✅ 구현 완료 - 컴파일 및 테스트 필요
+
+구현된 기능:
+- 채팅창 하나에 CLI 연결 하나 (독립적)
+- 여러 채팅창에서 동시 Claude 대화 가능
+- 세션별 메시지 큐 (전역 → 세션별 분리)
+- VS Code 재시작 시 상태 복구
+- 최대 5개 동시 CLI 프로세스 지원
 ```
 
 ### 빌드 & 실행
@@ -99,32 +102,50 @@ src/vs/workbench/contrib/kent/
 ├── browser/                    # Renderer Process
 │   ├── kent.contribution.ts    # 서비스/뷰/설정 등록
 │   ├── service/                # 서비스
-│   │   ├── claudeService.ts
-│   │   ├── claudeConnection.ts
-│   │   ├── claudeSessionManager.ts
+│   │   ├── claudeService.ts        # ★ 멀티 세션 상태 관리
+│   │   ├── claudeConnection.ts     # ★ ClaudeMultiConnection 추가
+│   │   ├── claudeSessionManager.ts # ★ 세션별 큐/CLI ID 저장
 │   │   ├── claudeCLIEventHandler.ts
-│   │   ├── claudeFileSnapshot.ts    # ★ 파일 스냅샷
+│   │   ├── claudeFileSnapshot.ts
 │   │   └── ...
 │   ├── view/                   # UI 컴포넌트
 │   │   ├── claudeChatView.ts
-│   │   ├── claudeMessageRenderer.ts # ★ 파일 변경 UI
+│   │   ├── claudeMessageRenderer.ts
 │   │   └── ...
 │   └── media/claude.css
 ├── common/                     # 공통 타입/인터페이스
 │   ├── claude.ts
-│   ├── claudeTypes.ts          # ★ IClaudeFileChange
+│   ├── claudeCLI.ts            # ★ IClaudeCLIMultiService
+│   ├── claudeCLIChannel.ts     # ★ Multi-Instance Channel
+│   ├── claudeTypes.ts
 │   └── ...
 └── electron-main/              # Main Process (CLI 실행)
+    ├── claudeCLIService.ts         # Legacy 단일 인스턴스
+    ├── claudeCLIInstance.ts        # ★ 단일 프로세스 래퍼
+    └── claudeCLIProcessManager.ts  # ★ 다중 프로세스 관리
 
-src/vs/code/electron-main/app.ts  # IPC 채널 등록
+src/vs/code/electron-main/app.ts  # IPC 채널 등록 (Legacy + Multi)
 ```
 
-### IPC 통신 흐름
+### IPC 통신 흐름 (Multi-Instance)
 
 ```
-Renderer (ClaudeService) ──IPC──▶ Main (ClaudeCLIService)
-         ◀── onDidReceiveData ──        spawn('claude')
-         ◀── onDidComplete ────
+Renderer (ClaudeMultiConnection)
+         │
+         ├── sendPrompt(chatId, prompt)
+         │
+         ▼
+    [IPC Channel + chatId routing]
+         │
+         ▼
+Main (ClaudeCLIProcessManager)
+         │
+         ├── getOrCreateInstance(chatId)
+         │
+         ▼
+    [ClaudeCLIInstance per chatId]
+         │
+         └── spawn('claude') per session
 ```
 
 ### File Changes 흐름
@@ -178,6 +199,42 @@ onDidComplete         ──▶ handleCommandComplete()
 ---
 
 ## Activity Log
+
+### 2026-01-30
+- **Multi-Chat CLI Connection (Sprint)**
+  - **Phase 1: Main Process 다중 인스턴스 지원**
+    - `claudeCLIInstance.ts`: 단일 CLI 프로세스 래퍼 클래스
+    - `claudeCLIProcessManager.ts`: 다중 프로세스 관리자 (최대 5개, 유휴 5분 타임아웃)
+  - **Phase 2: IPC 채널 확장**
+    - `claudeCLI.ts`: `IClaudeCLIMultiService`, `IClaudeCLIMultiEvent` 인터페이스 추가
+    - `claudeCLIChannel.ts`: `ClaudeCLIMultiChannel`, `ClaudeCLIMultiChannelClient` 클래스 추가
+    - `app.ts`: 멀티 인스턴스 채널 등록 (`CLAUDE_CLI_MULTI_CHANNEL_NAME`)
+  - **Phase 3: Renderer Service 리팩토링**
+    - `claudeConnection.ts`: `ClaudeMultiConnection` 클래스 추가 (세션별 이벤트 구독)
+    - `claudeService.ts`:
+      - `ISessionState` 인터페이스 (세션별 상태)
+      - `_sessionStates` Map으로 세션별 상태 관리
+      - `sendMessageToSession()`, `cancelSessionRequest()` 등 멀티 세션 API
+  - **Phase 4: Storage 및 마이그레이션**
+    - `claudeSessionManager.ts`:
+      - `IStoredSession` 인터페이스 (cliSessionId, queuedMessages 포함)
+      - `setCliSessionId()`, `getCliSessionId()` 메서드
+      - `saveSessionQueue()`, `getSessionQueue()` 메서드
+      - `migrateGlobalQueue()` - 기존 전역 큐 → 현재 세션으로 마이그레이션
+  - **아키텍처**:
+    ```
+    [Chat 1] ─── [Session 1] ───┐
+                                │
+    [Chat 2] ─── [Session 2] ───┼── [IPC + chatId] ─── [ProcessManager]
+                                │                             │
+    [Chat 3] ─── [Session 3] ───┘                    ┌────────┴────────┐
+                                                     │    │    │    │
+                                                  [CLI1][CLI2][CLI3]...
+    ```
+  - **설정값**:
+    - 최대 동시 프로세스: 5개
+    - 유휴 타임아웃: 5분
+    - 메시지 큐: 세션별 분리
 
 ### 2026-01-29
 - **클립보드 붙여넣기 기능 개선 (SPEC_006)**

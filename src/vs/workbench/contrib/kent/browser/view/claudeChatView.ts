@@ -78,8 +78,8 @@ export class ClaudeChatViewPane extends ViewPane {
 	private connectionOverlay!: ConnectionOverlay;
 	private settingsPanel!: ClaudeSettingsPanel;
 	private sessionSettingsPanel!: SessionSettingsPanel;
-	private sessionTabs!: SessionTabs;
 	private sessionSettings: ISessionSettings = { name: '' };
+	private sessionTabs!: SessionTabs;
 	private changesHistoryPanel!: ChangesHistoryPanel;
 
 	private messageRenderer!: ClaudeMessageRenderer;
@@ -201,7 +201,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				}
 			}
 			this.updateWelcomeVisibility();
-			// 세션 탭 갱신
+			// 세션 탭 업데이트
 			this.sessionTabs?.render();
 		}));
 
@@ -398,8 +398,34 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 헤더 바 생성 (컨테이너 최상단)
 		const headerBar = append(this.container, $('.claude-header-bar'));
 
+		// 세션 탭 (헤더 바 왼쪽)
+		this.sessionTabs = this._register(new SessionTabs(headerBar, {
+			getSessions: () => this.claudeService.getSessions(),
+			getCurrentSession: () => this.claudeService.getCurrentSession(),
+			onNewSession: () => this.createNewSession(),
+			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
+			onDeleteSession: (sessionId) => this.deleteSession(sessionId),
+			onRenameSession: (sessionId, newName) => this.renameSession(sessionId, newName)
+		}));
+
+		// 오른쪽 버튼들을 담을 컨테이너
+		const headerActions = append(headerBar, $('.claude-header-actions'));
+
+		// Clear 버튼 (채팅 기록 삭제)
+		const clearButton = append(headerActions, $('button.claude-header-btn'));
+		clearButton.title = localize('clearHistory', "Clear Chat History");
+		const clearIcon = append(clearButton, $('span.codicon.codicon-clear-all'));
+		clearIcon.setAttribute('aria-hidden', 'true');
+
+		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
+			this.claudeService.clearHistory();
+			this.clearMessages();
+			this.updateWelcomeVisibility();
+			this.sessionTabs?.render();
+		}));
+
 		// Changes History 버튼
-		const changesButton = append(headerBar, $('button.claude-changes-history-btn'));
+		const changesButton = append(headerActions, $('button.claude-changes-history-btn'));
 		changesButton.title = localize('showChangesHistory', "Show Session Changes");
 		const changesIcon = append(changesButton, $('span.codicon.codicon-git-compare'));
 		changesIcon.setAttribute('aria-hidden', 'true');
@@ -411,7 +437,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		}));
 
 		// 설정 버튼
-		const settingsButton = append(headerBar, $('button.claude-header-settings-btn'));
+		const settingsButton = append(headerActions, $('button.claude-header-settings-btn'));
 		settingsButton.title = localize('openGlobalSettings', "Global Settings");
 		const settingsIcon = append(settingsButton, $('span.codicon.codicon-settings-gear'));
 		settingsIcon.setAttribute('aria-hidden', 'true');
@@ -431,21 +457,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			onRevertFile: (change) => this.claudeService.revertFile?.(change),
 			onClose: () => this.changesHistoryPanel.hide()
 		}));
-
-		// 세션 탭 생성 (헤더 바 다음)
-		this.sessionTabs = this._register(new SessionTabs(this.container, {
-			getSessions: () => this.claudeService.getSessions(),
-			getCurrentSession: () => this.claudeService.getCurrentSession(),
-			onNewSession: () => this.createNewSession(),
-			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
-			onDeleteSession: (sessionId) => this.deleteSession(sessionId),
-			onRenameSession: (sessionId, newName) => this.renameSession(sessionId, newName)
-		}));
-
-		// 세션 탭을 헤더 바 다음으로 이동
-		if (headerBar.nextSibling) {
-			this.container.insertBefore(this.sessionTabs['container'], headerBar.nextSibling);
-		}
 	}
 
 	private renderWelcome(): void {
@@ -1224,58 +1235,31 @@ export class ClaudeChatViewPane extends ViewPane {
 	 */
 	private createNewSession(): void {
 		this.claudeService.startNewSession();
-		this.notificationService.info(localize('newSessionCreated', "New session created"));
+		this.sessionTabs?.render();
 	}
 
 	/**
 	 * 세션 전환
 	 */
 	private switchToSession(sessionId: string): void {
-		const currentSession = this.claudeService.getCurrentSession();
-		if (currentSession?.id === sessionId) {
-			return;
-		}
-
-		const session = this.claudeService.switchSession?.(sessionId);
-		if (!session) {
-			this.notificationService.error(localize('sessionNotFound', "Session not found"));
-			return;
-		}
+		this.claudeService.switchSession?.(sessionId);
+		this.sessionTabs?.render();
 	}
 
 	/**
 	 * 세션 삭제
 	 */
 	private deleteSession(sessionId: string): void {
-		const sessions = this.claudeService.getSessions();
-
-		// 마지막 세션은 삭제 불가
-		if (sessions.length <= 1) {
-			this.notificationService.warn(localize('cannotDeleteLastSession', "Cannot delete the last session"));
-			return;
-		}
-
-		const success = this.claudeService.deleteSession?.(sessionId);
-		if (success) {
-			this.notificationService.info(localize('sessionDeleted', "Session deleted"));
-			this.sessionTabs?.render();
-		}
+		this.claudeService.deleteSession?.(sessionId);
+		this.sessionTabs?.render();
 	}
 
 	/**
 	 * 세션 이름 변경
 	 */
 	private renameSession(sessionId: string, newName: string): void {
-		const success = this.claudeService.renameSession?.(sessionId, newName);
-		if (success) {
-			this.sessionTabs?.render();
-
-			// 현재 세션이면 타이틀도 업데이트
-			const currentSession = this.claudeService.getCurrentSession();
-			if (currentSession?.id === sessionId) {
-				this.updateTitle(newName);
-			}
-		}
+		this.claudeService.renameSession?.(sessionId, newName);
+		this.sessionTabs?.render();
 	}
 
 	// ========== 외부 API (컨텍스트 메뉴에서 호출) ==========

@@ -145,8 +145,8 @@ export class SessionTabs extends Disposable {
 			return this.extractTitleFromMessage(firstUserMsg.content);
 		}
 
-		// 3. 기본값: "New Chat"
-		return localize('newChat', "New Chat");
+		// 3. 기본값: "New Session"
+		return localize('newSession', "New Session");
 	}
 
 	/**
@@ -166,7 +166,7 @@ export class SessionTabs extends Disposable {
 
 		// 빈 문자열이면 기본값
 		if (!firstLine) {
-			return localize('newChat', "New Chat");
+			return localize('newSession', "New Session");
 		}
 
 		// 길이 제한

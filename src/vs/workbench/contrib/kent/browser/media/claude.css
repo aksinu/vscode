@@ -1725,18 +1725,29 @@
 
 .claude-header-bar {
 	display: flex;
-	justify-content: flex-end;
-	padding: 4px 8px;
-	background: var(--vscode-editor-background);
+	justify-content: space-between;
+	align-items: center;
+	padding: 2px 4px;
+	background: var(--vscode-editorGroupHeader-tabsBackground);
 	border-bottom: 1px solid var(--vscode-widget-border);
+	gap: 4px;
+	min-height: 28px;
 }
 
+.claude-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.claude-header-btn,
 .claude-header-settings-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
+	width: 24px;
+	height: 24px;
 	border: none;
 	background: transparent;
 	color: var(--vscode-foreground);
@@ -1746,6 +1757,7 @@
 	transition: opacity 0.1s, background-color 0.1s;
 }
 
+.claude-header-btn:hover,
 .claude-header-settings-btn:hover {
 	opacity: 1;
 	background: var(--vscode-toolbar-hoverBackground);
@@ -1756,10 +1768,9 @@
 .claude-session-tabs {
 	display: flex;
 	align-items: center;
-	padding: 0 4px;
-	background: var(--vscode-editorGroupHeader-tabsBackground);
-	border-bottom: 1px solid var(--vscode-widget-border);
-	min-height: 35px;
+	flex: 1;
+	min-width: 0;
+	gap: 2px;
 	overflow-x: auto;
 	overflow-y: hidden;
 }
@@ -1783,16 +1794,16 @@
 .claude-session-tab {
 	display: flex;
 	align-items: center;
-	gap: 6px;
-	padding: 6px 10px;
+	gap: 4px;
+	padding: 3px 8px;
 	background: var(--vscode-tab-inactiveBackground);
 	color: var(--vscode-tab-inactiveForeground);
 	border: none;
-	border-radius: 4px 4px 0 0;
+	border-radius: 3px;
 	cursor: pointer;
-	font-size: 12px;
-	max-width: 160px;
-	min-width: 80px;
+	font-size: 11px;
+	max-width: 120px;
+	min-width: 60px;
 	transition: background-color 0.1s;
 	position: relative;
 }
@@ -1804,16 +1815,7 @@
 .claude-session-tab.active {
 	background: var(--vscode-tab-activeBackground);
 	color: var(--vscode-tab-activeForeground);
-}
-
-.claude-session-tab.active::after {
-	content: '';
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	height: 2px;
-	background: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+	font-weight: 500;
 }
 
 .claude-session-tab-title {
@@ -1852,17 +1854,17 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
+	width: 22px;
+	height: 22px;
 	border: none;
 	background: transparent;
 	color: var(--vscode-foreground);
-	border-radius: 4px;
+	border-radius: 3px;
 	cursor: pointer;
 	opacity: 0.7;
 	transition: opacity 0.1s, background-color 0.1s;
 	flex-shrink: 0;
-	margin-left: 4px;
+	margin-left: 2px;
 }
 
 .claude-session-tab-new:hover {
@@ -2573,27 +2575,33 @@
 	font-size: 12px;
 }
 
-/* Changes History Button (in header) */
+/* Changes History Button (in header) - icon only */
 .claude-changes-history-btn {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	padding: 4px 8px;
-	border: 1px solid var(--vscode-widget-border);
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
 	background: transparent;
 	color: var(--vscode-foreground);
 	border-radius: 4px;
 	cursor: pointer;
-	font-size: 11px;
-	transition: all 0.15s ease;
+	opacity: 0.7;
+	transition: opacity 0.1s, background-color 0.1s;
 }
 
 .claude-changes-history-btn:hover {
+	opacity: 1;
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
+.claude-changes-history-btn span:not(.codicon) {
+	display: none; /* 라벨 숨김 */
+}
+
 .claude-changes-history-btn .codicon {
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .claude-changes-history-btn .badge {

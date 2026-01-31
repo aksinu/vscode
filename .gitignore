@@ -30,3 +30,4 @@ nul
 /.vscode/claude-logs
 .ccwa/
 .ccwa-runtime/
+/TODO.txt

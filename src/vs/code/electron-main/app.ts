@@ -123,7 +123,8 @@ import { INativeMcpDiscoveryHelperService, NativeMcpDiscoveryHelperChannelName }
 import { NativeMcpDiscoveryHelperService } from '../../platform/mcp/node/nativeMcpDiscoveryHelperService.js';
 import { IWebContentExtractorService } from '../../platform/webContentExtractor/common/webContentExtractor.js';
 import { ClaudeCLIService } from '../../workbench/contrib/kent/electron-main/claudeCLIService.js';
-import { CLAUDE_CLI_CHANNEL_NAME } from '../../workbench/contrib/kent/common/claudeCLIChannel.js';
+import { ClaudeCLIProcessManager } from '../../workbench/contrib/kent/electron-main/claudeCLIProcessManager.js';
+import { CLAUDE_CLI_CHANNEL_NAME, CLAUDE_CLI_MULTI_CHANNEL_NAME, ClaudeCLIMultiChannel } from '../../workbench/contrib/kent/common/claudeCLIChannel.js';
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
@@ -1205,7 +1206,7 @@ export class CodeApplication extends Disposable {
 		const workspacesChannel = ProxyChannel.fromService(accessor.get(IWorkspacesService), disposables);
 		mainProcessElectronServer.registerChannel('workspaces', workspacesChannel);
 
-		// Claude CLI
+		// Claude CLI (Legacy single-instance - kept for backward compatibility)
 		const claudeCLIService = disposables.add(new ClaudeCLIService());
 		mainProcessElectronServer.registerChannel(CLAUDE_CLI_CHANNEL_NAME, {
 			listen<T>(_ctx: string, event: string): Event<T> {
@@ -1239,6 +1240,10 @@ export class CodeApplication extends Disposable {
 				throw new Error(`Call not found: ${command}`);
 			}
 		});
+
+		// Claude CLI Multi-Instance (New - supports multiple concurrent chat sessions)
+		const claudeCLIProcessManager = disposables.add(new ClaudeCLIProcessManager(5, 5 * 60 * 1000));
+		mainProcessElectronServer.registerChannel(CLAUDE_CLI_MULTI_CHANNEL_NAME, new ClaudeCLIMultiChannel(claudeCLIProcessManager));
 
 		// Menubar
 		const menubarChannel = ProxyChannel.fromService(accessor.get(IMenubarMainService), disposables);

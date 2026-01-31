@@ -217,3 +217,71 @@ export interface IClaudeCLIService {
 	 */
 	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }>;
 }
+
+// ========== Multi-Instance Support ==========
+
+/**
+ * chatId와 함께 전달되는 이벤트
+ */
+export interface IClaudeCLIMultiEvent<T> {
+	readonly chatId: string;
+	readonly data: T;
+}
+
+/**
+ * 다중 인스턴스 CLI 서비스 인터페이스
+ * 각 chatId에 대해 독립적인 CLI 프로세스를 관리
+ */
+export interface IClaudeCLIMultiService {
+	readonly _serviceBrand: undefined;
+
+	/**
+	 * chatId별 스트리밍 데이터 수신 이벤트
+	 */
+	readonly onDidReceiveData: Event<IClaudeCLIMultiEvent<IClaudeCLIStreamEvent>>;
+
+	/**
+	 * chatId별 요청 완료 이벤트
+	 */
+	readonly onDidComplete: Event<{ chatId: string }>;
+
+	/**
+	 * chatId별 에러 발생 이벤트
+	 */
+	readonly onDidError: Event<{ chatId: string; error: string }>;
+
+	/**
+	 * 특정 chatId로 프롬프트 전송
+	 */
+	sendPrompt(chatId: string, prompt: string, options?: IClaudeCLIRequestOptions): Promise<void>;
+
+	/**
+	 * 특정 chatId의 요청 취소
+	 */
+	cancelRequest(chatId: string): void;
+
+	/**
+	 * 특정 chatId가 요청 진행 중인지 확인
+	 */
+	isRunning(chatId: string): boolean;
+
+	/**
+	 * 특정 chatId로 사용자 입력 전송
+	 */
+	sendUserInput(chatId: string, input: string): void;
+
+	/**
+	 * Claude CLI 연결 테스트 (전역)
+	 */
+	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }>;
+
+	/**
+	 * 특정 chatId의 인스턴스 제거
+	 */
+	destroyInstance(chatId: string): void;
+
+	/**
+	 * 모든 인스턴스 제거
+	 */
+	destroyAllInstances(): void;
+}

@@ -58,7 +58,8 @@
       "WebSearch",
       "WebFetch(domain:docs.anthropic.com)",
       "Bash(git -C /mnt/d/_______________Kent/vscode status:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(tree:*)"
     ]
   }
 }
