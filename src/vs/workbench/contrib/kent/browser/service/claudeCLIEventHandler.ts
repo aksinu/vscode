@@ -212,7 +212,11 @@ export class CLIEventHandler extends Disposable {
 
 		this.callbacks.updateSessionMessage(finalMessage);
 		this.callbacks.fireMessageUpdate(finalMessage);
+
+		// 상태 리셋 (큐 처리 전에 먼저 완료해야 함!)
 		this.callbacks.setState('idle');
+		this.callbacks.setWaitingForUser(false);
+		this.callbacks.setCurrentAskUserRequest(undefined);
 
 		// 응답 성공 시 연결 확인
 		this.callbacks.confirmConnected();

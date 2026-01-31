@@ -420,46 +420,79 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}, this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
 
-		// CLI 이벤트 구독 (Multi-Session - chatId로 필터링)
+		// CLI 이벤트 구독 (Multi-Session)
 		this._register(this._multiConnection.onDidReceiveData(event => {
 			const currentSessionId = this._sessionManager.currentSession?.id;
-			// 현재 세션의 이벤트만 UI 처리
-			if (event.chatId === currentSessionId) {
+			const isCurrentSession = event.chatId === currentSessionId;
+
+			// 모든 세션의 컨텐츠 축적 (백그라운드 세션 포함)
+			this.accumulateSessionContent(event.chatId, event.data);
+
+			// 현재 세션이면 UI 이벤트 핸들러도 호출
+			if (isCurrentSession) {
 				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
 				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
 				this._cliEventHandler.handleData(event.data).catch(error => {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
 				});
 			} else {
-				console.log('[ClaudeService] Ignoring CLI data for different session:', event.chatId, '(current:', currentSessionId, ')');
+				// 백그라운드 세션은 로그만 (컨텐츠는 위에서 이미 축적됨)
+				console.log('[ClaudeService] Background session data:', event.chatId, event.data.type);
 			}
 		}));
 
 		// Complete 이벤트 - 모든 세션의 상태 업데이트 (중요!)
 		this._register(this._multiConnection.onDidCompleteAny(event => {
 			const currentSessionId = this._sessionManager.currentSession?.id;
+			const isCurrentSession = event.chatId === currentSessionId;
 			console.log('[ClaudeService] CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId);
 
-			// 세션 상태를 idle로 변경 (어떤 세션이든)
+			// 세션 상태 가져오기
 			const sessionState = this._sessionStates.get(event.chatId);
-			if (sessionState) {
+
+			// 현재 세션이면 UI 이벤트 핸들러 호출 (await 필수! - 상태 리셋과 큐 처리가 완료된 후에 다음 진행)
+			if (isCurrentSession) {
+				this._cliEventHandler.handleComplete().then(() => {
+					// handleComplete 완료 후 Legacy 상태 업데이트
+					this._state = 'idle';
+					this._onDidChangeState.fire('idle');
+					console.log('[ClaudeService] handleComplete done, legacy state set to idle');
+				}).catch(error => {
+					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
+					// 에러 발생해도 상태 복구
+					this._state = 'idle';
+					this._onDidChangeState.fire('idle');
+					if (sessionState) {
+						sessionState.state = 'idle';
+						sessionState.isWaitingForUser = false;
+					}
+				});
+			} else if (sessionState) {
+				// 백그라운드 세션인 경우: 축적된 컨텐츠를 세션 메시지로 저장
+				if (sessionState.currentMessageId && sessionState.accumulatedContent) {
+					const session = this._sessionManager.getSessionById(event.chatId);
+					if (session) {
+						const assistantMessage: IClaudeMessage = {
+							id: sessionState.currentMessageId,
+							role: 'assistant',
+							content: sessionState.accumulatedContent,
+							timestamp: Date.now(),
+							isStreaming: false
+						};
+						this._sessionManager.updateMessage(assistantMessage, session);
+						console.log('[ClaudeService] Saved background session message:', event.chatId, 'content length:', sessionState.accumulatedContent.length);
+					}
+				}
+
+				// 백그라운드 세션 상태를 idle로 변경
 				sessionState.state = 'idle';
 				sessionState.isWaitingForUser = false;
-				console.log('[ClaudeService] Session state reset to idle:', event.chatId);
+				sessionState.currentMessageId = undefined;
+				console.log('[ClaudeService] Background session state reset to idle:', event.chatId);
 
-				// 해당 세션의 큐 처리
+				// 백그라운드 세션의 큐 처리
 				this.processSessionQueue(event.chatId);
-			}
-
-			// 현재 세션이면 UI 이벤트 핸들러도 호출
-			if (event.chatId === currentSessionId) {
-				this._cliEventHandler.handleComplete().catch(error => {
-					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
-				});
-				// Legacy 상태도 업데이트
-				this._state = 'idle';
-				this._onDidChangeState.fire('idle');
 			}
 		}));
 
@@ -1881,6 +1914,55 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			return event.content;
 		}
 		return '';
+	}
+
+	/**
+	 * 세션 컨텐츠 축적 (백그라운드 세션 포함)
+	 * 모든 세션의 CLI 응답을 세션 상태에 저장
+	 * 주의: messageId는 sendMessageInternal에서 이미 생성되어 있음
+	 */
+	private accumulateSessionContent(sessionId: string, event: IClaudeCLIStreamEvent): void {
+		const sessionState = this._sessionStates.get(sessionId);
+		if (!sessionState) {
+			return;
+		}
+
+		// assistant 이벤트: 텍스트 컨텐츠 추출
+		if (event.type === 'assistant') {
+			// 텍스트 컨텐츠 추출 및 축적 (message가 객체인 경우만)
+			if (event.message && typeof event.message !== 'string') {
+				const messageContent = event.message.content;
+				if (messageContent && Array.isArray(messageContent)) {
+					for (const block of messageContent) {
+						if (block.type === 'text' && block.text) {
+							if (sessionState.accumulatedContent) {
+								sessionState.accumulatedContent += '\n' + block.text;
+							} else {
+								sessionState.accumulatedContent = block.text;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// 스트리밍 텍스트 이벤트
+		const text = this.extractTextFromEvent(event);
+		if (text) {
+			if (sessionState.accumulatedContent) {
+				sessionState.accumulatedContent += text;
+			} else {
+				sessionState.accumulatedContent = text;
+			}
+		}
+
+		// result 이벤트: 최종 결과
+		if (event.type === 'result' && event.result) {
+			// result가 문자열이면 최종 컨텐츠로 사용
+			if (typeof event.result === 'string' && event.result.trim()) {
+				sessionState.accumulatedContent = event.result;
+			}
+		}
 	}
 
 	/**
