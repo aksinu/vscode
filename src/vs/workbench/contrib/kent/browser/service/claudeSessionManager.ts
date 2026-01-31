@@ -433,7 +433,14 @@ export class ClaudeSessionManager extends Disposable {
 			// messages 배열 유효성 체크
 			if (!Array.isArray(session.messages)) {
 				console.warn('[SessionManager] Invalid messages array, resetting for session:', session.id);
-				session.messages = [];
+				// readonly 속성이므로 새 객체 생성
+				const fixedSession: IClaudeSession = {
+					...session,
+					messages: []
+				};
+				seenIds.add(fixedSession.id);
+				validSessions.push(fixedSession);
+				continue;
 			}
 
 			seenIds.add(session.id);

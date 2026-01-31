@@ -423,7 +423,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// CLI 이벤트 구독 (Multi-Session - chatId로 필터링)
 		this._register(this._multiConnection.onDidReceiveData(event => {
 			const currentSessionId = this._sessionManager.currentSession?.id;
-			// 현재 세션의 이벤트만 처리
+			// 현재 세션의 이벤트만 UI 처리
 			if (event.chatId === currentSessionId) {
 				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
 				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
@@ -434,20 +434,55 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				console.log('[ClaudeService] Ignoring CLI data for different session:', event.chatId, '(current:', currentSessionId, ')');
 			}
 		}));
+
+		// Complete 이벤트 - 모든 세션의 상태 업데이트 (중요!)
 		this._register(this._multiConnection.onDidCompleteAny(event => {
 			const currentSessionId = this._sessionManager.currentSession?.id;
+			console.log('[ClaudeService] CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
+			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId);
+
+			// 세션 상태를 idle로 변경 (어떤 세션이든)
+			const sessionState = this._sessionStates.get(event.chatId);
+			if (sessionState) {
+				sessionState.state = 'idle';
+				sessionState.isWaitingForUser = false;
+				console.log('[ClaudeService] Session state reset to idle:', event.chatId);
+
+				// 해당 세션의 큐 처리
+				this.processSessionQueue(event.chatId);
+			}
+
+			// 현재 세션이면 UI 이벤트 핸들러도 호출
 			if (event.chatId === currentSessionId) {
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId);
 				this._cliEventHandler.handleComplete().catch(error => {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
 				});
+				// Legacy 상태도 업데이트
+				this._state = 'idle';
+				this._onDidChangeState.fire('idle');
 			}
 		}));
+
+		// Error 이벤트 - 모든 세션의 상태 업데이트
 		this._register(this._multiConnection.onDidErrorAny(event => {
 			const currentSessionId = this._sessionManager.currentSession?.id;
+			console.log('[ClaudeService] CLI error for session:', event.chatId, event.error, '(current:', currentSessionId, ')');
+			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI error for session:', event.chatId, event.error);
+
+			// 세션 상태를 idle로 변경 (어떤 세션이든)
+			const sessionState = this._sessionStates.get(event.chatId);
+			if (sessionState) {
+				sessionState.state = 'idle';
+				sessionState.isWaitingForUser = false;
+				console.log('[ClaudeService] Session state reset to idle after error:', event.chatId);
+			}
+
+			// 현재 세션이면 UI 이벤트 핸들러도 호출
 			if (event.chatId === currentSessionId) {
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI error for session:', event.chatId, event.error);
 				this._cliEventHandler.handleError(event.error);
+				// Legacy 상태도 업데이트
+				this._state = 'idle';
+				this._onDidChangeState.fire('idle');
 			}
 		}));
 
@@ -992,16 +1027,17 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				agents: this._localConfig.agents
 			};
 
-			// 5분 타임아웃 (CLI는 도구 사용으로 오래 걸릴 수 있음)
+			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
 			// Multi-session: 현재 세션 ID로 전송
 			const sessionId = this._sessionManager.currentSession?.id;
 			if (!sessionId) {
 				throw new Error('No active session');
 			}
 			console.log('[ClaudeService] Using multi-session sendPrompt for sessionId:', sessionId);
+			const timeoutMs = 15 * 60 * 1000; // 15분
 			await Promise.race([
 				this._multiConnection.sendPrompt(sessionId, prompt, cliOptions),
-				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 5 minutes')), 300000))
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 15 minutes')), timeoutMs))
 			]);
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
 
@@ -1017,7 +1053,20 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			return finalMessage;
 		} catch (error) {
 			this.logService.error(ClaudeService.LOG_CATEGORY, 'sendPrompt error:', error);
-			// 에러는 handleCLIError에서 처리됨
+
+			// 타임아웃 에러 시 세션 상태 복구
+			const sessionId = this._sessionManager.currentSession?.id;
+			if (sessionId) {
+				const sessionState = this._sessionStates.get(sessionId);
+				if (sessionState) {
+					sessionState.state = 'idle';
+					sessionState.isWaitingForUser = false;
+					console.log('[ClaudeService] Session state reset to idle after timeout:', sessionId);
+				}
+			}
+			this._state = 'idle';
+			this._onDidChangeState.fire('idle');
+
 			throw error;
 		}
 	}
