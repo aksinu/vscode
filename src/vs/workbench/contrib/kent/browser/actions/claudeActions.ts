@@ -18,6 +18,7 @@ import { ExplorerFolderContext } from '../../../files/common/files.js';
 import { ResourceContextKey } from '../../../../common/contextkeys.js';
 import { EditorContextKeys } from '../../../../../editor/common/editorContextKeys.js';
 import { IClaudeService } from '../../common/claude.js';
+import { IClaudeLogService } from '../../common/claudeLogService.js';
 import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { ClaudeChatViewPane } from '../view/claudeChatView.js';
 
@@ -362,6 +363,26 @@ export class AttachCurrentFileToClaude extends Action2 {
 	}
 }
 
+// ========== 로그 정리 ==========
+
+export class CleanupClaudeLogsAction extends Action2 {
+	static readonly ID = 'claude.cleanupLogs';
+
+	constructor() {
+		super({
+			id: CleanupClaudeLogsAction.ID,
+			title: localize2('claude.cleanupLogs', "Cleanup Old Claude Logs"),
+			category: localize2('claude', "Claude"),
+			f1: true
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const logService = accessor.get(IClaudeLogService);
+		await logService.cleanupOldLogs();
+	}
+}
+
 // ========== 액션 등록 ==========
 
 export function registerClaudeActions(): void {
@@ -375,4 +396,6 @@ export function registerClaudeActions(): void {
 	registerAction2(AttachFolderToClaude);
 	registerAction2(AskClaudeAboutSelection);
 	registerAction2(AttachCurrentFileToClaude);
+	// 로그 관리
+	registerAction2(CleanupClaudeLogsAction);
 }

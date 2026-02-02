@@ -9,7 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
-import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType, normalizePermissionMode } from '../common/claudeLocalConfig.js';
+import { IClaudeExecutableConfig, normalizePermissionMode } from '../common/claudeLocalConfig.js';
 
 // 디버그용 파일 로그
 const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
@@ -327,35 +327,8 @@ export class ClaudeCLIInstance extends Disposable {
 	): { spawnCommand: string; spawnArgs: string[] } {
 		const isWindows = process.platform === 'win32';
 
-		if (!executable || executable.type === 'command') {
-			const command = executable?.command || 'claude';
-			return { spawnCommand: command, spawnArgs: claudeArgs };
-		}
-
-		if (executable.type === 'script' && executable.script) {
-			let scriptPath = executable.script;
-
-			if (!path.isAbsolute(scriptPath) && workingDir) {
-				scriptPath = path.join(workingDir, scriptPath);
-			}
-
-			const scriptType: ClaudeScriptType = executable.scriptType || detectScriptType(scriptPath) || 'sh';
-			const interpreter = getScriptInterpreter(scriptType, isWindows);
-
-			if (interpreter.command) {
-				return {
-					spawnCommand: interpreter.command,
-					spawnArgs: [...interpreter.args, scriptPath, ...claudeArgs]
-				};
-			} else {
-				return {
-					spawnCommand: scriptPath,
-					spawnArgs: claudeArgs
-				};
-			}
-		}
-
-		return { spawnCommand: 'claude', spawnArgs: claudeArgs };
+		const command = executable?.command || 'claude';
+		return { spawnCommand: command, spawnArgs: claudeArgs };
 	}
 
 	private cleanupPromptFile(): void {

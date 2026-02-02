@@ -9,7 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
-import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType, normalizePermissionMode } from '../common/claudeLocalConfig.js';
+import { IClaudeExecutableConfig, normalizePermissionMode } from '../common/claudeLocalConfig.js';
 
 /**
  * Rate limit 에러 메시지 파싱
@@ -381,47 +381,9 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 	): { spawnCommand: string; spawnArgs: string[] } {
 		const isWindows = process.platform === 'win32';
 
-		// 기본값: 'claude' 명령어 직접 실행
-		if (!executable || executable.type === 'command') {
-			const command = executable?.command || 'claude';
-			return { spawnCommand: command, spawnArgs: claudeArgs };
-		}
-
-		// 스크립트 실행
-		if (executable.type === 'script' && executable.script) {
-			let scriptPath = executable.script;
-
-			// 상대 경로면 워크스페이스 기준으로 변환
-			if (!path.isAbsolute(scriptPath) && workingDir) {
-				scriptPath = path.join(workingDir, scriptPath);
-			}
-
-			// 스크립트 타입 결정 (명시 또는 자동 감지)
-			const scriptType: ClaudeScriptType = executable.scriptType || detectScriptType(scriptPath) || 'sh';
-
-			debugLog(' Script path:', scriptPath);
-			debugLog(' Script type:', scriptType);
-
-			// 인터프리터 정보
-			const interpreter = getScriptInterpreter(scriptType, isWindows);
-
-			if (interpreter.command) {
-				// 인터프리터로 스크립트 실행: interpreter script claudeArgs
-				return {
-					spawnCommand: interpreter.command,
-					spawnArgs: [...interpreter.args, scriptPath, ...claudeArgs]
-				};
-			} else {
-				// 직접 실행 (bat/sh with shell:true)
-				return {
-					spawnCommand: scriptPath,
-					spawnArgs: claudeArgs
-				};
-			}
-		}
-
-		// 폴백: 기본 'claude' 명령어
-		return { spawnCommand: 'claude', spawnArgs: claudeArgs };
+		// Claude 명령어 실행
+		const command = executable?.command || 'claude';
+		return { spawnCommand: command, spawnArgs: claudeArgs };
 	}
 
 	private cleanupPromptFile(): void {

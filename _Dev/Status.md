@@ -9,8 +9,8 @@
 | Item | Value |
 |------|-------|
 | **Phase** | Phase 5 - Multi-Chat CLI |
-| **Status** | 멀티 채팅 CLI 연결 구현 완료 |
-| **Updated** | 2026-01-30 |
+| **Status** | Use Custom Script 기능 제거 완료 |
+| **Updated** | 2026-02-02 |
 | **Build** | ⚠️ 컴파일 필요 |
 
 ---
@@ -18,15 +18,14 @@
 ## Now Working On
 
 ```
-Task: Multi-Chat CLI Connection (Sprint)
-Status: ✅ 구현 완료 - 컴파일 및 테스트 필요
+Task: Use Custom Script 기능 제거
+Status: ✅ 제거 완료 - 컴파일 및 테스트 필요
 
-구현된 기능:
-- 채팅창 하나에 CLI 연결 하나 (독립적)
-- 여러 채팅창에서 동시 Claude 대화 가능
-- 세션별 메시지 큐 (전역 → 세션별 분리)
-- VS Code 재시작 시 상태 복구
-- 최대 5개 동시 CLI 프로세스 지원
+제거된 기능:
+- 글로벌 설정에서 "Use Custom Script" 토글 및 Script Path 입력
+- claudeLocalConfig.ts에서 스크립트 관련 타입들 (ClaudeExecutableType, ClaudeScriptType 등)
+- CLI 서비스에서 스크립트 처리 로직 (getScriptInterpreter, detectScriptType 등)
+- 이제 Claude CLI 명령어만 직접 실행 (스크립트 실행 불가)
 ```
 
 ### 빌드 & 실행

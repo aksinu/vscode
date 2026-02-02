@@ -23,7 +23,7 @@ import { IOpenerService } from '../../../../../platform/opener/common/opener.js'
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
 import { IViewPaneOptions, ViewPane } from '../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../common/views.js';
-import { IClaudeService } from '../../common/claude.js';
+import { IClaudeService, IClaudeFileChangeSummaryItem } from '../../common/claude.js';
 import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels } from '../../common/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
@@ -1449,18 +1449,19 @@ export class ClaudeChatViewPane extends ViewPane {
 	/**
 	 * 커밋 메시지 자동 생성 (토큰 절약을 위해 간단하게)
 	 */
-	private async generateCommitMessage(fileChanges: any[]): Promise<string> {
+	private async generateCommitMessage(fileChanges: IClaudeFileChangeSummaryItem[]): Promise<string> {
 		const fileCount = fileChanges.length;
 
 		// 파일 분석
 		const extensions = new Set<string>();
 		const directories = new Set<string>();
 		const fileNames = fileChanges.map(f => {
-			const fileName = f.file.split('/').pop() || f.file;
+			const filePath = f.filePath || '';
+			const fileName = filePath.split('/').pop() || filePath;
 			const ext = fileName.split('.').pop();
 			if (ext) extensions.add(ext.toLowerCase());
 
-			const dir = f.file.split('/').slice(-2, -1)[0];
+			const dir = filePath.split('/').slice(-2, -1)[0];
 			if (dir) directories.add(dir);
 
 			return fileName;
@@ -1503,7 +1504,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	/**
 	 * Git 커밋 실행
 	 */
-	private async executeGitCommit(fileChanges: any[], commitMessage: string): Promise<void> {
+	private async executeGitCommit(fileChanges: IClaudeFileChangeSummaryItem[], commitMessage: string): Promise<void> {
 		// TODO: 실제 Git 커밋 로직 구현
 		// 여기서는 파일 스냅샷의 accept 기능을 활용하여 변경사항을 확정
 
@@ -1513,6 +1514,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		// Git 커밋은 별도의 터미널 서비스나 Git 서비스를 통해 실행해야 함
 		// 현재는 파일 변경사항 accept만 처리
 		console.log(`[Commit] Would commit with message: "${commitMessage}"`);
-		console.log(`[Commit] Files:`, fileChanges.map(f => f.file));
+		console.log(`[Commit] Files:`, fileChanges.map(f => f.filePath));
 	}
 }

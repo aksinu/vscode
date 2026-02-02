@@ -165,49 +165,6 @@ export class ClaudeSettingsPanel extends Disposable {
 			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxSessions: value }; }
 		});
 
-		// Script 설정
-		const useScript = this.currentConfig.executable?.type === 'script';
-		let scriptPathInput: HTMLInputElement | undefined;
-
-		this.createToggleSetting(content, {
-			label: localize('useScript', "Use Custom Script"),
-			description: localize('useScriptDesc', "Run Claude through a custom script instead of direct CLI"),
-			checked: useScript,
-			onChange: (checked) => {
-				if (scriptPathInput) {
-					scriptPathInput.parentElement!.parentElement!.style.display = checked ? 'flex' : 'none';
-				}
-				if (checked) {
-					this.currentConfig = {
-						...this.currentConfig,
-						executable: { type: 'script', script: scriptPathInput?.value || './scripts/claude.bat' }
-					};
-				} else {
-					this.currentConfig = {
-						...this.currentConfig,
-						executable: { type: 'command', command: 'claude' }
-					};
-				}
-			}
-		});
-
-		// Script Path (조건부 표시)
-		const scriptItem = this.createTextSetting(content, {
-			label: localize('scriptPath', "Script Path"),
-			description: localize('scriptPathDesc', "Path to the script (relative to workspace)"),
-			placeholder: './scripts/claude.bat',
-			value: this.currentConfig.executable?.script || './scripts/claude.bat',
-			onChange: (value) => {
-				if (this.currentConfig.executable?.type === 'script') {
-					this.currentConfig = {
-						...this.currentConfig,
-						executable: { type: 'script', script: value }
-					};
-				}
-			}
-		});
-		scriptPathInput = scriptItem.querySelector('input') as HTMLInputElement;
-		scriptItem.style.display = useScript ? 'flex' : 'none';
 
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
