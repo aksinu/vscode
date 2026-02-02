@@ -330,6 +330,12 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 환영 메시지 표시 여부
 		this.updateWelcomeVisibility();
 
+		// 초기 큐 상태 로드 (현재 세션의 큐)
+		const initialQueue = this.claudeService.getQueuedMessages?.() ?? [];
+		if (initialQueue.length > 0) {
+			this.updateQueueUI(initialQueue);
+		}
+
 		// 포커스 이벤트
 		this._register(this.onDidFocus(() => {
 			this.panelFocusedKey.set(true);

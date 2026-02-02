@@ -529,20 +529,40 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// ========== Queue Persistence ==========
 
 	/**
-	 * 저장된 큐 로드
+	 * 저장된 큐 로드 (현재 세션의 큐 로드)
 	 */
 	private loadQueue(): void {
+		const sessionId = this._sessionManager.currentSession?.id;
+		if (!sessionId) {
+			this.logService.debug(ClaudeService.LOG_CATEGORY, 'No current session, skipping queue load');
+			return;
+		}
+
 		try {
-			const data = this.storageService.get(ClaudeService.QUEUE_STORAGE_KEY, StorageScope.WORKSPACE);
-			if (data) {
-				const parsed = JSON.parse(data) as IClaudeQueuedMessage[];
+			// 세션별 큐 로드
+			const sessionQueueKey = `claude.sessionQueue.${sessionId}`;
+			const sessionData = this.storageService.get(sessionQueueKey, StorageScope.WORKSPACE);
+
+			if (sessionData) {
+				const parsed = JSON.parse(sessionData) as IClaudeQueuedMessage[];
+				if (Array.isArray(parsed)) {
+					const sessionState = this._getSessionState(sessionId);
+					sessionState.messageQueue = parsed;
+					this.logService.info(ClaudeService.LOG_CATEGORY, `Session queue loaded for ${sessionId}:`, parsed.length, 'messages');
+					// UI에 알림
+					if (parsed.length > 0) {
+						this._onDidChangeQueue.fire([...parsed]);
+					}
+				}
+			}
+
+			// Legacy: 글로벌 큐도 로드 (마이그레이션 목적)
+			const globalData = this.storageService.get(ClaudeService.QUEUE_STORAGE_KEY, StorageScope.WORKSPACE);
+			if (globalData) {
+				const parsed = JSON.parse(globalData) as IClaudeQueuedMessage[];
 				if (Array.isArray(parsed)) {
 					this._messageQueue = parsed;
-					this.logService.info(ClaudeService.LOG_CATEGORY, 'Queue loaded:', this._messageQueue.length, 'messages');
-					// UI에 알림
-					if (this._messageQueue.length > 0) {
-						this._onDidChangeQueue.fire([...this._messageQueue]);
-					}
+					this.logService.info(ClaudeService.LOG_CATEGORY, 'Legacy global queue loaded:', this._messageQueue.length, 'messages');
 				}
 			}
 		} catch (e) {
@@ -1294,10 +1314,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 현재 세션의 큐 반환
 		const sessionId = this._sessionManager.currentSession?.id;
 		if (sessionId) {
-			const sessionState = this._sessionStates.get(sessionId);
-			return sessionState?.messageQueue ? [...sessionState.messageQueue] : [];
+			// _getSessionState()로 상태가 없으면 생성
+			const sessionState = this._getSessionState(sessionId);
+			return [...sessionState.messageQueue];
 		}
-		// Legacy: 글로벌 큐
+		// Legacy: 글로벌 큐 (세션 없을 때만)
 		return [...this._messageQueue];
 	}
 
