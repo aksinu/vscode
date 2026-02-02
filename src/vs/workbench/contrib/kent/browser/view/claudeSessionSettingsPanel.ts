@@ -153,7 +153,7 @@ export class SessionSettingsPanel extends Disposable {
 
 		// 커밋 버튼 (조건부 표시)
 		if (this.callbacks.onCommit && this.callbacks.hasChangesToCommit?.()) {
-			const commitBtn = append(footer, $('button.claude-settings-btn.commit'));
+			const commitBtn = append(footer, $('button.claude-settings-btn.commit')) as HTMLButtonElement;
 			commitBtn.textContent = localize('commit', "Commit Changes");
 			commitBtn.title = localize('commitTooltip', "Commit modified files to git");
 			this.disposables.push(addDisposableListener(commitBtn, EventType.CLICK, async () => {

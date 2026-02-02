@@ -1414,8 +1414,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 
 		// 2. 현재 세션의 파일 변경 목록 확인
-		const fileChanges = this.claudeService.getSessionChangesHistory?.()?.totalFiles || [];
-		return fileChanges.length > 0;
+		const changesHistory = this.claudeService.getSessionChangesHistory?.();
+		return (changesHistory?.totalFilesChanged ?? 0) > 0;
 	}
 
 	/**
@@ -1425,19 +1425,19 @@ export class ClaudeChatViewPane extends ViewPane {
 		try {
 			// 변경된 파일 목록 가져오기
 			const changesHistory = this.claudeService.getSessionChangesHistory?.();
-			if (!changesHistory || changesHistory.totalFiles.length === 0) {
+			if (!changesHistory || changesHistory.filesSummary.length === 0) {
 				this.notificationService.warn(localize('noChangesToCommit', "No changes to commit"));
 				return;
 			}
 
 			// 커밋 메시지 생성
-			const commitMessage = await this.generateCommitMessage(changesHistory.totalFiles);
+			const commitMessage = await this.generateCommitMessage(changesHistory.filesSummary);
 
 			// Git 커밋 실행
-			await this.executeGitCommit(changesHistory.totalFiles, commitMessage);
+			await this.executeGitCommit(changesHistory.filesSummary, commitMessage);
 
 			this.notificationService.info(
-				localize('changesCommitted', "Successfully committed {0} files", changesHistory.totalFiles.length)
+				localize('changesCommitted', "Successfully committed {0} files", changesHistory.filesSummary.length)
 			);
 		} catch (error) {
 			this.notificationService.error(

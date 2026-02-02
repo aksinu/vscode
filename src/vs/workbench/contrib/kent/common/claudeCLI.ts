@@ -72,8 +72,11 @@ export interface IClaudeRateLimitInfo {
  * - 'default': 기본 권한 모드
  * - 'plan': 계획 모드 (실행 전 확인)
  * - 'accept-edits': 편집 자동 수락
+ * - 'bypass-permissions': 권한 우회
+ * - 'dont-ask': 확인 없이 실행
+ * - 'delegate': 위임 모드
  */
-export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits';
+export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits' | 'acceptEdits' | 'bypass-permissions' | 'bypassPermissions' | 'dont-ask' | 'dontAsk' | 'delegate';
 
 /**
  * Claude CLI 요청 옵션
