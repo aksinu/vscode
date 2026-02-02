@@ -190,6 +190,9 @@ export class ClaudeChatViewPane extends ViewPane {
 			if (state === 'error') {
 				this.handleConnectionLost();
 			}
+
+			// 세션 탭 업데이트 (running indicator 반영)
+			this.sessionTabs?.render();
 		}));
 
 		this._register(this.claudeService.onDidChangeSession((session) => {
@@ -402,6 +405,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.sessionTabs = this._register(new SessionTabs(headerBar, {
 			getSessions: () => this.claudeService.getSessions(),
 			getCurrentSession: () => this.claudeService.getCurrentSession(),
+			isSessionRunning: (sessionId) => this.claudeService.isSessionRunning?.(sessionId) ?? false,
 			onNewSession: () => this.createNewSession(),
 			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
 			onDeleteSession: (sessionId) => this.deleteSession(sessionId),

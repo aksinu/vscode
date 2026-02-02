@@ -22,6 +22,7 @@ export interface ISessionTabEvent {
 export interface ISessionTabsCallbacks {
 	getSessions(): IClaudeSession[];
 	getCurrentSession(): IClaudeSession | undefined;
+	isSessionRunning(sessionId: string): boolean;
 	onNewSession(): void;
 	onSwitchSession(sessionId: string): void;
 	onDeleteSession(sessionId: string): void;
@@ -96,6 +97,14 @@ export class SessionTabs extends Disposable {
 			tab.classList.add('active');
 		}
 		tab.dataset.sessionId = session.id;
+
+		// 진행 중 인디케이터 (running 상태일 때 노란 점)
+		const isRunning = this.callbacks.isSessionRunning(session.id);
+		if (isRunning) {
+			tab.classList.add('running');
+			const indicator = append(tab, $('.claude-session-tab-running-indicator'));
+			indicator.title = localize('sessionRunning', "Session is running");
+		}
 
 		// 탭 제목
 		const title = this.getSessionTitle(session);

@@ -141,6 +141,11 @@ export interface IClaudeService {
 	 */
 	continueLastSession?(): Promise<void>;
 
+	/**
+	 * 특정 세션이 실행 중인지 확인
+	 */
+	isSessionRunning?(sessionId: string): boolean;
+
 	// ========== Queue ==========
 
 	/**

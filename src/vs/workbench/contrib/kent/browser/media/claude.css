@@ -1818,6 +1818,30 @@
 	font-weight: 500;
 }
 
+.claude-session-tab.running {
+	/* Running 상태 표시 - 탭 자체에 약간의 강조 */
+}
+
+.claude-session-tab-running-indicator {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-editorWarning-foreground, #cca700);
+	flex-shrink: 0;
+	animation: claude-session-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes claude-session-pulse {
+	0%, 100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.6;
+		transform: scale(0.9);
+	}
+}
+
 .claude-session-tab-title {
 	flex: 1;
 	overflow: hidden;
