@@ -7,7 +7,7 @@ import { $, append, addDisposableListener, EventType } from '../../../../../base
 import { DataTransfers } from '../../../../../base/browser/dnd.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
+import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { basename } from '../../../../../base/common/resources.js';
@@ -16,13 +16,13 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IClaudeAttachment, IClaudeCodeReference } from '../../common/claudeTypes.js';
 import { CodeDataTransfers, getPathForFile } from '../../../../../platform/dnd/browser/dnd.js';
+import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
 
 /**
  * AttachmentManager 콜백 인터페이스
  */
-export interface IAttachmentManagerCallbacks {
+export interface IAttachmentManagerCallbacks extends IUIManagerCallbacks {
 	onAttachmentsChanged(): void;
-	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
 
 /**

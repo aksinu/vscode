@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
+import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { VSBuffer } from '../../../../../base/common/buffer.js';
 import { localize } from '../../../../../nls.js';
@@ -13,6 +13,7 @@ import { INotificationService } from '../../../../../platform/notification/commo
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
+import { ClaudeModalDialog } from './claudeModalDialog.js';
 
 /**
  * Claude 전체 설정 패널 콜백
@@ -25,33 +26,25 @@ export interface IClaudeSettingsPanelCallbacks {
 /**
  * Claude 전체 설정 패널 (모달 다이얼로그)
  */
-export class ClaudeSettingsPanel extends Disposable {
+export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelCallbacks> {
 
-	private overlay: HTMLElement | undefined;
 	private configUri: URI | undefined;
 	private currentConfig: IClaudeLocalConfig = {};
-	private disposables: IDisposable[] = [];
 	private modelWarningElement: HTMLElement | undefined;
 
 	constructor(
 		private readonly fileService: IFileService,
 		private readonly workspaceContextService: IWorkspaceContextService,
 		private readonly notificationService: INotificationService,
-		private readonly callbacks: IClaudeSettingsPanelCallbacks
+		callbacks: IClaudeSettingsPanelCallbacks
 	) {
-		super();
+		super(callbacks);
 	}
 
 	/**
 	 * 설정 패널 열기
 	 */
 	async open(parentContainer: HTMLElement): Promise<void> {
-		// 이미 열려있으면 닫기
-		if (this.overlay) {
-			this.close();
-			return;
-		}
-
 		// 워크스페이스 확인
 		const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
 		if (!workspaceFolder) {
@@ -65,27 +58,8 @@ export class ClaudeSettingsPanel extends Disposable {
 		// 현재 설정 로드
 		await this.loadConfig();
 
-		// 오버레이 생성
-		this.createOverlay(parentContainer);
-	}
-
-	/**
-	 * 설정 패널 닫기
-	 */
-	close(): void {
-		if (this.overlay) {
-			this.overlay.remove();
-			this.overlay = undefined;
-		}
-		this.disposables.forEach(d => d.dispose());
-		this.disposables = [];
-	}
-
-	/**
-	 * 패널이 열려있는지 확인
-	 */
-	isOpen(): boolean {
-		return !!this.overlay;
+		// 부모 클래스의 open 메서드 호출 (오버레이 관리는 베이스 클래스가 처리)
+		super.open(parentContainer);
 	}
 
 	// ========== Private Methods ==========
@@ -117,7 +91,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		this.callbacks.reloadLocalConfig();
 	}
 
-	private createOverlay(parentContainer: HTMLElement): void {
+	protected createOverlay(parentContainer: HTMLElement): void {
 		// 오버레이 배경
 		this.overlay = append(parentContainer, $('.claude-settings-overlay'));
 
@@ -131,7 +105,7 @@ export class ClaudeSettingsPanel extends Disposable {
 
 		const closeBtn = append(header, $('button.claude-settings-close'));
 		closeBtn.textContent = '×';
-		this.disposables.push(addDisposableListener(closeBtn, EventType.CLICK, () => this.close()));
+		this.modalDisposables.push(addDisposableListener(closeBtn, EventType.CLICK, () => this.close()));
 
 		// 컨텐츠
 		const content = append(panel, $('.claude-settings-content'));
@@ -171,11 +145,11 @@ export class ClaudeSettingsPanel extends Disposable {
 
 		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));
 		cancelBtn.textContent = localize('cancel', "Cancel");
-		this.disposables.push(addDisposableListener(cancelBtn, EventType.CLICK, () => this.close()));
+		this.modalDisposables.push(addDisposableListener(cancelBtn, EventType.CLICK, () => this.close()));
 
 		const saveBtn = append(footer, $('button.claude-settings-btn.primary'));
 		saveBtn.textContent = localize('save', "Save");
-		this.disposables.push(addDisposableListener(saveBtn, EventType.CLICK, async () => {
+		this.modalDisposables.push(addDisposableListener(saveBtn, EventType.CLICK, async () => {
 			// 모델 유효성 검증 - 유효하지 않으면 기본 모델로 대체
 			if (this.currentConfig.model) {
 				const validation = validateClaudeModel(this.currentConfig.model);
@@ -189,14 +163,14 @@ export class ClaudeSettingsPanel extends Disposable {
 		}));
 
 		// 오버레이 클릭 시 닫기
-		this.disposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e) => {
+		this.modalDisposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e) => {
 			if (e.target === this.overlay) {
 				this.close();
 			}
 		}));
 
 		// ESC 키로 닫기
-		this.disposables.push(addDisposableListener(panel, EventType.KEY_DOWN, (e: KeyboardEvent) => {
+		this.modalDisposables.push(addDisposableListener(panel, EventType.KEY_DOWN, (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
 				this.close();
 			}
@@ -231,7 +205,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		input.placeholder = 'claude-sonnet-4-20250514';
 		input.value = this.currentConfig.model || '';
 
-		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
+		this.modalDisposables.push(addDisposableListener(input, EventType.INPUT, () => {
 			const value = input.value.trim();
 			this.currentConfig = { ...this.currentConfig, model: value || undefined };
 
@@ -278,7 +252,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		input.max = options.max.toString();
 		input.value = options.value.toString();
 
-		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
+		this.modalDisposables.push(addDisposableListener(input, EventType.INPUT, () => {
 			const value = Math.max(options.min, Math.min(options.max, parseInt(input.value) || options.min));
 			input.value = value.toString();
 			options.onChange(value);
@@ -308,7 +282,7 @@ export class ClaudeSettingsPanel extends Disposable {
 		checkbox.checked = options.checked;
 		append(toggle, $('span.claude-settings-toggle-slider'));
 
-		this.disposables.push(addDisposableListener(checkbox, EventType.CHANGE, () => {
+		this.modalDisposables.push(addDisposableListener(checkbox, EventType.CHANGE, () => {
 			options.onChange(checkbox.checked);
 		}));
 

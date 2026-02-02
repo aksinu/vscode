@@ -4,15 +4,16 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
+import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
 import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
 import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
+import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
 
 /**
  * StatusBarManager 콜백 인터페이스
  */
-export interface IStatusBarCallbacks {
+export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 	getStatusInfo(): IClaudeStatusInfo | undefined;
 	checkConnection(): Promise<boolean>;
 	toggleUltrathink(): Promise<void>;
@@ -20,25 +21,28 @@ export interface IStatusBarCallbacks {
 	openSessionSettings(): void;
 	cyclePermissionMode(): Promise<void>;
 	getPermissionMode(): ClaudePermissionMode;
-	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
 
 /**
  * 상태 바 매니저
  * Claude 연결 상태, 모델, 설정 등을 표시하고 관리
  */
-export class StatusBarManager extends Disposable {
+export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 
-	private container: HTMLElement;
 	private ultrathinkButton: HTMLButtonElement | undefined;
 	private permissionModeButton: HTMLButtonElement | undefined;
 
 	constructor(
 		container: HTMLElement,
-		private readonly callbacks: IStatusBarCallbacks
+		callbacks: IStatusBarCallbacks
 	) {
-		super();
-		this.container = container;
+		super(container, callbacks);
+	}
+
+	/**
+	 * UI 렌더링 (베이스 클래스에서 요구하는 추상 메서드 구현)
+	 */
+	protected render(): void {
 		this.createStatusBar();
 	}
 
@@ -65,7 +69,7 @@ export class StatusBarManager extends Disposable {
 		const ultrathinkText = append(this.ultrathinkButton, $('span.claude-ultrathink-text'));
 		ultrathinkText.textContent = 'Ultrathink';
 
-		this.callbacks.registerDisposable(addDisposableListener(this.ultrathinkButton, EventType.CLICK, async () => {
+		this.registerDisposable(addDisposableListener(this.ultrathinkButton, EventType.CLICK, async () => {
 			await this.callbacks.toggleUltrathink();
 		}));
 
@@ -80,7 +84,7 @@ export class StatusBarManager extends Disposable {
 		const permissionText = append(this.permissionModeButton, $('span.claude-permission-mode-text'));
 		permissionText.textContent = 'Default';
 
-		this.callbacks.registerDisposable(addDisposableListener(this.permissionModeButton, EventType.CLICK, async () => {
+		this.registerDisposable(addDisposableListener(this.permissionModeButton, EventType.CLICK, async () => {
 			await this.callbacks.cyclePermissionMode();
 			this.updatePermissionMode();
 		}));
@@ -108,7 +112,7 @@ export class StatusBarManager extends Disposable {
 		settingsButton.title = localize('sessionSettings', "Session Settings");
 		append(settingsButton, $('.codicon.codicon-settings-gear'));
 
-		this.callbacks.registerDisposable(addDisposableListener(settingsButton, EventType.CLICK, () => {
+		this.registerDisposable(addDisposableListener(settingsButton, EventType.CLICK, () => {
 			this.callbacks.openSessionSettings();
 		}));
 
