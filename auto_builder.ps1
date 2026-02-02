@@ -3,8 +3,14 @@ param(
 )
 
 # ================= CONFIGURATION =================
-$RepoPath = "D:\_______________Kent\vscode_build\vscode"
-$BuildTargetDir = "D:\_______________Kent\vscode_build\builds"
+$BaseDir = $PSScriptRoot 
+
+# ��ũ��Ʈ ��ġ ����: ./vscode
+$RepoPath = Join-Path $BaseDir "vscode"
+
+# ��ũ��Ʈ ��ġ ����: ./builds
+$BuildTargetDir = Join-Path $BaseDir "builds"
+
 $MaxBuildCount = 10
 $BuildCommand = "npm run gulp vscode-win32-x64"
 # =================================================
@@ -40,39 +46,39 @@ npm ci
 # 4. Package build
 Write-Host ">>> Packaging build (gulp vscode-win32-x64)..." -ForegroundColor Yellow
 
-# Minification OFF (안전모드)
+# Minification OFF (?�전모드)
 $Env:NODE_ENV = "development"
 $Env:NODE_OPTIONS = "--max_old_space_size=8192"
 
 Invoke-Expression $BuildCommand
 
 # ==============================================================================
-# 5. [추가된 부분] Resource Rescue (CSS/아이콘 강제 복사)
+# 5. [추�???부�? Resource Rescue (CSS/?�이�?강제 복사)
 # ==============================================================================
-Write-Host ">>> 🚑 Copying missing CSS/Assets..." -ForegroundColor Cyan
+Write-Host ">>> ?�� Copying missing CSS/Assets..." -ForegroundColor Cyan
 
 $RepoParentDir = Split-Path $RepoPath -Parent
 $GeneratedFolder = Join-Path $RepoParentDir "VSCode-win32-x64"
 $OutDir = Join-Path $GeneratedFolder "resources\app\out"
 
-# 소스 위치: src/vs/workbench/contrib/kent/browser/media
+# ?�스 ?�치: src/vs/workbench/contrib/kent/browser/media
 $SrcKentPath = Join-Path $RepoPath "src\vs\workbench\contrib\kent"
 $SrcMedia = Join-Path $SrcKentPath "browser\media"
 
-# 목적지 위치: out/vs/workbench/contrib/kent/browser/media
+# 목적지 ?�치: out/vs/workbench/contrib/kent/browser/media
 $DestKentPath = Join-Path $OutDir "vs\workbench\contrib\kent"
 $DestBrowserDir = Join-Path $DestKentPath "browser"
 $DestMedia = Join-Path $DestBrowserDir "media"
 
 if (Test-Path $SrcMedia) {
-    # 폴더 구조가 없으면 생성
+    # ?�더 구조가 ?�으�??�성
     if (-not (Test-Path $DestBrowserDir)) { New-Item -ItemType Directory -Force -Path $DestBrowserDir | Out-Null }
 
-    # 복사 실행
+    # 복사 ?�행
     Copy-Item -Path "$SrcMedia" -Destination $DestBrowserDir -Recurse -Force
-    Write-Host "   ✅ CSS Copied Successfully!" -ForegroundColor Green
+    Write-Host "   ??CSS Copied Successfully!" -ForegroundColor Green
 } else {
-    Write-Host "   ⚠️ Warning: Media folder not found at $SrcMedia" -ForegroundColor Yellow
+    Write-Host "   ?�️ Warning: Media folder not found at $SrcMedia" -ForegroundColor Yellow
 }
 # ==============================================================================
 
