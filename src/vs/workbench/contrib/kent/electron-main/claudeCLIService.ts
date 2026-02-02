@@ -379,8 +379,6 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		claudeArgs: string[],
 		workingDir?: string
 	): { spawnCommand: string; spawnArgs: string[] } {
-		const isWindows = process.platform === 'win32';
-
 		// Claude 명령어 실행
 		const command = executable?.command || 'claude';
 		return { spawnCommand: command, spawnArgs: claudeArgs };

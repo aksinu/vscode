@@ -206,38 +206,6 @@ export class ClaudeSettingsPanel extends Disposable {
 		panel.focus();
 	}
 
-	private createTextSetting(container: HTMLElement, options: {
-		label: string;
-		description: string;
-		placeholder: string;
-		value: string;
-		hint?: string;
-		onChange: (value: string) => void;
-	}): HTMLElement {
-		const item = append(container, $('.claude-settings-item'));
-
-		const info = append(item, $('.claude-settings-info'));
-		const label = append(info, $('.claude-settings-label'));
-		label.textContent = options.label;
-		const desc = append(info, $('.claude-settings-desc'));
-		desc.textContent = options.description;
-		if (options.hint) {
-			const hint = append(info, $('.claude-settings-hint'));
-			hint.textContent = options.hint;
-		}
-
-		const control = append(item, $('.claude-settings-control'));
-		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;
-		input.type = 'text';
-		input.placeholder = options.placeholder;
-		input.value = options.value;
-
-		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
-			options.onChange(input.value);
-		}));
-
-		return item;
-	}
 
 	/**
 	 * 모델 설정 필드 생성 (유효성 검증 포함)

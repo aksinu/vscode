@@ -1460,10 +1460,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 * Claude 상태 정보 가져오기
 	 */
 	getStatusInfo(): IClaudeStatusInfo {
-		const execMethod = this._localConfig.executable?.type === 'script' ? 'script' : 'cli';
-		const scriptPath = this._localConfig.executable?.type === 'script'
-			? this._localConfig.executable.script
-			: undefined;
+		const execMethod = 'cli'; // Only CLI method supported now
+		const scriptPath = undefined; // Script functionality removed
 		// Multi-Session 연결 상태 사용 (실제 CLI 통신 상태 반영)
 		const connInfo = this._multiConnection.getInfo();
 

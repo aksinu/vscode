@@ -325,8 +325,6 @@ export class ClaudeCLIInstance extends Disposable {
 		claudeArgs: string[],
 		workingDir?: string
 	): { spawnCommand: string; spawnArgs: string[] } {
-		const isWindows = process.platform === 'win32';
-
 		const command = executable?.command || 'claude';
 		return { spawnCommand: command, spawnArgs: claudeArgs };
 	}

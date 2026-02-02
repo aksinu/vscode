@@ -59,8 +59,6 @@ export class LocalSettingsManager {
 
 		// 현재 상태 표시용
 		const autoAcceptStatus = config.autoAccept ? '$(check) ON' : '$(close) OFF';
-		const scriptPath = config.executable?.type === 'script' ? config.executable.script : undefined;
-		const scriptStatus = scriptPath ? `$(file) ${scriptPath}` : '$(terminal) claude (default)';
 
 		interface ISettingsQuickPickItem extends IQuickPickItem {
 			id: string;
@@ -72,12 +70,6 @@ export class LocalSettingsManager {
 				label: `$(symbol-boolean) Auto Accept`,
 				description: autoAcceptStatus,
 				detail: localize('autoAcceptDetail', "Automatically accept Claude's questions (AskUser)")
-			},
-			{
-				id: 'script',
-				label: `$(file-code) Claude Script`,
-				description: scriptStatus,
-				detail: localize('scriptDetail', "Custom script to run Claude CLI (e.g., set API key)")
 			},
 			{
 				id: 'separator',
@@ -105,9 +97,6 @@ export class LocalSettingsManager {
 		switch (selectedItem.id) {
 			case 'autoAccept':
 				await this.toggleAutoAccept(configUri, config);
-				break;
-			case 'script':
-				await this.selectClaudeScript(configUri, config, workspaceFolder.uri);
 				break;
 			case 'editJson':
 				await this.openOrCreateConfigFile(configUri, vscodeFolder, config);
@@ -152,15 +141,7 @@ export class LocalSettingsManager {
 			}
 		];
 
-		// 현재 스크립트가 있으면 표시
-		if (config.executable?.type === 'script' && config.executable.script) {
-			items.splice(1, 0, {
-				id: 'current',
-				label: `$(file) ${config.executable.script}`,
-				description: '(current)',
-				detail: localize('currentScript', "Currently configured script")
-			});
-		}
+		// Script functionality removed
 
 		const selected = await this.quickInputService.pick(items, {
 			placeHolder: localize('selectScript', "Select Claude execution method")
@@ -170,42 +151,8 @@ export class LocalSettingsManager {
 			return;
 		}
 
-		const selectedItem = selected as IScriptQuickPickItem;
-
-		if (selectedItem.id === 'default') {
-			// 기본 명령어로 변경
-			const newConfig: IClaudeLocalConfig = {
-				...config,
-				executable: { type: 'command', command: 'claude' }
-			};
-			await this.saveConfig(configUri, newConfig);
-			this.notificationService.info(localize('usingDefaultClaude', "Using default 'claude' command"));
-			this.callbacks.reloadLocalConfig();
-
-		} else if (selectedItem.id === 'browse') {
-			// 파일 선택 다이얼로그
-			const result = await this.fileService.resolve(workspaceUri);
-			if (!result) {
-				return;
-			}
-
-			// QuickPick으로 파일 입력 받기 (간단한 방식)
-			const scriptPath = await this.quickInputService.input({
-				placeHolder: localize('enterScriptPath', "Enter script path (relative to workspace)"),
-				prompt: localize('scriptPathPrompt', "e.g., ./scripts/claude.bat or scripts/run-claude.sh"),
-				value: config.executable?.script || './scripts/claude.bat'
-			});
-
-			if (scriptPath) {
-				const newConfig: IClaudeLocalConfig = {
-					...config,
-					executable: { type: 'script', script: scriptPath }
-				};
-				await this.saveConfig(configUri, newConfig);
-				this.notificationService.info(localize('scriptConfigured', "Script configured: {0}", scriptPath));
-				this.callbacks.reloadLocalConfig();
-			}
-		}
+		// Script functionality has been removed - only default command supported now
+		this.notificationService.info(localize('scriptRemoved', "Custom script functionality has been removed. Using default 'claude' command."));
 	}
 
 	/**
