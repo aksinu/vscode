@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { IDisposable } from '../../../../../base/common/lifecycle.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
 import { CodeEditorWidget } from '../../../../../editor/browser/widget/codeEditor/codeEditorWidget.js';
 import { IEditorConstructionOptions } from '../../../../../editor/browser/config/editorConfiguration.js';
@@ -15,7 +15,7 @@ import { localize } from '../../../../../nls.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import { URI } from '../../../../../base/common/uri.js';
-import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
+import { IUIManagerCallbacks } from './claudeUIManager.js';
 
 /**
  * InputEditorManager 콜백 인터페이스

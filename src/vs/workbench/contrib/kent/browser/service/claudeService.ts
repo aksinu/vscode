@@ -1131,6 +1131,24 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// 세션 상태 초기화
 			const sessionState = this._getSessionState(sessionId);
+
+			// 현재 스트리밍 중인 메시지 업데이트
+			if (sessionState.currentMessageId) {
+				const currentSession = this._sessionManager.currentSession;
+				if (currentSession) {
+					const message = currentSession.messages.find(m => m.id === sessionState.currentMessageId);
+					if (message && message.isStreaming) {
+						const updatedMessage: IClaudeMessage = {
+							...message,
+							isStreaming: false
+						};
+						if (this._sessionManager.updateMessage(updatedMessage)) {
+							this._onDidUpdateMessage.fire(updatedMessage);
+						}
+					}
+				}
+			}
+
 			sessionState.state = 'idle';
 			sessionState.currentMessageId = undefined;
 			sessionState.accumulatedContent = '';

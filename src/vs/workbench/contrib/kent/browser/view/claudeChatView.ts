@@ -42,18 +42,13 @@ import { SessionSettingsPanel, ISessionSettings } from './claudeSessionSettingsP
 import { SessionTabs } from './claudeSessionTabs.js';
 import { ChangesHistoryPanel } from './claudeChangesHistoryPanel.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
-import { ITerminalService } from '../../../../contrib/terminal/browser/terminal.js';
+import { ITerminalService } from '../../../terminal/browser/terminal.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
-import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
-import { ITextModelService } from '../../../../../editor/common/services/textModelService.js';
-import { ISCMService } from '../../../../contrib/scm/common/scm.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
-import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
-import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
 import { ISCMService } from '../../../scm/common/scm.js';
+import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -190,7 +185,9 @@ export class ClaudeChatViewPane extends ViewPane {
 		}));
 
 		this._register(this.claudeService.onDidChangeState(state => {
+			console.log('[ClaudeChatView] State changed:', state);
 			const inProgress = state === 'sending' || state === 'streaming';
+			console.log('[ClaudeChatView] inProgress:', inProgress, 'state:', state);
 			this.requestInProgressKey.set(inProgress);
 			this.updateLoadingState(state === 'sending'); // 스트리밍 중에는 로딩 숨김
 			this.updateSendButton(inProgress);
@@ -198,6 +195,15 @@ export class ClaudeChatViewPane extends ViewPane {
 			// 에러 상태 시 연결 오버레이 표시 및 입력 비활성화
 			if (state === 'error') {
 				this.handleConnectionLost();
+			}
+
+			// idle 상태로 변경 시 추가 확인
+			if (state === 'idle') {
+				console.log('[ClaudeChatView] State is idle, ensuring UI is reset');
+				// Cancel 버튼이 확실히 숨겨지도록 강제 업데이트
+				if (this.stopButton) {
+					this.stopButton.style.display = 'none';
+				}
 			}
 
 			// 세션 탭 업데이트 (running indicator 반영)
@@ -781,6 +787,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.stopButton.style.display = 'none';
 
 		this._register(addDisposableListener(this.stopButton, EventType.CLICK, () => {
+			console.log('[ClaudeChatView] Stop button clicked');
 			this.claudeService.cancelRequest();
 		}));
 
@@ -1167,6 +1174,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private updateSendButton(inProgress: boolean): void {
 		// 중지 버튼: 스트리밍 중에만 표시
 		if (this.stopButton) {
+			console.log('[ClaudeChatView] Updating stop button visibility:', inProgress);
 			this.stopButton.style.display = inProgress ? 'flex' : 'none';
 		}
 	}
@@ -1550,7 +1558,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 
 			// SCM 서비스를 통해 Git 리포지토리 확인
-			const repositories = this.scmService.repositories;
+			const repositories = Array.from(this.scmService.repositories);
 			const gitRepo = repositories.find(repo => repo.provider.rootUri?.toString() === workspaceFolder.uri.toString());
 
 			if (!gitRepo) {
@@ -1591,25 +1599,27 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * 터미널을 통한 Git 명령 실행 (폴백)
 	 */
 	private async executeGitCommandViaTerminal(command: string, workingDirectory: string): Promise<{ success: boolean; output?: string; error?: string }> {
-		return new Promise<{ success: boolean; output?: string; error?: string }>((resolve) => {
-			try {
-				const terminal = this.terminalService.createTerminal({
+		try {
+			const terminal = await this.terminalService.createTerminal({
+				config: {
 					name: 'Claude Git',
-					cwd: workingDirectory,
 					hideFromUser: true
-				});
+				},
+				cwd: workingDirectory
+			});
 
-				terminal.sendText(command, true);
+			terminal.sendText(command, true);
 
-				// 명령 실행 완료를 기다림
+			// 명령 실행 완료를 기다림
+			return new Promise<{ success: boolean; output?: string; error?: string }>((resolve) => {
 				setTimeout(() => {
 					terminal.dispose();
 					resolve({ success: true, output: 'Command executed via terminal' });
 				}, 2000);
+			});
 
-			} catch (error) {
-				resolve({ success: false, error: String(error) });
-			}
-		});
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
 	}
 }

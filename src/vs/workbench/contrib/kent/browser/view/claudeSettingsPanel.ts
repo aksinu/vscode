@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { VSBuffer } from '../../../../../base/common/buffer.js';
 import { localize } from '../../../../../nls.js';
@@ -44,7 +43,7 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 	/**
 	 * 설정 패널 열기
 	 */
-	async open(parentContainer: HTMLElement): Promise<void> {
+	override async open(parentContainer: HTMLElement): Promise<void> {
 		// 워크스페이스 확인
 		const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
 		if (!workspaceFolder) {
@@ -91,7 +90,7 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		this.callbacks.reloadLocalConfig();
 	}
 
-	protected createOverlay(parentContainer: HTMLElement): void {
+	protected override createOverlay(parentContainer: HTMLElement): void {
 		// 오버레이 배경
 		this.overlay = append(parentContainer, $('.claude-settings-overlay'));
 

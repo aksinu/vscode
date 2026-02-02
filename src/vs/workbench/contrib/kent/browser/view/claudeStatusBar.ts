@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
 import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
 import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
@@ -42,14 +41,14 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 	/**
 	 * UI 렌더링 (베이스 클래스에서 요구하는 추상 메서드 구현)
 	 */
-	protected render(): void {
+	protected override render(): void {
 		this.createStatusBar();
 	}
 
 	/**
 	 * 상태 바 업데이트
 	 */
-	update(status: IClaudeStatusInfo): void {
+	override update(status: IClaudeStatusInfo): void {
 		this.updateConnectionStatus(status);
 		// 모델 표시 제거 - CLI에서 현재 모델을 알 수 없어 불확실한 정보 표시 방지
 		// this.updateModel(status);
