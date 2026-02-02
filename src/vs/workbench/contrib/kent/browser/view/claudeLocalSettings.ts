@@ -120,40 +120,6 @@ export class LocalSettingsManager {
 		this.callbacks.reloadLocalConfig();
 	}
 
-	/**
-	 * Claude 스크립트 선택
-	 */
-	private async selectClaudeScript(configUri: URI, config: IClaudeLocalConfig, workspaceUri: URI): Promise<void> {
-		interface IScriptQuickPickItem extends IQuickPickItem {
-			id: string;
-		}
-
-		const items: IScriptQuickPickItem[] = [
-			{
-				id: 'default',
-				label: '$(terminal) Use default claude command',
-				description: config.executable?.type !== 'script' ? '(current)' : ''
-			},
-			{
-				id: 'browse',
-				label: '$(folder-opened) Browse for script file...',
-				detail: localize('browseDetail', "Select .bat, .sh, .ps1, .js, or .py file")
-			}
-		];
-
-		// Script functionality removed
-
-		const selected = await this.quickInputService.pick(items, {
-			placeHolder: localize('selectScript', "Select Claude execution method")
-		});
-
-		if (!selected) {
-			return;
-		}
-
-		// Script functionality has been removed - only default command supported now
-		this.notificationService.info(localize('scriptRemoved', "Custom script functionality has been removed. Using default 'claude' command."));
-	}
 
 	/**
 	 * 설정 저장
