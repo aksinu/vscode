@@ -28,9 +28,39 @@ export interface IClaudeExecutableConfig {
 }
 
 /**
- * 권한 모드 타입
+ * 권한 모드 타입 (사용자 설정용 - kebab-case 허용)
  */
-export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits';
+export type ClaudePermissionMode = 'default' | 'plan' | 'accept-edits' | 'acceptEdits' | 'bypass-permissions' | 'bypassPermissions' | 'dont-ask' | 'dontAsk' | 'delegate';
+
+/**
+ * CLI 권한 모드 타입 (CLI가 실제로 허용하는 값)
+ */
+export type ClaudeCLIPermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'delegate';
+
+/**
+ * 권한 모드를 CLI가 허용하는 형식으로 변환
+ * kebab-case → camelCase
+ */
+export function normalizePermissionMode(mode: string | undefined): ClaudeCLIPermissionMode | undefined {
+	if (!mode) {
+		return undefined;
+	}
+
+	const mapping: Record<string, ClaudeCLIPermissionMode> = {
+		'default': 'default',
+		'plan': 'plan',
+		'delegate': 'delegate',
+		// kebab-case → camelCase
+		'accept-edits': 'acceptEdits',
+		'acceptEdits': 'acceptEdits',
+		'bypass-permissions': 'bypassPermissions',
+		'bypassPermissions': 'bypassPermissions',
+		'dont-ask': 'dontAsk',
+		'dontAsk': 'dontAsk',
+	};
+
+	return mapping[mode] || (mode as ClaudeCLIPermissionMode);
+}
 
 /**
  * Claude 로컬 설정 (프로젝트별, .gitignore 대상)
@@ -68,6 +98,8 @@ export interface IClaudeLocalConfig {
 	readonly mcpConfig?: string;
 	/** 에이전트 설정 경로 */
 	readonly agents?: string;
+	/** 최대 세션 수 (기본: 10, 최소: 1) */
+	readonly maxSessions?: number;
 }
 
 /**

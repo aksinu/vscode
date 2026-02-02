@@ -162,8 +162,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	) {
 		super();
 
-		// 세션 관리자 생성
-		this._sessionManager = this._register(new ClaudeSessionManager(storageService));
+		// 세션 관리자 생성 (설정 서비스 전달)
+		this._sessionManager = this._register(new ClaudeSessionManager(storageService, configurationService, this._localConfig));
 
 		// 세션 변경 이벤트 전달
 		this._register(this._sessionManager.onDidChangeSession(session => {
@@ -425,10 +425,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const currentSessionId = this._sessionManager.currentSession?.id;
 			const isCurrentSession = event.chatId === currentSessionId;
 
-			// 모든 세션의 컨텐츠 축적 (백그라운드 세션 포함)
-			this.accumulateSessionContent(event.chatId, event.data);
-
-			// 현재 세션이면 UI 이벤트 핸들러도 호출
+			// 현재 세션: handleData가 컨텐츠 누적 담당 (appendContent 사용)
+			// 백그라운드 세션: accumulateSessionContent로 컨텐츠 누적
+			// 중복 호출 방지 - 둘 중 하나만 호출
 			if (isCurrentSession) {
 				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
 				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
@@ -436,7 +435,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
 				});
 			} else {
-				// 백그라운드 세션은 로그만 (컨텐츠는 위에서 이미 축적됨)
+				// 백그라운드 세션만 accumulateSessionContent 사용
+				this.accumulateSessionContent(event.chatId, event.data);
 				console.log('[ClaudeService] Background session data:', event.chatId, event.data.type);
 			}
 		}));
@@ -1443,7 +1443,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		const scriptPath = this._localConfig.executable?.type === 'script'
 			? this._localConfig.executable.script
 			: undefined;
-		const connInfo = this._connection.getInfo();
+		// Multi-Session 연결 상태 사용 (실제 CLI 통신 상태 반영)
+		const connInfo = this._multiConnection.getInfo();
 
 		// Ultrathink 현재 값 계산: session override > local config > instance setting
 		const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined

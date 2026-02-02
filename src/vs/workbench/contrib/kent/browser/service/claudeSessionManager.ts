@@ -7,7 +7,9 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IClaudeMessage, IClaudeSession, IClaudeQueuedMessage } from '../../common/claudeTypes.js';
+import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 
 /**
  * 저장되는 세션 데이터 구조
@@ -36,7 +38,9 @@ export class ClaudeSessionManager extends Disposable {
 	private static readonly STORAGE_KEY = 'claude.sessions';
 
 	constructor(
-		private readonly storageService: IStorageService
+		private readonly storageService: IStorageService,
+		private readonly configurationService: IConfigurationService,
+		private readonly localConfig?: IClaudeLocalConfig
 	) {
 		super();
 	}
@@ -67,6 +71,40 @@ export class ClaudeSessionManager extends Disposable {
 	 */
 	hasCurrentSession(): boolean {
 		return !!this._currentSession;
+	}
+
+	/**
+	 * 최대 세션 수 가져오기
+	 */
+	private getMaxSessions(): number {
+		return this.localConfig?.maxSessions
+			|| this.configurationService.getValue<number>('claude.maxSessions')
+			|| 10;
+	}
+
+	/**
+	 * 세션 수 제한 확인 및 오래된 세션 제거
+	 */
+	private enforceSessionLimit(): void {
+		const maxSessions = this.getMaxSessions();
+
+		while (this._sessions.length >= maxSessions) {
+			// 가장 오래된 세션 찾기 (현재 세션 제외)
+			const oldestSession = this._sessions
+				.filter(s => s.id !== this._currentSession?.id)
+				.sort((a, b) => a.createdAt - b.createdAt)[0];
+
+			if (oldestSession) {
+				console.log('[SessionManager] Removing oldest session due to limit:', oldestSession.id, 'createdAt:', new Date(oldestSession.createdAt));
+				const index = this._sessions.findIndex(s => s.id === oldestSession.id);
+				if (index !== -1) {
+					this._sessions.splice(index, 1);
+				}
+			} else {
+				// 모든 세션이 현재 세션인 경우 (이론적으로 불가능하지만 안전장치)
+				break;
+			}
+		}
 	}
 
 	/**
@@ -181,6 +219,9 @@ export class ClaudeSessionManager extends Disposable {
 	 * 새 세션 생성
 	 */
 	startNewSession(): IClaudeSession {
+		// 세션 수 제한 확인 및 적용
+		this.enforceSessionLimit();
+
 		// 고유한 ID 생성 (중복 방지)
 		let sessionId = generateUuid();
 		let attempts = 0;
@@ -217,7 +258,7 @@ export class ClaudeSessionManager extends Disposable {
 		// 세션 저장
 		this.saveSessions();
 
-		console.log('[SessionManager] New session created:', sessionId);
+		console.log('[SessionManager] New session created:', sessionId, 'Total sessions:', this._sessions.length);
 		return session;
 	}
 

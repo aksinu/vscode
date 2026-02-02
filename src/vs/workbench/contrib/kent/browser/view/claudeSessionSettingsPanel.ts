@@ -26,6 +26,8 @@ export interface ISessionSettingsPanelCallbacks {
 	onSave(settings: ISessionSettings): void;
 	onContinue(): void;
 	getAvailableModels(): string[];
+	onCommit?(): Promise<void>;
+	hasChangesToCommit?(): boolean;
 }
 
 /**
@@ -148,6 +150,25 @@ export class SessionSettingsPanel extends Disposable {
 
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
+
+		// 커밋 버튼 (조건부 표시)
+		if (this.callbacks.onCommit && this.callbacks.hasChangesToCommit?.()) {
+			const commitBtn = append(footer, $('button.claude-settings-btn.commit'));
+			commitBtn.textContent = localize('commit', "Commit Changes");
+			commitBtn.title = localize('commitTooltip', "Commit modified files to git");
+			this.disposables.push(addDisposableListener(commitBtn, EventType.CLICK, async () => {
+				try {
+					commitBtn.disabled = true;
+					commitBtn.textContent = localize('committing', "Committing...");
+					await this.callbacks.onCommit!();
+					this.close();
+				} catch (error) {
+					commitBtn.disabled = false;
+					commitBtn.textContent = localize('commit', "Commit Changes");
+					console.error('[SessionSettings] Commit failed:', error);
+				}
+			}));
+		}
 
 		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));
 		cancelBtn.textContent = localize('cancel', "Cancel");

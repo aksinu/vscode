@@ -174,6 +174,13 @@ configurationRegistry.registerConfiguration({
 			default: [],
 			description: localize('claude.betas', "Beta features to enable (e.g., 'interleaved-thinking')"),
 			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.maxSessions': {
+			type: 'number',
+			default: 10,
+			minimum: 1,
+			maximum: 100,
+			description: localize('claude.maxSessions', "Maximum number of concurrent chat sessions (oldest session is removed when limit exceeded)")
 		}
 	}
 });

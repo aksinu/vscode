@@ -9,7 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
-import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType } from '../common/claudeLocalConfig.js';
+import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType, normalizePermissionMode } from '../common/claudeLocalConfig.js';
 
 /**
  * Rate limit 에러 메시지 파싱
@@ -176,7 +176,10 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 		// 권한 모드
 		if (options?.permissionMode) {
-			claudeArgs.push('--permission-mode', options.permissionMode);
+			const normalizedMode = normalizePermissionMode(options.permissionMode);
+			if (normalizedMode) {
+				claudeArgs.push('--permission-mode', normalizedMode);
+			}
 		}
 
 		// 베타 기능 목록 (여러 번 지정 가능)

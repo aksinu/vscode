@@ -155,6 +155,16 @@ export class ClaudeSettingsPanel extends Disposable {
 			onChange: (checked) => { this.currentConfig = { ...this.currentConfig, autoAccept: checked }; }
 		});
 
+		// Max Sessions 설정
+		this.createNumberSetting(content, {
+			label: localize('maxSessions', "Max Sessions"),
+			description: localize('maxSessionsDesc', "Maximum number of concurrent chat sessions (oldest removed when exceeded)"),
+			value: this.currentConfig.maxSessions ?? 10,
+			min: 1,
+			max: 100,
+			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxSessions: value }; }
+		});
+
 		// Script 설정
 		const useScript = this.currentConfig.executable?.type === 'script';
 		let scriptPathInput: HTMLInputElement | undefined;
@@ -315,6 +325,38 @@ export class ClaudeSettingsPanel extends Disposable {
 				this.modelWarningElement.style.display = 'none';
 				input.classList.remove('invalid');
 			}
+		}));
+
+		return item;
+	}
+
+	private createNumberSetting(container: HTMLElement, options: {
+		label: string;
+		description: string;
+		value: number;
+		min: number;
+		max: number;
+		onChange: (value: number) => void;
+	}): HTMLElement {
+		const item = append(container, $('.claude-settings-item'));
+
+		const info = append(item, $('.claude-settings-info'));
+		const label = append(info, $('.claude-settings-label'));
+		label.textContent = options.label;
+		const desc = append(info, $('.claude-settings-desc'));
+		desc.textContent = options.description;
+
+		const control = append(item, $('.claude-settings-control'));
+		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;
+		input.type = 'number';
+		input.min = options.min.toString();
+		input.max = options.max.toString();
+		input.value = options.value.toString();
+
+		this.disposables.push(addDisposableListener(input, EventType.INPUT, () => {
+			const value = Math.max(options.min, Math.min(options.max, parseInt(input.value) || options.min));
+			input.value = value.toString();
+			options.onChange(value);
 		}));
 
 		return item;

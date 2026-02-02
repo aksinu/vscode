@@ -31,3 +31,4 @@ nul
 .ccwa/
 .ccwa-runtime/
 /TODO.txt
+/.vscode/claude.local.json

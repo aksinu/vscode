@@ -9,7 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
-import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType } from '../common/claudeLocalConfig.js';
+import { IClaudeExecutableConfig, getScriptInterpreter, detectScriptType, ClaudeScriptType, normalizePermissionMode } from '../common/claudeLocalConfig.js';
 
 // 디버그용 파일 로그
 const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
@@ -157,7 +157,10 @@ export class ClaudeCLIInstance extends Disposable {
 			}
 		}
 		if (options?.permissionMode) {
-			claudeArgs.push('--permission-mode', options.permissionMode);
+			const normalizedMode = normalizePermissionMode(options.permissionMode);
+			if (normalizedMode) {
+				claudeArgs.push('--permission-mode', normalizedMode);
+			}
 		}
 		if (options?.betas && options.betas.length > 0) {
 			for (const beta of options.betas) {

@@ -2129,6 +2129,27 @@
 	background: var(--vscode-button-secondaryHoverBackground);
 }
 
+.claude-settings-btn.commit {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--vscode-gitDecoration-modifiedResourceForeground);
+	color: white;
+	border: 1px solid var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.claude-settings-btn.commit:hover {
+	background: var(--vscode-gitDecoration-addedResourceForeground);
+	border-color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.claude-settings-btn.commit:disabled {
+	background: var(--vscode-descriptionForeground);
+	border-color: var(--vscode-descriptionForeground);
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
 /* Settings Section */
 .claude-settings-section {
 	margin-top: 16px;

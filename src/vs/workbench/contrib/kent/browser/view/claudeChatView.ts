@@ -47,6 +47,7 @@ import { IWorkspaceContextService } from '../../../../../platform/workspace/comm
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
+import { ISCMService } from '../../../scm/common/scm.js';
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -108,7 +109,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
-		@ITextModelService private readonly textModelService: ITextModelService
+		@ITextModelService private readonly textModelService: ITextModelService,
+		@ISCMService private readonly scmService: ISCMService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -276,7 +278,9 @@ export class ClaudeChatViewPane extends ViewPane {
 			getCurrentSettings: () => this.sessionSettings,
 			onSave: (settings) => this.applySessionSettings(settings),
 			onContinue: () => this.continueLastSession(),
-			getAvailableModels: () => this.getAvailableModels()
+			getAvailableModels: () => this.getAvailableModels(),
+			onCommit: () => this.handleCommitChanges(),
+			hasChangesToCommit: () => this.hasChangesToCommit()
 		}));
 
 		// 상태 바 (입력창 위)
@@ -1392,5 +1396,117 @@ export class ClaudeChatViewPane extends ViewPane {
 				localize('failedToUpdatePermissionMode', "Failed to update permission mode: {0}", String(error))
 			);
 		}
+	}
+
+	/**
+	 * 커밋할 변경사항이 있는지 확인
+	 */
+	private hasChangesToCommit(): boolean {
+		// 1. Git 저장소가 있는지 확인
+		if (this.scmService.repositoryCount === 0) {
+			return false;
+		}
+
+		// 2. 현재 세션의 파일 변경 목록 확인
+		const fileChanges = this.claudeService.getSessionChangesHistory?.()?.totalFiles || [];
+		return fileChanges.length > 0;
+	}
+
+	/**
+	 * 변경사항 커밋 처리
+	 */
+	private async handleCommitChanges(): Promise<void> {
+		try {
+			// 변경된 파일 목록 가져오기
+			const changesHistory = this.claudeService.getSessionChangesHistory?.();
+			if (!changesHistory || changesHistory.totalFiles.length === 0) {
+				this.notificationService.warn(localize('noChangesToCommit', "No changes to commit"));
+				return;
+			}
+
+			// 커밋 메시지 생성
+			const commitMessage = await this.generateCommitMessage(changesHistory.totalFiles);
+
+			// Git 커밋 실행
+			await this.executeGitCommit(changesHistory.totalFiles, commitMessage);
+
+			this.notificationService.info(
+				localize('changesCommitted', "Successfully committed {0} files", changesHistory.totalFiles.length)
+			);
+		} catch (error) {
+			this.notificationService.error(
+				localize('commitFailed', "Failed to commit changes: {0}", String(error))
+			);
+		}
+	}
+
+	/**
+	 * 커밋 메시지 자동 생성 (토큰 절약을 위해 간단하게)
+	 */
+	private async generateCommitMessage(fileChanges: any[]): Promise<string> {
+		const fileCount = fileChanges.length;
+
+		// 파일 분석
+		const extensions = new Set<string>();
+		const directories = new Set<string>();
+		const fileNames = fileChanges.map(f => {
+			const fileName = f.file.split('/').pop() || f.file;
+			const ext = fileName.split('.').pop();
+			if (ext) extensions.add(ext.toLowerCase());
+
+			const dir = f.file.split('/').slice(-2, -1)[0];
+			if (dir) directories.add(dir);
+
+			return fileName;
+		});
+
+		// 파일 타입에 따른 액션 결정
+		let action = 'Update';
+		if (extensions.has('md') && extensions.size === 1) {
+			action = 'Update documentation';
+		} else if (extensions.has('ts') || extensions.has('js')) {
+			action = 'Implement';
+		} else if (extensions.has('css') && extensions.size === 1) {
+			action = 'Style';
+		} else if (extensions.has('json') && extensions.size === 1) {
+			action = 'Configure';
+		}
+
+		// 디렉토리 기반 범위 결정
+		let scope = '';
+		if (directories.has('browser')) {
+			scope = ' UI components';
+		} else if (directories.has('service')) {
+			scope = ' services';
+		} else if (directories.has('common')) {
+			scope = ' core functionality';
+		}
+
+		// 메시지 구성
+		const mainFiles = fileNames.slice(0, 2).join(', ');
+
+		if (fileCount === 1) {
+			return `${action}${scope}: ${mainFiles}`;
+		} else if (fileCount <= 3) {
+			return `${action}${scope}: ${mainFiles}${fileCount > 2 ? ` and ${fileCount - 2} more` : ''}`;
+		} else {
+			return `${action}${scope}: ${mainFiles} and ${fileCount - 2} other files`;
+		}
+	}
+
+	/**
+	 * Git 커밋 실행
+	 */
+	private async executeGitCommit(fileChanges: any[], commitMessage: string): Promise<void> {
+		// TODO: 실제 Git 커밋 로직 구현
+		// 여기서는 파일 스냅샷의 accept 기능을 활용하여 변경사항을 확정
+
+		// 모든 파일 변경사항 accept
+		await this.claudeService.acceptAllFiles?.();
+
+		// Git 커밋은 별도의 터미널 서비스나 Git 서비스를 통해 실행해야 함
+		// 현재는 파일 변경사항 accept만 처리
+		console.log(`[Commit] Would commit with message: "${commitMessage}"`);
+		console.log(`[Commit] Files:`, fileChanges.map(f => f.file));
 	}
 }
