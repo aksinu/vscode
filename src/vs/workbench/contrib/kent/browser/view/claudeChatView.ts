@@ -1244,10 +1244,40 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 입력 비활성화
 		this.setInputEnabled(false);
 
+		// 연결 상태 정보 가져오기
+		const errorMessage = (this.claudeService as any).connection?.error
+			|| (this.claudeService as any)._multiConnection?.error
+			|| '';
+
+		// 에러 유형에 따른 메시지 결정
+		let notificationMessage: string;
+		let detailMessage: string;
+
+		if (errorMessage.includes('rate') || errorMessage.includes('429') || errorMessage.includes('quota')) {
+			// Rate limit 에러 (이 경우는 rate limit 매니저가 처리하지만 fallback)
+			notificationMessage = localize('rateLimitError', "API rate limit exceeded.");
+			detailMessage = localize('rateLimitDetail', "Please wait a moment before retrying.");
+		} else if (errorMessage.includes('auth') || errorMessage.includes('login') || errorMessage.includes('401')) {
+			// 인증 에러
+			notificationMessage = localize('authError', "Authentication failed.");
+			detailMessage = localize('authDetail', "Please run 'claude login' in terminal.");
+		} else if (errorMessage.includes('exit') && errorMessage.includes('1')) {
+			// CLI exit code 1
+			notificationMessage = localize('cliExitError', "Claude CLI session terminated unexpectedly.");
+			detailMessage = localize('cliExitDetail', "The CLI process exited with an error.");
+		} else {
+			// 일반 에러
+			notificationMessage = localize('connectionLost', "Claude CLI session terminated unexpectedly.");
+			detailMessage = errorMessage || localize('unknownError', "Unknown error occurred.");
+		}
+
+		// 연결 오버레이 표시
+		this.connectionOverlay.setFailed(detailMessage);
+
 		// 알림 표시 (액션 버튼 포함)
 		this.notificationService.prompt(
 			Severity.Warning,
-			localize('connectionLost', "Claude CLI session terminated unexpectedly."),
+			notificationMessage,
 			[
 				{
 					label: localize('reconnect', "Reconnect"),
@@ -1262,17 +1292,43 @@ export class ClaudeChatViewPane extends ViewPane {
 	/**
 	 * 새 세션 생성
 	 */
-	private createNewSession(): void {
+	private async createNewSession(): Promise<void> {
 		this.claudeService.startNewSession();
 		this.sessionTabs?.render();
+
+		// 연결 상태 확인 및 UI 갱신
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		if (statusInfo?.connectionStatus === 'error' || statusInfo?.connectionStatus === 'disconnected') {
+			// 연결 끊긴 상태면 재연결 시도
+			this.setInputEnabled(false);
+			this.connectionOverlay.setConnecting();
+			await this.initializeConnection();
+		} else if (statusInfo?.connectionStatus === 'connected') {
+			// 연결된 상태면 입력 활성화
+			this.setInputEnabled(true);
+			this.connectionOverlay.setConnected();
+		}
 	}
 
 	/**
 	 * 세션 전환
 	 */
-	private switchToSession(sessionId: string): void {
+	private async switchToSession(sessionId: string): Promise<void> {
 		this.claudeService.switchSession?.(sessionId);
 		this.sessionTabs?.render();
+
+		// 연결 상태 확인 및 UI 갱신
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		if (statusInfo?.connectionStatus === 'error' || statusInfo?.connectionStatus === 'disconnected') {
+			// 연결 끊긴 상태면 재연결 시도
+			this.setInputEnabled(false);
+			this.connectionOverlay.setConnecting();
+			await this.initializeConnection();
+		} else if (statusInfo?.connectionStatus === 'connected') {
+			// 연결된 상태면 입력 활성화
+			this.setInputEnabled(true);
+			this.connectionOverlay.setConnected();
+		}
 	}
 
 	/**

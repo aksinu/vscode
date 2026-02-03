@@ -512,10 +512,24 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// 현재 세션이면 UI 이벤트 핸들러도 호출
 			if (event.chatId === currentSessionId) {
-				this._cliEventHandler.handleError(event.error);
-				// Legacy 상태도 업데이트
-				this._state = 'idle';
-				this._onDidChangeState.fire('idle');
+				// Rate limit 에러인지 먼저 확인
+				const isRateLimit = this.rateLimitManager.isRateLimitError(event.error);
+
+				if (isRateLimit) {
+					// Rate limit 에러: 연결 상태는 유지, rate limit 처리
+					console.log('[ClaudeService] Rate limit error detected, keeping connection status');
+					this._cliEventHandler.handleError(event.error);
+					// Legacy 상태도 업데이트 (rate limit은 idle로)
+					this._state = 'idle';
+					this._onDidChangeState.fire('idle');
+				} else {
+					// 일반 에러: 연결 상태를 'error'로 변경 (UI 갱신 트리거)
+					this._multiConnection.setError(event.error);
+					this._cliEventHandler.handleError(event.error);
+					// Legacy 상태도 업데이트 (일반 에러는 'error' 상태 fire)
+					this._state = 'error';
+					this._onDidChangeState.fire('error');
+				}
 			}
 		}));
 
@@ -1220,6 +1234,22 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._onDidChangeState.fire('idle');
 		this._onDidChangeQueue.fire([]);
 
+		// 연결 상태가 'error'이면 재연결 시도
+		const connInfo = this._multiConnection.getInfo();
+		if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
+			this.logService.info(ClaudeService.LOG_CATEGORY, `Connection status is ${connInfo.status}, attempting reconnect...`);
+			// 비동기로 재연결 시도 (UI 블로킹 방지)
+			this._multiConnection.connect().then(connected => {
+				if (connected) {
+					this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful');
+				} else {
+					this.logService.warn(ClaudeService.LOG_CATEGORY, 'Reconnection failed');
+				}
+				// 연결 상태 변경 이벤트 발생 (UI 갱신)
+				this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+			});
+		}
+
 		this.logService.debug(ClaudeService.LOG_CATEGORY, `New session created: ${session.id}`);
 
 		return session;
@@ -1250,6 +1280,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._onDidChangeState.fire(sessionState.state);
 			this._onDidChangeQueue.fire([...sessionState.messageQueue]);
 			this.logService.debug(ClaudeService.LOG_CATEGORY, `Switched to session: ${sessionId}, state: ${sessionState.state}, queue: ${sessionState.messageQueue.length}`);
+
+			// 연결 상태가 'error'이면 재연결 시도
+			const connInfo = this._multiConnection.getInfo();
+			if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
+				this.logService.info(ClaudeService.LOG_CATEGORY, `Connection status is ${connInfo.status}, attempting reconnect on session switch...`);
+				this._multiConnection.connect().then(connected => {
+					if (connected) {
+						this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful on session switch');
+					}
+					this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+				});
+			}
 		}
 
 		return result;

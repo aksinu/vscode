@@ -415,6 +415,17 @@ export class ClaudeMultiConnection extends Disposable {
 	}
 
 	/**
+	 * 에러 상태 설정 (CLI 에러 발생 시 호출)
+	 * 연결 상태를 'error'로 변경하고 에러 메시지 저장
+	 */
+	setError(error: string): void {
+		this._error = error;
+		this.setStatus('error');
+		this._onDidDisconnect.fire(error);
+		this.logService.debug(ClaudeMultiConnection.LOG_CATEGORY, 'Connection error set:', error);
+	}
+
+	/**
 	 * 상태 설정 및 이벤트 발생
 	 */
 	private setStatus(status: ClaudeConnectionStatus): void {
