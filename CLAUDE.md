@@ -29,6 +29,14 @@ ProjectRoot/
 │       ├── project-status.md       # 프로젝트 상태 추적
 │       ├── design-specs.md         # 설계 명세 전문가
 │       ├── typescript-expert.md    # TypeScript 전문가
+│       ├── ui-designer.md          # UI/UX 디자인 전문가
+│       ├── ipc-expert.md           # IPC 통신 전문가
+│       ├── performance-optimizer.md # 성능 최적화 전문가
+│       ├── filesystem-expert.md    # 파일 시스템 전문가
+│       ├── build-deploy-expert.md  # 빌드/배포 전문가
+│       ├── component-architect.md  # 컴포넌트 기반 설계자
+│       ├── composition-advocate.md # 탈상속주의자
+│       ├── solid-principles-expert.md # SOLID 원칙 전도사
 │       ├── architect.md            # 소프트웨어 설계자
 │       ├── coder.md                # 코드 작성 전문가
 │       ├── debugger.md             # 디버깅 전문가
@@ -143,6 +151,22 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 | `debugger` | 디버깅 | 오류 분석, 로그 해석, 문제 해결 |
 | `reviewer` | 코드 리뷰 | 품질 체크, 패턴 준수 검증 |
 | `tester` | 테스트 | 테스트 케이스 설계, 테스트 작성 |
+
+### 전문 에이전트 (Specialist)
+| Agent | 용도 | 언제 사용 |
+|-------|------|----------|
+| `ui-designer` | UI/UX 디자인 | UI 컴포넌트, 사용자 경험 설계 |
+| `ipc-expert` | IPC 통신 | Main/Renderer 프로세스 통신, 채널 설계 |
+| `performance-optimizer` | 성능 최적화 | 메모리, CPU, 렌더링 최적화 |
+| `filesystem-expert` | 파일 시스템 | 파일 처리, 변경 추적, 스냅샷 |
+| `build-deploy-expert` | 빌드/배포 | 빌드 시스템, 컴파일 최적화, 패키징 |
+
+### 설계 철학 에이전트 (Design Philosophy)
+| Agent | 용도 | 언제 사용 |
+|-------|------|----------|
+| `component-architect` | 컴포넌트 설계 | 컴포넌트 기반 아키텍처, 조합 설계 |
+| `composition-advocate` | 탈상속 설계 | 상속보다 구성, 인터페이스 설계 |
+| `solid-principles-expert` | SOLID 원칙 | 단일 책임, SOLID 패턴 적용 |
 
 ---
 
