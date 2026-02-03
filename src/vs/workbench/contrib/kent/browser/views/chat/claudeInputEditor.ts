@@ -15,7 +15,7 @@ import { localize } from '../../../../../nls.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import { URI } from '../../../../../base/common/uri.js';
-import { IUIManagerCallbacks } from './claudeUIManager.js';
+import { IUIManagerCallbacks } from '../ui/claudeUIManager.js';
 
 /**
  * InputEditorManager 콜백 인터페이스

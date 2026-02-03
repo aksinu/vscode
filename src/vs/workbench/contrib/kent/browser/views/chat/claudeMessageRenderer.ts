@@ -35,6 +35,9 @@ export interface IClaudeMessageRendererOptions {
 
 export class ClaudeMessageRenderer extends Disposable {
 
+	// Event Delegation을 위한 핸들러 맵
+	private readonly _eventHandlers = new Map<string, (element: HTMLElement, event: Event) => void>();
+
 	constructor(
 		private readonly options: IClaudeMessageRendererOptions,
 		@IClipboardService private readonly clipboardService: IClipboardService,
@@ -42,12 +45,143 @@ export class ClaudeMessageRenderer extends Disposable {
 		@IEditorService private readonly editorService: IEditorService
 	) {
 		super();
+		this._setupEventHandlers();
+	}
+
+	/**
+	 * Event Delegation 패턴을 위한 핸들러 초기화
+	 * 개별 요소마다 리스너를 등록하는 대신, 컨테이너에서 이벤트를 처리
+	 */
+	private _setupEventHandlers(): void {
+		// Copy 메시지 핸들러 (아이콘 피드백 포함)
+		this._eventHandlers.set('copy-message', (element, event) => {
+			const messageText = element.getAttribute('data-message-content');
+			if (messageText) {
+				// 아이콘 요소 찾기
+				const copyIcon = element.querySelector('.codicon.codicon-copy') as HTMLElement;
+
+				this.clipboardService.writeText(messageText).then(() => {
+					this.notificationService.info(localize('messageCopied', "Message copied to clipboard"));
+
+					// 복사 성공 피드백 - 아이콘 변경
+					if (copyIcon) {
+						copyIcon.classList.remove('codicon-copy');
+						copyIcon.classList.add('codicon-check');
+						setTimeout(() => {
+							copyIcon.classList.remove('codicon-check');
+							copyIcon.classList.add('codicon-copy');
+						}, 2000);
+					}
+				}).catch(() => {
+					this.notificationService.error(localize('copyMessageFailed', "Failed to copy message"));
+				});
+			}
+		});
+
+		// Copy 코드 핸들러
+		this._eventHandlers.set('copy-code', (element, event) => {
+			const code = element.getAttribute('data-code');
+			if (code) {
+				this.clipboardService.writeText(code).then(() => {
+					this.notificationService.info(localize('codeCopied', "Code copied to clipboard"));
+				});
+			}
+		});
+
+		// Apply 코드 핸들러
+		this._eventHandlers.set('apply-code', (element, event) => {
+			const code = element.getAttribute('data-code');
+			const language = element.getAttribute('data-language');
+			if (code && this.options.onApplyCode) {
+				this.options.onApplyCode(code, language || 'text');
+			}
+		});
+
+		// File Diff 핸들러
+		this._eventHandlers.set('show-file-diff', (element, event) => {
+			const fileChangeData = element.getAttribute('data-file-change');
+			if (fileChangeData && this.options.onShowFileDiff) {
+				try {
+					const fileChange = JSON.parse(fileChangeData);
+					this.options.onShowFileDiff(fileChange);
+				} catch (e) {
+					console.error('Failed to parse file change data:', e);
+				}
+			}
+		});
+
+		// File Revert 핸들러
+		this._eventHandlers.set('revert-file', (element, event) => {
+			const fileChangeData = element.getAttribute('data-file-change');
+			if (fileChangeData && this.options.onRevertFile) {
+				try {
+					const fileChange = JSON.parse(fileChangeData);
+					this.options.onRevertFile(fileChange);
+				} catch (e) {
+					console.error('Failed to parse file change data:', e);
+				}
+			}
+		});
+
+		// File Accept 핸들러
+		this._eventHandlers.set('accept-file', (element, event) => {
+			const fileChangeData = element.getAttribute('data-file-change');
+			if (fileChangeData && this.options.onAcceptFile) {
+				try {
+					const fileChange = JSON.parse(fileChangeData);
+					this.options.onAcceptFile(fileChange);
+				} catch (e) {
+					console.error('Failed to parse file change data:', e);
+				}
+			}
+		});
+
+		// AskUser 응답 핸들러
+		this._eventHandlers.set('askuser-response', (element, event) => {
+			const responseData = element.getAttribute('data-response');
+			if (responseData && this.options.onRespondToAskUser) {
+				try {
+					const responses = JSON.parse(responseData);
+					this.options.onRespondToAskUser(responses);
+				} catch (e) {
+					console.error('Failed to parse response data:', e);
+				}
+			}
+		});
+	}
+
+	/**
+	 * 컨테이너에 Event Delegation 리스너 설정
+	 * 단일 리스너가 모든 버튼 클릭을 처리하여 메모리 효율성 향상
+	 */
+	private _setupEventDelegation(container: HTMLElement, disposables: DisposableStore): void {
+		const clickHandler = (event: Event) => {
+			const target = event.target as HTMLElement;
+			const actionElement = target.closest('[data-action]') as HTMLElement;
+
+			if (actionElement) {
+				const action = actionElement.getAttribute('data-action');
+				if (action && this._eventHandlers.has(action)) {
+					event.preventDefault();
+					event.stopPropagation();
+					this._eventHandlers.get(action)!(actionElement, event);
+				}
+			}
+		};
+
+		container.addEventListener('click', clickHandler);
+		disposables.add({
+			dispose: () => container.removeEventListener('click', clickHandler)
+		});
 	}
 
 	renderMessage(message: IClaudeMessage, container: HTMLElement): DisposableStore {
 		const disposables = new DisposableStore();
 
 		clearNode(container);
+
+		// Event Delegation 설정 (단일 리스너로 모든 클릭 처리)
+		this._setupEventDelegation(container, disposables);
 
 		const messageElement = append(container, $('.claude-message'));
 		messageElement.classList.add(`claude-message-${message.role}`);
@@ -71,28 +205,16 @@ export class ClaudeMessageRenderer extends Disposable {
 
 		// 타임스탬프와 작업 시간
 		const timeElement = append(headerElement, $('.claude-message-time'));
-		this.updateTimeDisplay(timeElement, message);
+		this.updateTimeDisplay(timeElement, message, disposables);
 
-		// 메시지 복사 버튼 (hover 시 표시)
+		// 메시지 복사 버튼 (Event Delegation 패턴 사용 - 메모리 효율성 향상)
 		const copyMessageButton = append(headerElement, $('button.claude-message-copy'));
 		copyMessageButton.title = localize('copyMessage', "Copy message");
 		const copyIcon = append(copyMessageButton, $('.codicon.codicon-copy'));
 
-		const copyMessageHandler = async () => {
-			try {
-				await this.clipboardService.writeText(message.content);
-				copyIcon.classList.remove('codicon-copy');
-				copyIcon.classList.add('codicon-check');
-				setTimeout(() => {
-					copyIcon.classList.remove('codicon-check');
-					copyIcon.classList.add('codicon-copy');
-				}, 2000);
-			} catch {
-				this.notificationService.error(localize('copyMessageFailed', "Failed to copy message"));
-			}
-		};
-		copyMessageButton.addEventListener('click', copyMessageHandler);
-		disposables.add({ dispose: () => copyMessageButton.removeEventListener('click', copyMessageHandler) });
+		// Event Delegation을 위한 data 속성 설정 (개별 리스너 대신)
+		copyMessageButton.setAttribute('data-action', 'copy-message');
+		copyMessageButton.setAttribute('data-message-content', message.content);
 
 		// 컨텐츠
 		const contentElement = append(messageElement, $('.claude-message-content'));
@@ -118,7 +240,7 @@ export class ClaudeMessageRenderer extends Disposable {
 
 		// 완료된 도구 액션 목록 표시
 		if (message.toolActions && message.toolActions.length > 0 && !message.isStreaming) {
-			this.renderToolActionsSummary(message.toolActions, messageElement);
+			this.renderToolActionsSummary(message.toolActions, messageElement, disposables);
 		}
 
 		// AskUser 질문 표시
@@ -297,7 +419,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		});
 	}
 
-	private updateTimeDisplay(timeElement: HTMLElement, message: IClaudeMessage): void {
+	private updateTimeDisplay(timeElement: HTMLElement, message: IClaudeMessage, disposables: DisposableStore): void {
 		const baseTime = this.formatTime(message.timestamp);
 
 		// 사용자 메시지는 기본 시간만 표시
@@ -313,7 +435,7 @@ export class ClaudeMessageRenderer extends Disposable {
 
 			// 스트리밍 중이면 실시간 업데이트 설정
 			if (message.isStreaming) {
-				this.setupLiveTimeUpdate(timeElement, message);
+				this.setupLiveTimeUpdate(timeElement, message, disposables);
 			}
 		} else {
 			timeElement.textContent = baseTime;
@@ -343,7 +465,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		}
 	}
 
-	private setupLiveTimeUpdate(timeElement: HTMLElement, message: IClaudeMessage): void {
+	private setupLiveTimeUpdate(timeElement: HTMLElement, message: IClaudeMessage, disposables: DisposableStore): void {
 		if (!message.workStartTime || !message.isStreaming) {
 			return;
 		}
@@ -351,10 +473,28 @@ export class ClaudeMessageRenderer extends Disposable {
 		let lastNotificationTime = 0;
 		const NOTIFICATION_INTERVALS = [30, 60, 120, 300]; // 30초, 1분, 2분, 5분
 
-		const updateInterval = setInterval(() => {
+		let updateInterval: number | undefined;
+		let timeoutId: number | undefined;
+
+		// cleanup 함수 정의
+		const cleanup = () => {
+			if (updateInterval) {
+				clearInterval(updateInterval);
+				updateInterval = undefined;
+			}
+			if (timeoutId) {
+				clearTimeout(timeoutId);
+				timeoutId = undefined;
+			}
+		};
+
+		// DisposableStore에 cleanup 등록 (Critical 메모리 누수 방지)
+		disposables.add({ dispose: cleanup });
+
+		updateInterval = window.setInterval(() => {
 			// 스트리밍이 완료되었으면 중지
 			if (!message.isStreaming) {
-				clearInterval(updateInterval);
+				cleanup();
 				return;
 			}
 
@@ -372,11 +512,11 @@ export class ClaudeMessageRenderer extends Disposable {
 				lastNotificationTime = shouldNotify;
 				this.showLongRunningTaskNotification(elapsedSeconds);
 			}
-		}, 1000); // 1초마다 업데이트
+		}, 1000);
 
 		// 메모리 누수 방지를 위해 5분 후 자동 중지
-		setTimeout(() => {
-			clearInterval(updateInterval);
+		timeoutId = window.setTimeout(() => {
+			cleanup();
 		}, 5 * 60 * 1000);
 	}
 
@@ -458,7 +598,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		}
 	}
 
-	private renderToolActionsSummary(toolActions: IClaudeToolAction[], container: HTMLElement): void {
+	private renderToolActionsSummary(toolActions: IClaudeToolAction[], container: HTMLElement, disposables: DisposableStore): void {
 		if (toolActions.length === 0) {
 			return;
 		}
@@ -499,13 +639,15 @@ export class ClaudeMessageRenderer extends Disposable {
 			}
 		}
 
-		// 토글 기능
-		header.addEventListener('click', () => {
+		// 토글 기능 (Critical 메모리 누수 방지)
+		const toggleHandler = () => {
 			const isHidden = list.style.display === 'none';
 			list.style.display = isHidden ? 'block' : 'none';
 			toggleIcon.classList.toggle('codicon-chevron-right', !isHidden);
 			toggleIcon.classList.toggle('codicon-chevron-down', isHidden);
-		});
+		};
+		header.addEventListener('click', toggleHandler);
+		disposables.add({ dispose: () => header.removeEventListener('click', toggleHandler) });
 	}
 
 	private renderAskUserRequest(askUserRequest: IClaudeAskUserRequest, container: HTMLElement, disposables: DisposableStore): void {

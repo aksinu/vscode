@@ -10,6 +10,7 @@ import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUse
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
+import { ICLIEventHandlerUnifiedContext, ICLIEventHandlerContext } from './cliEventHandlerContext.js';
 
 /**
  * CLI 이벤트 핸들러 콜백 인터페이스
@@ -84,12 +85,71 @@ export class CLIEventHandler extends Disposable {
 
 	// 현재 진행 중인 데이터 처리 작업 (race condition 방지용)
 	private _pendingDataOperation: Promise<void> = Promise.resolve();
+	private _dataOperationQueue: (() => Promise<void>)[] = [];
+	private _isProcessingDataQueue = false;
 
+	private readonly callbacks?: ICLIEventHandlerCallbacks;
+	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
+	private readonly context?: ICLIEventHandlerContext;
+
+	/**
+	 * Legacy 생성자 (47개 개별 콜백)
+	 */
+	constructor(callbacks: ICLIEventHandlerCallbacks, logService: IClaudeLogService);
+	/**
+	 * 새로운 생성자 (6개 그룹화된 컨텍스트)
+	 */
+	constructor(unifiedContext: ICLIEventHandlerUnifiedContext, logService: IClaudeLogService);
+	/**
+	 * 최신 생성자 (통합 컨텍스트 패턴)
+	 */
+	constructor(context: ICLIEventHandlerContext, logService: IClaudeLogService);
 	constructor(
-		private readonly callbacks: ICLIEventHandlerCallbacks,
+		callbacksOrContext: ICLIEventHandlerCallbacks | ICLIEventHandlerUnifiedContext | ICLIEventHandlerContext,
 		private readonly logService: IClaudeLogService
 	) {
 		super();
+
+		// 타입 구분
+		if ('getConnection' in callbacksOrContext) {
+			// 최신 통합 컨텍스트 (메모리 최적화)
+			this.context = callbacksOrContext;
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using optimized context pattern (memory efficient)');
+		} else if ('connection' in callbacksOrContext) {
+			// 6개 그룹 컨텍스트
+			this.unifiedContext = callbacksOrContext;
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using unified context pattern (6 groups)');
+		} else {
+			// Legacy 개별 콜백
+			this.callbacks = callbacksOrContext;
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using legacy callback pattern (47 individual callbacks)');
+		}
+	}
+
+	// ========== 통합 접근 헬퍼 메서드들 ==========
+
+	private getState() {
+		return this.unifiedContext?.state || this.callbacks!;
+	}
+
+	private getMessage() {
+		return this.unifiedContext?.message || this.callbacks!;
+	}
+
+	private getToolAction() {
+		return this.unifiedContext?.toolAction || this.callbacks!;
+	}
+
+	private getSessionInteraction() {
+		return this.unifiedContext?.sessionInteraction || this.callbacks!;
+	}
+
+	private getFileOperation() {
+		return this.unifiedContext?.fileOperation || this.callbacks!;
+	}
+
+	private getConnection() {
+		return this.unifiedContext?.connection || this.callbacks!;
 	}
 
 	/**
@@ -99,12 +159,12 @@ export class CLIEventHandler extends Disposable {
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleData:', event.type, event.subtype || '');
 
 		// 데이터를 받으면 연결된 것으로 판단
-		this.callbacks.confirmConnected();
+		this.getConnection().confirmConnected();
 
 		// Rate limit 에러 처리
 		if (event.type === 'error' && event.error_type === 'rate_limit') {
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Rate limit detected! Retry after:', event.retry_after, 'seconds');
-			this.callbacks.startRateLimitHandling(event.retry_after || 60, event.content);
+			this.getFileOperation().startRateLimitHandling(event.retry_after || 60, event.content);
 			return;
 		}
 
@@ -120,21 +180,19 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
-		if (!this.callbacks.getCurrentMessageId() || !this.callbacks.hasCurrentSession()) {
+		if (!this.getMessage().getCurrentMessageId() || !this.getSessionInteraction().hasCurrentSession()) {
 			return;
 		}
 
-		// 도구 사용 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 체이닝)
+		// 도구 사용 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 큐 사용)
 		if (event.type === 'tool_use') {
-			this._pendingDataOperation = this._pendingDataOperation.then(() => this.handleToolUse(event));
-			await this._pendingDataOperation;
+			await this.enqueueDataOperation(() => this.handleToolUse(event));
 			return;
 		}
 
-		// 도구 결과 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 체이닝)
+		// 도구 결과 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 큐 사용)
 		if (event.type === 'tool_result') {
-			this._pendingDataOperation = this._pendingDataOperation.then(() => this.handleToolResult(event));
-			await this._pendingDataOperation;
+			await this.enqueueDataOperation(() => this.handleToolResult(event));
 			return;
 		}
 
@@ -170,7 +228,9 @@ export class CLIEventHandler extends Disposable {
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete started, waiting for pending operations...');
 
 		// 진행 중인 데이터 처리 작업이 완료될 때까지 대기 (race condition 방지)
-		await this._pendingDataOperation;
+		while (this._isProcessingDataQueue || this._dataOperationQueue.length > 0) {
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: pending operations done');
 
 		if (!this.callbacks.getCurrentMessageId() || !this.callbacks.hasCurrentSession()) {
@@ -235,7 +295,9 @@ export class CLIEventHandler extends Disposable {
 		this.callbacks.setCurrentToolAction(undefined);
 		this.callbacks.setCliSessionId(undefined);
 		this.callbacks.setUsage(undefined);
-		this._pendingDataOperation = Promise.resolve(); // 리셋
+		// 큐 리셋 (새로운 큐 시스템)
+		this._dataOperationQueue = [];
+		this._isProcessingDataQueue = false;
 
 		// 큐에 대기 중인 메시지 처리
 		this.callbacks.processQueue();
@@ -447,7 +509,12 @@ export class CLIEventHandler extends Disposable {
 			this.updateCurrentMessage();
 
 			setTimeout(() => {
-				this.respondToAskUser([firstOption]);
+				this.respondToAskUser([firstOption]).catch(error => {
+					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
+					// 에러 시 대기 상태 해제
+					this.callbacks.setWaitingForUser(false);
+					this.updateCurrentMessage();
+				});
 			}, 500);
 			return;
 		}
@@ -499,7 +566,12 @@ export class CLIEventHandler extends Disposable {
 			this.updateCurrentMessage();
 
 			setTimeout(() => {
-				this.respondToAskUser([firstOption]);
+				this.respondToAskUser([firstOption]).catch(error => {
+					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
+					// 에러 시 대기 상태 해제
+					this.callbacks.setWaitingForUser(false);
+					this.updateCurrentMessage();
+				});
 			}, 500);
 			return;
 		}
@@ -624,5 +696,45 @@ export class CLIEventHandler extends Disposable {
 
 		this.callbacks.updateSessionMessage(updatedMessage);
 		this.callbacks.fireMessageUpdate(updatedMessage);
+	}
+
+	/**
+	 * 효율적인 큐 기반 데이터 작업 처리 (Promise 체인 대신 사용)
+	 */
+	private async enqueueDataOperation(operation: () => Promise<void>): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			this._dataOperationQueue.push(async () => {
+				try {
+					await operation();
+					resolve();
+				} catch (error) {
+					reject(error);
+				}
+			});
+
+			// 큐 처리 시작
+			this.processDataQueue();
+		});
+	}
+
+	private async processDataQueue(): Promise<void> {
+		if (this._isProcessingDataQueue || this._dataOperationQueue.length === 0) {
+			return;
+		}
+
+		this._isProcessingDataQueue = true;
+
+		try {
+			while (this._dataOperationQueue.length > 0) {
+				const operation = this._dataOperationQueue.shift();
+				if (operation) {
+					await operation();
+				}
+			}
+		} catch (error) {
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Error processing data queue:', error);
+		} finally {
+			this._isProcessingDataQueue = false;
+		}
 	}
 }

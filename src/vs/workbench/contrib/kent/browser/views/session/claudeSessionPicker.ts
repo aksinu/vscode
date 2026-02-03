@@ -6,8 +6,8 @@
 import { localize } from '../../../../../nls.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
-import { IClaudeService } from '../../common/claude.js';
-import { IClaudeMessage, IClaudeSession } from '../../common/claudeTypes.js';
+import { IClaudeService } from '../../../common/services/core/claude.js';
+import { IClaudeMessage, IClaudeSession } from '../../../common/types/claudeTypes.js';
 
 /**
  * SessionPicker 콜백 인터페이스

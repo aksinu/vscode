@@ -17,7 +17,7 @@ import { IExplorerService } from '../../../files/browser/files.js';
 import { ExplorerFolderContext } from '../../../files/common/files.js';
 import { ResourceContextKey } from '../../../../common/contextkeys.js';
 import { EditorContextKeys } from '../../../../../editor/common/editorContextKeys.js';
-import { IClaudeService } from '../../common/claude.js';
+import { IClaudeService } from '../../common/services/core/claude.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
 import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
 import { ClaudeChatViewPane } from '../view/claudeChatView.js';

@@ -16,7 +16,7 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IClaudeAttachment, IClaudeCodeReference } from '../../common/claudeTypes.js';
 import { CodeDataTransfers, getPathForFile } from '../../../../../platform/dnd/browser/dnd.js';
-import { IUIManagerCallbacks } from './claudeUIManager.js';
+import { IUIManagerCallbacks } from '../ui/claudeUIManager.js';
 
 /**
  * AttachmentManager 콜백 인터페이스
@@ -191,13 +191,26 @@ export class AttachmentManager extends Disposable {
 	}
 
 	/**
-	 * 첨부파일 제거
+	 * 첨부파일 제거 (렌더링 최적화)
 	 */
 	remove(id: string): void {
 		const index = this._attachments.findIndex(a => a.id === id);
 		if (index !== -1) {
 			this._attachments.splice(index, 1);
-			this.updateUI();
+
+			// DOM에서 해당 요소만 제거 (전체 리렌더링 없이)
+			const elementToRemove = this.container.querySelector(`[data-attachment-id="${id}"]`);
+			if (elementToRemove) {
+				elementToRemove.remove();
+			}
+
+			// 콜백 호출
+			this.callbacks.onAttachmentsChanged();
+
+			// 모든 첨부파일이 제거된 경우 컨테이너 숨김
+			if (this._attachments.length === 0) {
+				this.container.style.display = 'none';
+			}
 		}
 	}
 
@@ -332,9 +345,14 @@ export class AttachmentManager extends Disposable {
 	// ========== Private Methods ==========
 
 	private updateUI(): void {
-		// 기존 UI 초기화
-		while (this.container.firstChild) {
-			this.container.removeChild(this.container.firstChild);
+		// 변경 감지 최적화: 현재 상태와 비교
+		const currentAttachmentIds = Array.from(this.container.children).map(child =>
+			child.getAttribute('data-attachment-id')).filter(id => id !== null);
+		const newAttachmentIds = this._attachments.map(a => a.id);
+
+		// 변경 사항이 없으면 렌더링 스킵
+		if (this.arraysEqual(currentAttachmentIds, newAttachmentIds)) {
+			return;
 		}
 
 		// 콜백 호출 (열린 파일 버튼 업데이트 등)
@@ -342,13 +360,26 @@ export class AttachmentManager extends Disposable {
 
 		if (this._attachments.length === 0) {
 			this.container.style.display = 'none';
+			// DOM 초기화 (첨부파일 없을 때만)
+			while (this.container.firstChild) {
+				this.container.removeChild(this.container.firstChild);
+			}
 			return;
 		}
 
 		this.container.style.display = 'flex';
 
+		// 증분 렌더링: 새로운 첨부파일만 DOM에 추가
+		const existingAttachmentIds = new Set(currentAttachmentIds);
+
 		for (const attachment of this._attachments) {
+			// 이미 렌더링된 첨부파일은 스킵
+			if (existingAttachmentIds.has(attachment.id)) {
+				continue;
+			}
+
 			const tag = append(this.container, $('.claude-attachment-tag'));
+			tag.setAttribute('data-attachment-id', attachment.id);
 
 			// 코드 참조는 특별한 스타일 적용
 			if (attachment.type === 'code-reference') {
@@ -391,6 +422,14 @@ export class AttachmentManager extends Disposable {
 				this.remove(attachment.id);
 			}));
 		}
+	}
+
+	/**
+	 * 배열 동등성 검사 (렌더링 최적화용)
+	 */
+	private arraysEqual<T>(a: T[], b: T[]): boolean {
+		if (a.length !== b.length) return false;
+		return a.every((val, index) => val === b[index]);
 	}
 
 	private fileToBase64(file: File): Promise<string> {

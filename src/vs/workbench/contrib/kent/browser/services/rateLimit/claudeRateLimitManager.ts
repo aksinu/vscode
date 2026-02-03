@@ -15,6 +15,7 @@ export interface IRateLimitStatusEvent {
 	waiting: boolean;
 	countdown: number;
 	message?: string;
+	lastUpdateTime?: number; // UI에서 로컬 카운트다운을 위한 타임스탬프
 }
 
 /**
@@ -119,30 +120,45 @@ export class RateLimitManager extends Disposable {
 		// 기존 타이머 정리
 		this.clearTimers();
 
-		// 카운트다운 인터벌 (1초마다)
-		this._retryCountdownInterval = setInterval(() => {
-			this._retryCountdown--;
-			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Countdown:', this._retryCountdown);
+		// 카운트다운 인터벌 최적화 (5초마다 이벤트 발생으로 성능 향상)
+		// UI는 로컬에서 매초 업데이트를 처리하고, 서비스는 5초마다만 상태 동기화
+		const COUNTDOWN_UPDATE_INTERVAL = 5000; // 5초
+		let countdownTicks = 0;
 
-			// 메시지 업데이트
+		this._retryCountdownInterval = setInterval(() => {
+			this._retryCountdown -= 5; // 5초씩 감소
+			countdownTicks++;
+
+			// 최소 0으로 제한
+			if (this._retryCountdown < 0) {
+				this._retryCountdown = 0;
+			}
+
+			this.logService.debug(RateLimitManager.LOG_CATEGORY, 'Countdown (5s interval):', this._retryCountdown);
+
+			// 메시지 업데이트 (5초마다만)
 			this.callbacks.onUpdateMessage(
 				`⏳ Rate limit reached. Retrying in ${this.formatWaitTime(this._retryCountdown)}...\n\n${message || ''}`,
 				true
 			);
 
+			// 상태 이벤트 발생 (5초마다만)
 			this._onDidChangeStatus.fire({
 				waiting: true,
 				countdown: this._retryCountdown,
-				message
+				message,
+				// UI가 로컬 카운트다운을 처리할 수 있도록 시작 시간 추가
+				lastUpdateTime: Date.now()
 			});
 
+			// 카운트다운 완료 체크
 			if (this._retryCountdown <= 0) {
 				if (this._retryCountdownInterval) {
 					clearInterval(this._retryCountdownInterval);
 					this._retryCountdownInterval = undefined;
 				}
 			}
-		}, 1000);
+		}, COUNTDOWN_UPDATE_INTERVAL);
 
 		// 재시도 타이머
 		this._retryTimer = setTimeout(() => {

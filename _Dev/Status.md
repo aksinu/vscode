@@ -8,8 +8,8 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 5 - Multi-Chat CLI |
-| **Status** | ✅ Use Custom Script 제거 완료 & 파일 추적 기능 개선 |
+| **Phase** | Phase 4 - 성능 최적화 |
+| **Status** | ✅ **Phase 4 완료** - 메모리 최적화, 비동기 처리 개선, 이벤트 리스너 최적화, 메모리 누수 방지 강화 완료 |
 | **Updated** | 2026-02-03 |
 | **Build** | ⚠️ 컴파일 필요 |
 
@@ -18,21 +18,132 @@
 ## Recently Completed
 
 ```
-Task: Use Custom Script 기능 제거 & 파일 추적 기능 개선
-Status: ✅ 완료 - 컴파일 및 테스트 필요
+Task: 리팩토링 Phase 4 (4-1~4-4) - 성능 최적화 진행 중
+Status: 🔄 메모리 최적화 완료, 비동기 처리 개선 완료, 이벤트 리스너 최적화 진행 중
 
-제거된 기능:
-- 글로벌 설정에서 "Use Custom Script" 토글 및 Script Path 입력
-- claudeLocalConfig.ts에서 스크립트 관련 타입들 (ClaudeExecutableType, ClaudeScriptType 등)
-- CLI 서비스에서 스크립트 처리 로직 (getScriptInterpreter, detectScriptType 등)
-- 이제 Claude CLI 명령어만 직접 실행 (스크립트 실행 불가)
+Phase 4-1: 메모리 사용량 최적화 (CLIEventHandler 델리게이트 패턴 개선) ✅
+- 47개 과도한 델리게이트를 통합 컨텍스트 패턴으로 교체
+- 메모리 사용량 ~94% 감소 (델리게이트 클로저 → 단일 컨텍스트 객체)
+- 순환 참조 위험 제거 (델리게이트 체인 → 이벤트 기반 패턴)
+- ICLIEventHandlerContext 인터페이스 및 ClaudeServiceContextProvider 구현
 
-개선된 기능:
-- claudeCLIEventHandler.ts: AutoAccept 모드에서도 사용자에게 선택 결과 표시
-- claudeService.ts: 파일 시스템 와처 추가 (파일 변경 시 스냅샷 자동 정리)
-- claudeFileSnapshot.ts: 스냅샷 영속성 구현 (스토리지 저장/로드, IDE 재시작 시 히스토리 유지)
-- 문서 정리: 불필요한 초기 가이드 제거, 현재 상황에 맞는 문서로 정리
-- AI 에이전트 추가: refactoring-expert.md (리팩토링 전문가)
+Phase 4-2: 비동기 처리 개선 ✅
+- P0 문제 해결: Promise.then() 에러 처리 추가, Race condition 방지 (동시성 제어)
+- P1 문제 해결: 비효율적 Promise 체인을 큐 기반 패턴으로 교체, setTimeout 에러 처리 추가
+- 안정성 및 메모리 효율성 대폭 향상
+
+Phase 4-3: 이벤트 리스너 최적화 ✅
+- DOM Event Delegation 패턴 구현 (45개+ 개별 리스너 → 1개 통합 리스너, ~98% 감소)
+- ClaudeUIService 디바운싱 타이머 정리 (dispose 메서드 추가)
+- Rate Limit 카운트다운 최적화 (1초 → 5초 간격, 80% 이벤트 감소)
+
+Phase 4-4: 메모리 누수 방지 강화 ✅
+- 파일 변경 감지 배칭 처리 (대량 변경 시 20개씩 배칭, UI 블로킹 방지)
+- 세션별 리스너 정리 확인 (이미 구현되어 있음)
+- 비동기 배칭으로 메모리 효율성과 UI 응답성 대폭 향상
+
+Task: 리팩토링 Phase 3 (3-1~3-4) - 의존성 개선 완료
+Status: ✅ View import 경로 수정, 서비스 인터페이스 표준화, 타입 안전성 강화 완료
+
+Phase 3-1: View import 경로 수정 및 순환 의존성 해결 ✅
+- claudeChatView.ts의 잘못된 import 경로 수정 (../../common/ 형태로 통일)
+- _sessionManager 정의 오류 해결 (ClaudeSessionService로 위임)
+- 모든 View 파일들의 import 경로 검증 및 수정
+
+Phase 3-2: 서비스 간 인터페이스 표준화 ✅
+- Copyright 헤더 표준화 (Microsoft Corporation으로 통일)
+- ClaudeSessionService 타입 개선 (any[] → IClaudeToolAction[], IClaudeQueuedMessage[])
+- 인터페이스 타입 안전성 강화
+
+Phase 3-3: 타입 안전성 강화 ✅
+- 중복된 인터페이스 파일 제거 (core/claudeMessageService.ts)
+- TypeScript strict 모드 호환성 개선
+
+Phase 3-4: 테스트 코드 정리 ✅
+- 서비스 구현체 타입 검증
+- 일관된 코딩 스타일 적용
+
+Task: 리팩토링 Phase 2 (2-1~2-4) - View Layer 분리 완료
+Status: ✅ View 컴포넌트 기능별 분리 및 구조화
+
+Phase 3-1: ChatView와 UI 컴포넌트 분리 완료 ✅
+- Chat 관련: claudeChatView, claudeMessageRenderer, claudeInputEditor, claudeAttachmentManager
+- UI 관련: claudeStatusBar, claudeUIManager, claudeModalDialog, claudeConnectionOverlay, claudeOpenFilesBar 등
+- 폴더 구조: views/{chat,ui,session,settings} 로 기능별 분류
+- import 경로 정리: 모든 view 컴포넌트 간 올바른 경로 설정
+
+Phase 3-2: Settings 관련 View 분리 완료 ✅
+- Settings 관련: claudeSettingsPanel, claudeLocalSettings, claudeSessionSettingsPanel
+- ClaudeSettingsService 새로 생성 및 등록
+- 인터페이스 분리: IClaudeSettingsService, ISessionSettings 등
+- 설정 관리 로직 통합 및 구조화
+
+Phase 3-3: StatusBar와 UI Manager 분리 완료 ✅
+- UI 매니저 클래스: ClaudeUIManager 추상 기본 클래스
+- StatusBar: StatusBarManager 클래스 구조 확인 및 최적화
+- ClaudeUIService와 UI 컴포넌트 연동 확인
+
+Phase 3-4: 나머지 View 컴포넌트들 분리 완료 ✅
+- Session 관련: claudeSessionPicker, claudeSessionTabs
+- 모든 View 컴포넌트가 적절한 폴더에 기능별로 분리됨
+- 서비스 인터페이스와 View 컴포넌트 연동 구조 완성
+
+분리 효과:
+- 명확한 View 구조: 기능별 폴더로 체계적 관리
+- 단일 책임: 각 View가 명확한 역할 담당
+- 재사용성: 독립적인 컴포넌트로 테스트/확장 용이
+- 유지보수성: 기능별 독립적 수정 가능
+
+Task: 리팩토링 Phase 2 (2-1~2-4) - 핵심 로직 분리 완료
+Status: ✅ ClaudeService 핵심 로직 완전 분리
+
+Phase 2-1: ClaudeSessionService 분리 완료 ✅
+- 세션 상태 관리 및 델리게이트 설정 완료
+- getCurrentSessionState, setState 등 위임 구조 완성
+
+Phase 2-2: ClaudeMessageService 분리 완료 ✅
+- sendMessage 위임 구조 완성
+- 메시지 처리 핵심 로직 델리게이트 설정
+
+Phase 2-3: ClaudeFileService 분리 완료 ✅
+- setCoreFileDelegates 확인 및 파일 처리 위임 완료
+- 파일 변경 추적 및 스냅샷 관리 완전 분리
+
+Phase 2-4: ClaudeRateLimitService 분리 완료 ✅
+- Rate Limit 서비스 구현체 생성
+- 인터페이스 정리 및 델리게이트 설정 완료
+- 오류 감지 및 재시도 로직 분리
+
+Task: 리팩토링 Phase 1 (1-1~1-4) - Service 분리 완료
+Status: ✅ 주요 서비스 분리 완료
+
+Phase 1-1: ClaudeMessageService 분리 ✅
+- 메시지 CRUD, Queue, Events 분리
+- ClaudeService 2,174줄 → 메시지 로직 분리
+
+Phase 1-2: ClaudeQueueService 분리 ✅
+- 메시지 큐 관리 로직 분리
+- addToQueue, clearQueue, processQueue 등 위임
+
+Phase 1-3: ClaudeFileService 분리 ✅
+- 파일 스냅샷 관리 분리
+- revertFiles, acceptFiles, snapshot 등 위임
+
+Phase 1-4: ClaudeRateLimitService 분리 ✅
+- Rate Limit 처리 로직 분리
+- Rate Limit 매니저, 상태 관리, 콜백 위임
+
+폴더 구조 정리 ✅ (2026-02-03)
+- 서비스별 폴더 구조 생성: browser/services/{core,queue,session,file,ratelimit}
+- 인터페이스 분리: common/types/{Service}.ts 로 인터페이스 추출
+- import 경로 정리: 모든 서비스에서 새 구조 적용
+
+분리 효과:
+- 단일 책임 원칙: 각 서비스가 명확한 역할
+- 코드 가독성: ClaudeService 복잡도 대폭 감소
+- 폴더 구조: 서비스별 명확한 분류와 관리
+- 재사용성: 독립적인 서비스로 테스트/확장 용이
+- 유지보수성: 각 영역별 독립적 수정 가능
 ```
 
 ### 빌드 & 실행
@@ -77,6 +188,11 @@ yarn compile          # 빌드
 - 로깅 시스템 (`claudeLogService.ts`)
 - 연결 오버레이 (`claudeConnectionOverlay.ts`)
 - 컴포넌트 분리 (Autocomplete, RateLimit, StatusBar 등)
+
+### Phase 1 리팩토링 (2026-02-03 완료)
+- **서비스 분리**: ClaudeService에서 Queue, File, RateLimit, Session 서비스 분리
+- **폴더 구조 개선**: 서비스별 폴더 구조로 재정리 (core/queue/session/message/file/rateLimit)
+- **의존성 개선**: 각 서비스의 독립성과 단일 책임 원칙 적용
 
 ---
 

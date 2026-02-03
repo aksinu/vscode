@@ -10,10 +10,24 @@ import { InstantiationType, registerSingleton } from '../../../../platform/insta
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { IViewContainersRegistry, IViewsRegistry, Extensions as ViewExtensions, ViewContainerLocation } from '../../../common/views.js';
-import { IClaudeService } from '../common/claude.js';
+import { IClaudeService } from '../common/services/core/claude.js';
 import { IClaudeLogService, ClaudeLogService } from '../common/claudeLogService.js';
-import { ClaudeService } from './service/claudeService.js';
-import { ClaudeChatViewPane } from './view/claudeChatView.js';
+import { IClaudeMessageService } from '../common/types/claudeMessageService.js';
+import { IClaudeQueueService } from '../common/types/claudeQueueService.js';
+import { IClaudeFileService } from '../common/types/claudeFileService.js';
+import { IClaudeRateLimitService } from '../common/types/claudeRateLimitService.js';
+import { IClaudeSessionService } from '../common/types/claudeSessionService.js';
+import { IClaudeUIService } from '../common/types/claudeUIService.js';
+import { IClaudeSettingsService } from '../common/types/claudeSettingsService.js';
+import { ClaudeService } from './services/core/claudeService.js';
+import { ClaudeMessageService } from './services/message/claudeMessageService.js';
+import { ClaudeQueueService } from './services/queue/claudeQueueService.js';
+import { ClaudeRateLimitService } from './services/ratelimit/claudeRateLimitService.js';
+import { ClaudeFileService } from './services/file/claudeFileService.js';
+import { ClaudeSessionService } from './services/session/claudeSessionService.js';
+import { ClaudeUIService } from './services/ui/claudeUIService.js';
+import { ClaudeSettingsService } from './services/settings/claudeSettingsService.js';
+import { ClaudeChatViewPane } from './views/chat/claudeChatView.js';
 import { registerClaudeActions } from './actions/claudeActions.js';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import './media/claude.css';
@@ -21,6 +35,13 @@ import './media/claude.css';
 // ========== 서비스 등록 ==========
 
 registerSingleton(IClaudeLogService, ClaudeLogService, InstantiationType.Eager);
+registerSingleton(IClaudeMessageService, ClaudeMessageService, InstantiationType.Delayed);
+registerSingleton(IClaudeQueueService, ClaudeQueueService, InstantiationType.Delayed);
+registerSingleton(IClaudeFileService, ClaudeFileService, InstantiationType.Delayed);
+registerSingleton(IClaudeRateLimitService, ClaudeRateLimitService, InstantiationType.Delayed);
+registerSingleton(IClaudeSessionService, ClaudeSessionService, InstantiationType.Delayed);
+registerSingleton(IClaudeUIService, ClaudeUIService, InstantiationType.Delayed);
+registerSingleton(IClaudeSettingsService, ClaudeSettingsService, InstantiationType.Delayed);
 registerSingleton(IClaudeService, ClaudeService, InstantiationType.Delayed);
 
 // ========== View Container 등록 ==========

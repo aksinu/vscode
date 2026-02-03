@@ -12,7 +12,7 @@ import { INotificationService } from '../../../../../platform/notification/commo
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
 import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
-import { ClaudeModalDialog } from './claudeModalDialog.js';
+import { ClaudeModalDialog } from '../ui/claudeModalDialog.js';
 
 /**
  * Claude 전체 설정 패널 콜백
