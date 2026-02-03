@@ -28,6 +28,7 @@ ProjectRoot/
 │       ├── claude-integration.md   # Claude 통합 설계 전문가
 │       ├── project-status.md       # 프로젝트 상태 추적
 │       ├── design-specs.md         # 설계 명세 전문가
+│       ├── typescript-expert.md    # TypeScript 전문가
 │       ├── architect.md            # 소프트웨어 설계자
 │       ├── coder.md                # 코드 작성 전문가
 │       ├── debugger.md             # 디버깅 전문가
@@ -132,6 +133,7 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 | `claude-integration` | Claude 통합 설계 | IPC, 모듈 아키텍처 질문 |
 | `project-status` | 프로젝트 상태 | 현재 진행상황, 완료된 작업 |
 | `design-specs` | 설계 명세 | 기능 스펙, 설계 결정 |
+| `typescript-expert` | TypeScript 전문 | 타입 시스템, 고급 패턴, VS Code 타입 |
 
 ### 작업 에이전트 (Task)
 | Agent | 용도 | 언제 사용 |
