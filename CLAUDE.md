@@ -45,12 +45,13 @@ ProjectRoot/
 │
 ├── _Dev/                  # 개발 문서
 │   ├── Status.md          # 현재 진행 상태 ★ 작업 시작 시 확인
-│   └── Specs/             # 설계 명세
+│   ├── Backlog.md         # 차세대 기능 백로그
+│   └── Specs/             # 설계 명세 (핵심 SPEC만 유지)
+│       ├── SPEC_001_ChatArchitecture.md
+│       ├── SPEC_002_ClaudeFeatures.md
+│       └── SPEC_005_FileChangesTracking.md
 │
-├── _Guides/               # 개발 가이드 (참조용)
-│   ├── 01_VSCode_Structure.md
-│   ├── 02_Contribution_Pattern.md
-│   └── 03_Claude_Integration.md
+# 제거됨: _Guides/ (Phase 5 완료로 초기 설계 가이드 불필요)
 │
 └── src/                   # VS Code 소스
     └── vs/workbench/contrib/kent/  # Claude 모듈
@@ -147,7 +148,8 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 | Agent | 용도 | 언제 사용 |
 |-------|------|----------|
 | `architect` | 소프트웨어 설계 | 새 기능 설계, 아키텍처 결정 |
-| `coder` | 코드 작성 | 구현, 버그 수정, 리팩토링 |
+| `coder` | 코드 작성 | 구현, 버그 수정, 기본 리팩토링 |
+| `refactoring-expert` | 리팩토링 전문 | 코드 냄새 탐지, 구조 개선, 품질 향상 |
 | `debugger` | 디버깅 | 오류 분석, 로그 해석, 문제 해결 |
 | `reviewer` | 코드 리뷰 | 품질 체크, 패턴 준수 검증 |
 | `tester` | 테스트 | 테스트 케이스 설계, 테스트 작성 |

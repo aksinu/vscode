@@ -61,7 +61,112 @@ export class FileSnapshotManager extends Disposable {
 		private readonly storageService: IStorageService
 	) {
 		super();
-		this.loadSnapshots();
+		this.initializeSnapshots();
+	}
+
+	/**
+	 * 스냅샷 매니저 초기화
+	 */
+	private async initializeSnapshots(): Promise<void> {
+		// 세션 검증 (IDE 재시작 감지)
+		const isNewSession = this.validateSession();
+
+		if (!isNewSession) {
+			// 기존 세션이면 스냅샷 로드
+			this.loadSnapshots();
+			// 스냅샷 검증 실행 (비동기)
+			setTimeout(() => this.validateSnapshotsAfterRestart(), 1000);
+		}
+		// 새 세션이면 이미 clear()가 호출되어 스냅샷이 정리됨
+
+		// 파일 변경 감지 이벤트 구독
+		this.setupFileWatching();
+	}
+
+	/**
+	 * 파일 변경 감지 설정
+	 */
+	private setupFileWatching(): void {
+		// 파일 시스템 변경 이벤트 구독
+		this._register(this.fileService.onDidFilesChange(event => {
+			const affectedPaths: string[] = [];
+
+			// 변경된 파일들 확인 (추가, 업데이트, 삭제)
+			const allChangedUris = [
+				...event.rawAdded,
+				...event.rawUpdated,
+				...event.rawDeleted
+			];
+
+			for (const uri of allChangedUris) {
+				const filePath = uri.fsPath;
+				if (this._snapshots.has(filePath)) {
+					affectedPaths.push(filePath);
+				}
+			}
+
+			if (affectedPaths.length > 0) {
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+					`File system changes detected for ${affectedPaths.length} tracked files`);
+				// 파일 변경 감지 시 스냅샷 정리 (비동기)
+				setTimeout(() => this.cleanupInvalidSnapshots(), 100);
+			}
+		}));
+
+		// 에디터가 열릴 때 해당 파일의 스냅샷 검증
+		this._register(this.editorService.onDidActiveEditorChange(() => {
+			const activeEditor = this.editorService.activeEditor;
+			if (activeEditor?.resource) {
+				const filePath = activeEditor.resource.fsPath;
+				if (this._snapshots.has(filePath)) {
+					this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
+						`Active editor changed to tracked file: ${filePath}`);
+					// 해당 파일만 검증 (비동기)
+					setTimeout(() => this.validateSpecificSnapshot(filePath), 50);
+				}
+			}
+		}));
+	}
+
+	/**
+	 * 특정 파일의 스냅샷 검증
+	 */
+	private async validateSpecificSnapshot(filePath: string): Promise<void> {
+		const snapshot = this._snapshots.get(filePath);
+		if (!snapshot) {
+			return;
+		}
+
+		try {
+			const uri = this.resolveUri(filePath);
+			const model = this.modelService.getModel(uri);
+
+			if (model) {
+				const currentContent = model.getValue();
+
+				// 현재 내용이 원본과 같다면 변경이 없었으므로 스냅샷 제거
+				if (currentContent === snapshot.originalContent) {
+					this._snapshots.delete(filePath);
+					this.saveSnapshots();
+					this._onDidChangeFiles.fire(this.getChangesSummary());
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+						`Removed snapshot for unchanged file: ${filePath}`);
+					return;
+				}
+
+				// 현재 내용이 예상된 수정 내용과 다르다면 외부 변경이므로 스냅샷 제거
+				if (snapshot.modifiedContent && currentContent !== snapshot.modifiedContent) {
+					this._snapshots.delete(filePath);
+					this.saveSnapshots();
+					this._onDidChangeFiles.fire(this.getChangesSummary());
+					this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+						`Removed snapshot for externally changed file: ${filePath}`);
+				}
+			}
+		} catch (error) {
+			this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
+				`Error validating snapshot for ${filePath}:`, error);
+		}
 	}
 
 	/**
@@ -563,6 +668,105 @@ export class FileSnapshotManager extends Disposable {
 	}
 
 	/**
+	 * IDE 재시작 후 스냅샷 검증 및 정리
+	 * 파일이 실제로 변경되었는지 확인하고, 변경되지 않았다면 스냅샷 제거
+	 */
+	async validateSnapshotsAfterRestart(): Promise<void> {
+		if (this._snapshots.size === 0) {
+			return;
+		}
+
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+			`Validating ${this._snapshots.size} snapshots after IDE restart`);
+
+		const toRemove: string[] = [];
+
+		for (const [filePath, snapshot] of this._snapshots.entries()) {
+			try {
+				const uri = this.resolveUri(filePath);
+
+				// 실제 파일 내용 읽기
+				const fileExists = await this.fileService.exists(uri);
+
+				if (!fileExists && snapshot.isNew) {
+					// 새 파일이 생성되지 않았다면 스냅샷 제거
+					toRemove.push(filePath);
+					continue;
+				}
+
+				if (!fileExists && !snapshot.isNew) {
+					// 기존 파일이 삭제되었다면 스냅샷 제거
+					toRemove.push(filePath);
+					continue;
+				}
+
+				if (fileExists) {
+					// 파일 내용 확인
+					const fileContent = await this.fileService.readFile(uri);
+					const currentContent = fileContent.value.toString();
+
+					// 현재 내용이 원본과 같다면 변경이 없었으므로 스냅샷 제거
+					if (currentContent === snapshot.originalContent) {
+						toRemove.push(filePath);
+						continue;
+					}
+
+					// 현재 내용이 예상된 수정 내용과 다르다면 외부 변경이므로 스냅샷 제거
+					if (snapshot.modifiedContent && currentContent !== snapshot.modifiedContent) {
+						toRemove.push(filePath);
+						continue;
+					}
+				}
+			} catch (error) {
+				// 파일 접근 오류 시 스냅샷 제거
+				toRemove.push(filePath);
+				this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
+					`Removing snapshot for inaccessible file: ${filePath}`, error);
+			}
+		}
+
+		// 유효하지 않은 스냅샷 제거
+		for (const filePath of toRemove) {
+			this._snapshots.delete(filePath);
+		}
+
+		if (toRemove.length > 0) {
+			this.saveSnapshots();
+			this._onDidChangeFiles.fire(this.getChangesSummary());
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+				`Removed ${toRemove.length} invalid snapshots after restart validation`);
+		} else {
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+				'All snapshots are valid after restart validation');
+		}
+	}
+
+	/**
+	 * 세션 타임스탬프 검증
+	 * IDE 재시작을 감지하기 위해 세션 시작 시간을 체크
+	 */
+	private validateSession(): boolean {
+		const sessionKey = 'claudeFileSnapshotSession';
+		const currentSession = Date.now();
+		const lastSession = this.storageService.getNumber(sessionKey, StorageScope.WORKSPACE, 0);
+
+		// 30분 이상 차이가 나면 새 세션으로 간주 (IDE 재시작)
+		const SESSION_TIMEOUT = 30 * 60 * 1000; // 30분
+		const isNewSession = (currentSession - lastSession) > SESSION_TIMEOUT;
+
+		if (isNewSession) {
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+				`New session detected, clearing old snapshots`);
+			this.clear(); // 기존 스냅샷 모두 제거
+		}
+
+		// 현재 세션 시간 저장
+		this.storageService.store(sessionKey, currentSession, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+
+		return isNewSession;
+	}
+
+	/**
 	 * 스냅샷 초기화
 	 */
 	clear(): void {
@@ -624,5 +828,25 @@ export class FileSnapshotManager extends Disposable {
 		}
 
 		return { added, removed };
+	}
+
+	/**
+	 * 특정 파일의 스냅샷 제거
+	 */
+	removeSnapshot(filePath: string): boolean {
+		const snapshot = this._snapshots.get(filePath);
+		if (!snapshot) {
+			this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
+				`No snapshot found for file: ${filePath}`);
+			return false;
+		}
+
+		this._snapshots.delete(filePath);
+		this.saveSnapshots();
+		this._onDidChangeFiles.fire(this.getChangesSummary());
+
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+			`🗑️ Removed snapshot for file: ${filePath}`);
+		return true;
 	}
 }

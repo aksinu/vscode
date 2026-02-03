@@ -12,7 +12,7 @@ import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeS
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
 import { RateLimitManager } from './claudeRateLimitManager.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
+import { IFileService, FileChangesEvent } from '../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { IClaudeLocalConfig, DEFAULT_LOCAL_CONFIG } from '../../common/claudeLocalConfig.js';
@@ -547,6 +547,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		// 큐 복원 (저장된 큐 로드)
 		this.loadQueue();
+
+		// 파일 시스템 이벤트 구독 (파일 변경 시 스냅샷 정리)
+		this.setupFileSystemWatcher();
 	}
 
 	// ========== Queue Persistence ==========
@@ -2136,5 +2139,36 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	sendUserInputToSession(sessionId: string, input: string): void {
 		this._multiConnection.sendUserInput(sessionId, input);
+	}
+
+	/**
+	 * 파일 시스템 이벤트 구독 설정
+	 */
+	private setupFileSystemWatcher(): void {
+		// 파일 변경 이벤트 구독
+		this._register(this.fileService.onDidFilesChange((event: FileChangesEvent) => {
+			this.logService.debug(ClaudeService.LOG_CATEGORY, '🔍 File change detected:', {
+				rawAdded: event.rawAdded.map(f => f.resource.toString()),
+				rawUpdated: event.rawUpdated.map(f => f.resource.toString()),
+				rawDeleted: event.rawDeleted.map(f => f.resource.toString())
+			});
+
+			// 변경된 파일들을 확인하고 스냅샷 정리
+			const changedFiles = [
+				...event.rawAdded.map(f => f.resource),
+				...event.rawUpdated.map(f => f.resource),
+				...event.rawDeleted.map(f => f.resource)
+			];
+
+			if (changedFiles.length > 0) {
+				this.logService.info(ClaudeService.LOG_CATEGORY, `📝 Files changed - cleaning up snapshots for ${changedFiles.length} files`);
+				for (const fileUri of changedFiles) {
+					this._fileSnapshotManager.removeSnapshot(fileUri.toString());
+					this.logService.debug(ClaudeService.LOG_CATEGORY, `🗑️ Removed snapshot for: ${fileUri.toString()}`);
+				}
+			}
+		}));
+
+		this.logService.info(ClaudeService.LOG_CATEGORY, '👁️ File system watcher setup completed');
 	}
 }

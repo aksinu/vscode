@@ -9,23 +9,30 @@
 | Item | Value |
 |------|-------|
 | **Phase** | Phase 5 - Multi-Chat CLI |
-| **Status** | Use Custom Script 기능 제거 완료 |
-| **Updated** | 2026-02-02 |
+| **Status** | ✅ Use Custom Script 제거 완료 & 파일 추적 기능 개선 |
+| **Updated** | 2026-02-03 |
 | **Build** | ⚠️ 컴파일 필요 |
 
 ---
 
-## Now Working On
+## Recently Completed
 
 ```
-Task: Use Custom Script 기능 제거
-Status: ✅ 제거 완료 - 컴파일 및 테스트 필요
+Task: Use Custom Script 기능 제거 & 파일 추적 기능 개선
+Status: ✅ 완료 - 컴파일 및 테스트 필요
 
 제거된 기능:
 - 글로벌 설정에서 "Use Custom Script" 토글 및 Script Path 입력
 - claudeLocalConfig.ts에서 스크립트 관련 타입들 (ClaudeExecutableType, ClaudeScriptType 등)
 - CLI 서비스에서 스크립트 처리 로직 (getScriptInterpreter, detectScriptType 등)
 - 이제 Claude CLI 명령어만 직접 실행 (스크립트 실행 불가)
+
+개선된 기능:
+- claudeCLIEventHandler.ts: AutoAccept 모드에서도 사용자에게 선택 결과 표시
+- claudeService.ts: 파일 시스템 와처 추가 (파일 변경 시 스냅샷 자동 정리)
+- claudeFileSnapshot.ts: 스냅샷 영속성 구현 (스토리지 저장/로드, IDE 재시작 시 히스토리 유지)
+- 문서 정리: 불필요한 초기 가이드 제거, 현재 상황에 맞는 문서로 정리
+- AI 에이전트 추가: refactoring-expert.md (리팩토링 전문가)
 ```
 
 ### 빌드 & 실행
@@ -198,6 +205,21 @@ onDidComplete         ──▶ handleCommandComplete()
 ---
 
 ## Activity Log
+
+### 2026-02-03
+- **Use Custom Script 기능 제거 완료**
+  - **제거된 기능**:
+    - 글로벌 설정에서 "Use Custom Script" 토글 및 Script Path 입력
+    - claudeLocalConfig.ts에서 스크립트 관련 타입들 (ClaudeExecutableType, ClaudeScriptType 등)
+    - CLI 서비스에서 스크립트 처리 로직 (getScriptInterpreter, detectScriptType 등)
+  - **변경사항**:
+    - `claudeCLIEventHandler.ts` (3줄 추가): AutoAccept 모드에서도 사용자에게 선택 결과를 표시하도록 개선
+    - `claudeService.ts` (36줄 추가): `setupFileSystemWatcher()` 메서드 추가로 파일 변경 시 스냅샷 자동 정리
+    - `claudeFileSnapshot.ts` (226줄 추가): 스냅샷 영속성 구현
+      - `saveSnapshots()`, `loadSnapshots()` 메서드 추가
+      - IDE 재시작 후에도 파일 변경 히스토리 유지
+      - 스토리지 기반 스냅샷 저장/로드 기능
+  - **결과**: 이제 Claude CLI 명령어만 직접 실행 (커스텀 스크립트 실행 불가)
 
 ### 2026-01-30
 - **Multi-Chat CLI Connection (Sprint)**

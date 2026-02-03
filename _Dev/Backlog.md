@@ -1,55 +1,29 @@
 # Feature Backlog
 
-> **Claude 기능 백로그**
+> **Claude 기능 백로그** (Phase 5 이후)
 
 ---
 
 ## Overview
 
-| # | Feature | Priority | Status | Complexity |
-|---|---------|----------|--------|------------|
-| 1 | 파일 탐색기 컨텍스트 메뉴 | P1 | Pending | Medium |
-| 2 | 에디터 컨텍스트 메뉴 | P1 | Pending | Medium |
-| 3 | 세션별 변경사항 히스토리 | P2 | Pending | High |
-| 4 | Accept/Reject 배치 UI | P3 | Enhancement | High |
+| # | Feature | Priority | Status | Complexity | Notes |
+|---|---------|----------|--------|------------|-------|
+| 1 | 에디터 컨텍스트 메뉴 확장 | P1 | Pending | Medium | 기본은 구현됨, 확장 필요 |
+| 2 | Agent 모드 (자율 실행) | P1 | Pending | High | Edit 모드 다음 단계 |
+| 3 | 벡터 검색 (@codebase) | P2 | Pending | High | 프로젝트 전체 검색 |
+| 4 | Accept/Reject 배치 UI | P2 | Enhancement | Medium | 현재 개별 Revert만 지원 |
 
 ---
 
 ## Feature Details
 
-### 1. 파일 탐색기 컨텍스트 메뉴
+### 1. 에디터 컨텍스트 메뉴 확장
 
-**목표**: 파일 탐색기에서 우클릭으로 Claude에 파일 전송
+**현재 상태**: ✅ 기본 구현됨
+- ✅ `AskClaudeAboutSelection` (Ctrl+Shift+A)
+- ✅ Explorer 파일/폴더 우클릭 메뉴
 
-**사용 시나리오**:
-- 파일 우클릭 → "Ask Claude about this file" → 파일 첨부 + 채팅 열림
-- 폴더 우클릭 → "Ask Claude about this folder" → 폴더 컨텍스트 전달
-- 다중 파일 선택 → 여러 파일 일괄 첨부
-
-**구현 항목**:
-- [ ] `menus.explorer/context` contribution 등록
-- [ ] `claude.sendFileToChat` 액션 구현
-- [ ] 선택된 URI 목록 → attachmentManager 연동
-- [ ] 채팅 패널 자동 열기 + 포커스
-- [ ] 폴더 선택 시 하위 파일 처리 로직
-
-**관련 파일**:
-- `kent.contribution.ts`: 메뉴/액션 등록
-- `claudeAttachmentManager.ts`: 파일 첨부 로직
-
-**참고 패턴**:
-```typescript
-// VS Code 기존 패턴 참고
-MenuRegistry.appendMenuItem(MenuId.ExplorerContext, {
-    command: { id: 'claude.sendFileToChat', title: 'Ask Claude' },
-    group: 'claude',
-    when: ExplorerResourceIsFile
-});
-```
-
----
-
-### 2. 에디터 컨텍스트 메뉴
+**목표**: 더 풍부한 컨텍스트 메뉴 제공
 
 **목표**: 코드 선택 후 우클릭으로 Claude에 질문/요청
 
@@ -215,4 +189,4 @@ interface IClaudeMessageHistory {
 
 ---
 
-**Updated**: 2026-01-28
+**Updated**: 2026-02-03 (Phase 5 완료 후 갱신)

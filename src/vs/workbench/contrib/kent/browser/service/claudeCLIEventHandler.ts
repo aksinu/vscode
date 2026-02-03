@@ -441,6 +441,9 @@ export class CLIEventHandler extends Disposable {
 				autoAccepted: true,
 				autoAcceptedOption: firstOption
 			} as IClaudeAskUserRequest & { autoAccepted?: boolean; autoAcceptedOption?: string });
+
+			// AutoAccept 모드에서도 사용자에게 질문과 자동 선택된 답변을 표시하기 위해 필요
+			this.callbacks.setWaitingForUser(true);
 			this.updateCurrentMessage();
 
 			setTimeout(() => {
