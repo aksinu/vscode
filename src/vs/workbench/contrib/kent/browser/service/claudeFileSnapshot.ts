@@ -16,6 +16,7 @@ import { localize } from '../../../../../nls.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
 import { IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
 import { VSBuffer } from '../../../../../base/common/buffer.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 
 /**
  * 파일 스냅샷 정보 (내부용)
@@ -48,15 +49,19 @@ export class FileSnapshotManager extends Disposable {
 	private readonly _onDidChangeFiles = this._register(new Emitter<IClaudeFileChangesSummary>());
 	readonly onDidChangeFiles: Event<IClaudeFileChangesSummary> = this._onDidChangeFiles.event;
 
+	private static readonly SNAPSHOTS_STORAGE_KEY = 'claude.fileSnapshots';
+
 	constructor(
 		private readonly fileService: IFileService,
 		private readonly modelService: IModelService,
 		private readonly textModelService: ITextModelService,
 		private readonly editorService: IEditorService,
 		private readonly textFileService: ITextFileService,
-		private readonly logService: IClaudeLogService
+		private readonly logService: IClaudeLogService,
+		private readonly storageService: IStorageService
 	) {
 		super();
+		this.loadSnapshots();
 	}
 
 	/**
@@ -65,7 +70,71 @@ export class FileSnapshotManager extends Disposable {
 	startCommand(workingDir?: string): void {
 		this._snapshots.clear();
 		this._workingDir = workingDir;
+		this.saveSnapshots();
 		this.logService.debug(FileSnapshotManager.LOG_CATEGORY, 'Command started, snapshots cleared');
+	}
+
+	/**
+	 * 스냅샷을 스토리지에 저장
+	 */
+	private saveSnapshots(): void {
+		try {
+			const snapshotsArray = Array.from(this._snapshots.values()).map(snapshot => ({
+				filePath: snapshot.filePath,
+				uri: snapshot.uri.toString(),
+				originalContent: snapshot.originalContent,
+				modifiedContent: snapshot.modifiedContent,
+				timestamp: snapshot.timestamp,
+				isNew: snapshot.isNew
+			}));
+
+			this.storageService.store(
+				FileSnapshotManager.SNAPSHOTS_STORAGE_KEY,
+				JSON.stringify(snapshotsArray),
+				StorageScope.WORKSPACE,
+				StorageTarget.MACHINE
+			);
+
+			this.logService.debug(FileSnapshotManager.LOG_CATEGORY, `Saved ${snapshotsArray.length} snapshots to storage`);
+		} catch (error) {
+			this.logService.error(FileSnapshotManager.LOG_CATEGORY, 'Failed to save snapshots to storage:', error);
+		}
+	}
+
+	/**
+	 * 스토리지에서 스냅샷 로드 (IDE 재시작 시)
+	 */
+	private loadSnapshots(): void {
+		try {
+			const stored = this.storageService.get(FileSnapshotManager.SNAPSHOTS_STORAGE_KEY, StorageScope.WORKSPACE);
+			if (!stored) {
+				return;
+			}
+
+			const snapshotsArray = JSON.parse(stored);
+			this._snapshots.clear();
+
+			for (const item of snapshotsArray) {
+				const snapshot: IFileSnapshot = {
+					filePath: item.filePath,
+					uri: URI.parse(item.uri),
+					originalContent: item.originalContent,
+					modifiedContent: item.modifiedContent,
+					timestamp: item.timestamp,
+					isNew: item.isNew
+				};
+				this._snapshots.set(item.filePath, snapshot);
+			}
+
+			this.logService.debug(FileSnapshotManager.LOG_CATEGORY, `Loaded ${snapshotsArray.length} snapshots from storage`);
+
+			// 스냅샷이 있으면 변경 이벤트 발생
+			if (this._snapshots.size > 0) {
+				this._onDidChangeFiles.fire(this.getChangesSummary());
+			}
+		} catch (error) {
+			this.logService.error(FileSnapshotManager.LOG_CATEGORY, 'Failed to load snapshots from storage:', error);
+		}
 	}
 
 	/**
@@ -115,6 +184,7 @@ export class FileSnapshotManager extends Disposable {
 			};
 
 			this._snapshots.set(filePath, snapshot);
+			this.saveSnapshots(); // 스냅샷 영구 저장
 			this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
 				`Captured snapshot for: ${filePath} (${isNew ? 'new file' : originalContent.length + ' chars'})`);
 
@@ -162,6 +232,7 @@ export class FileSnapshotManager extends Disposable {
 				}
 			}
 
+			this.saveSnapshots(); // 스냅샷 영구 저장
 			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
 				`[FileChanges] captureAfterEdit done: ${filePath} (${snapshot.modifiedContent?.length || 0} chars)`);
 
@@ -449,11 +520,55 @@ export class FileSnapshotManager extends Disposable {
 	}
 
 	/**
+	 * 파일 변경 감지 시 스냅샷 정리 (IDE 재시작 등)
+	 */
+	cleanupInvalidSnapshots(): void {
+		const toRemove: string[] = [];
+
+		for (const [filePath, snapshot] of this._snapshots.entries()) {
+			try {
+				// 파일이 외부에서 변경되었는지 확인
+				const uri = this.resolveUri(filePath);
+				const model = this.modelService.getModel(uri);
+
+				if (model) {
+					const currentContent = model.getValue();
+					// 현재 내용이 원본도 아니고 수정된 내용도 아니라면 외부 변경
+					if (currentContent !== snapshot.originalContent &&
+						currentContent !== (snapshot.modifiedContent || '')) {
+						toRemove.push(filePath);
+						this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+							`Removing invalid snapshot for externally changed file: ${filePath}`);
+					}
+				}
+			} catch (error) {
+				// 파일 접근 오류 시 스냅샷 제거
+				toRemove.push(filePath);
+				this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
+					`Removing snapshot for inaccessible file: ${filePath}`, error);
+			}
+		}
+
+		// 유효하지 않은 스냅샷 제거
+		for (const filePath of toRemove) {
+			this._snapshots.delete(filePath);
+		}
+
+		if (toRemove.length > 0) {
+			this.saveSnapshots(); // 정리된 스냅샷 저장
+			this._onDidChangeFiles.fire(this.getChangesSummary());
+			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+				`Cleaned up ${toRemove.length} invalid snapshots`);
+		}
+	}
+
+	/**
 	 * 스냅샷 초기화
 	 */
 	clear(): void {
 		this._snapshots.clear();
 		this._workingDir = undefined;
+		this.saveSnapshots(); // 초기화된 상태 저장
 	}
 
 	/**

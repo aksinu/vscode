@@ -69,9 +69,9 @@ export class ClaudeMessageRenderer extends Disposable {
 		const roleElement = append(headerElement, $('.claude-message-role'));
 		roleElement.textContent = message.role === 'user' ? 'You' : 'Claude';
 
-		// 타임스탬프
+		// 타임스탬프와 작업 시간
 		const timeElement = append(headerElement, $('.claude-message-time'));
-		timeElement.textContent = this.formatTime(message.timestamp);
+		this.updateTimeDisplay(timeElement, message);
 
 		// 메시지 복사 버튼 (hover 시 표시)
 		const copyMessageButton = append(headerElement, $('button.claude-message-copy'));
@@ -295,6 +295,130 @@ export class ClaudeMessageRenderer extends Disposable {
 			hour: '2-digit',
 			minute: '2-digit'
 		});
+	}
+
+	private updateTimeDisplay(timeElement: HTMLElement, message: IClaudeMessage): void {
+		const baseTime = this.formatTime(message.timestamp);
+
+		// 사용자 메시지는 기본 시간만 표시
+		if (message.role === 'user') {
+			timeElement.textContent = baseTime;
+			return;
+		}
+
+		// Assistant 메시지의 경우 작업 시간도 표시
+		if (message.workStartTime) {
+			const workTimeText = this.formatWorkTime(message);
+			timeElement.innerHTML = `${baseTime}<span class="claude-work-time">${workTimeText}</span>`;
+
+			// 스트리밍 중이면 실시간 업데이트 설정
+			if (message.isStreaming) {
+				this.setupLiveTimeUpdate(timeElement, message);
+			}
+		} else {
+			timeElement.textContent = baseTime;
+		}
+	}
+
+	private formatWorkTime(message: IClaudeMessage): string {
+		if (!message.workStartTime) {
+			return '';
+		}
+
+		const endTime = message.workEndTime || Date.now();
+		const durationMs = endTime - message.workStartTime;
+
+		if (durationMs < 1000) {
+			return ` • <1s`;
+		}
+
+		const seconds = Math.floor(durationMs / 1000);
+		const minutes = Math.floor(seconds / 60);
+
+		if (minutes > 0) {
+			const remainingSeconds = seconds % 60;
+			return ` • ${minutes}m ${remainingSeconds}s`;
+		} else {
+			return ` • ${seconds}s`;
+		}
+	}
+
+	private setupLiveTimeUpdate(timeElement: HTMLElement, message: IClaudeMessage): void {
+		if (!message.workStartTime || !message.isStreaming) {
+			return;
+		}
+
+		let lastNotificationTime = 0;
+		const NOTIFICATION_INTERVALS = [30, 60, 120, 300]; // 30초, 1분, 2분, 5분
+
+		const updateInterval = setInterval(() => {
+			// 스트리밍이 완료되었으면 중지
+			if (!message.isStreaming) {
+				clearInterval(updateInterval);
+				return;
+			}
+
+			const baseTime = this.formatTime(message.timestamp);
+			const workTimeText = this.formatWorkTime(message);
+			timeElement.innerHTML = `${baseTime}<span class="claude-work-time">${workTimeText}</span>`;
+
+			// 장시간 작업 알림 체크
+			const elapsedSeconds = (Date.now() - message.workStartTime!) / 1000;
+			const shouldNotify = NOTIFICATION_INTERVALS.find(interval =>
+				elapsedSeconds >= interval && lastNotificationTime < interval
+			);
+
+			if (shouldNotify) {
+				lastNotificationTime = shouldNotify;
+				this.showLongRunningTaskNotification(elapsedSeconds);
+			}
+		}, 1000); // 1초마다 업데이트
+
+		// 메모리 누수 방지를 위해 5분 후 자동 중지
+		setTimeout(() => {
+			clearInterval(updateInterval);
+		}, 5 * 60 * 1000);
+	}
+
+	private showLongRunningTaskNotification(elapsedSeconds: number): void {
+		const container = document.querySelector('.claude-message:last-child .claude-message-content');
+		if (!container) return;
+
+		// 기존 알림이 있으면 제거
+		const existingNotification = container.querySelector('.claude-long-task-notification');
+		if (existingNotification) {
+			existingNotification.remove();
+		}
+
+		const notification = document.createElement('div');
+		notification.className = 'claude-long-task-notification';
+
+		let message = '';
+		if (elapsedSeconds >= 300) { // 5분 이상
+			message = localize('longTaskNotification5min', "Claude is working on a complex task (5+ minutes). This may involve multiple steps or require significant processing time.");
+		} else if (elapsedSeconds >= 120) { // 2분 이상
+			message = localize('longTaskNotification2min', "Claude is working on a complex task (2+ minutes). Please be patient as this may take some time to complete.");
+		} else if (elapsedSeconds >= 60) { // 1분 이상
+			message = localize('longTaskNotification1min', "Claude is working on your request (1+ minute). For complex tasks, this is normal.");
+		} else if (elapsedSeconds >= 30) { // 30초 이상
+			message = localize('longTaskNotification30s', "Claude is thinking deeply about your request...");
+		}
+
+		notification.innerHTML = `
+			<div class="claude-notification-icon">
+				<span class="codicon codicon-info"></span>
+			</div>
+			<div class="claude-notification-text">${message}</div>
+		`;
+
+		container.appendChild(notification);
+
+		// 3초 후 자동 제거
+		setTimeout(() => {
+			if (notification.parentNode) {
+				notification.remove();
+			}
+		}, 3000);
 	}
 
 	private renderCurrentToolAction(message: IClaudeMessage, container: HTMLElement): void {

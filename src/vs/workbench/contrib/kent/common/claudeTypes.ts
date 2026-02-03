@@ -270,6 +270,10 @@ export interface IClaudeMessage {
 	readonly fileChanges?: IClaudeFileChangesSummary;
 	/** 큐가 가득 차서 거부됨 */
 	readonly queueRejected?: boolean;
+	/** 작업 시작 시간 (assistant 메시지, 스트리밍 시작할 때 설정) */
+	readonly workStartTime?: number;
+	/** 작업 완료 시간 (assistant 메시지, 스트리밍 완료할 때 설정) */
+	readonly workEndTime?: number;
 }
 
 /**

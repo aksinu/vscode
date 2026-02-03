@@ -198,6 +198,46 @@
 	margin-left: auto;
 }
 
+.claude-work-time {
+	color: var(--vscode-charts-blue);
+	font-weight: 500;
+	opacity: 0.8;
+}
+
+/* ========== Long Running Task Notification ========== */
+
+.claude-long-task-notification {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 12px 0;
+	padding: 12px;
+	background-color: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+	opacity: 0;
+	animation: fadeInOut 3s ease-in-out;
+}
+
+@keyframes fadeInOut {
+	0% { opacity: 0; transform: translateY(10px); }
+	20% { opacity: 1; transform: translateY(0); }
+	80% { opacity: 1; transform: translateY(0); }
+	100% { opacity: 0; transform: translateY(-10px); }
+}
+
+.claude-notification-icon {
+	color: var(--vscode-notificationsInfoIcon-foreground);
+	margin-top: 2px;
+}
+
+.claude-notification-text {
+	flex: 1;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--vscode-foreground);
+}
+
 /* ========== Message Usage Info ========== */
 
 .claude-message-usage {

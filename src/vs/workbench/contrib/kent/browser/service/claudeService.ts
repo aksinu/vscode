@@ -180,7 +180,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.textModelService,
 			this.editorService,
 			this.textFileService,
-			this.logService
+			this.logService,
+			this.storageService
 		));
 
 		// 연결 관리자 생성 (Legacy 단일 인스턴스)
@@ -241,6 +242,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		// 로컬 설정 로드 (비동기)
 		this.loadLocalConfig();
+
+		// 초기화 시 유효하지 않은 스냅샷 정리
+		setTimeout(() => {
+			this._fileSnapshotManager.cleanupInvalidSnapshots();
+		}, 1000); // 1초 후 실행 (초기화 완료 후)
 
 		// CLI 이벤트 핸들러 생성 (세션별 상태 사용)
 		this._cliEventHandler = this._register(new CLIEventHandler({
@@ -369,12 +375,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			},
 			hasCurrentSession: () => this._sessionManager.hasCurrentSession(),
 			createAssistantMessage: (id) => {
+				const now = Date.now();
 				const assistantMessage: IClaudeMessage = {
 					id,
 					role: 'assistant',
 					content: '',
-					timestamp: Date.now(),
-					isStreaming: true
+					timestamp: now,
+					isStreaming: true,
+					workStartTime: now
 				};
 				this._sessionManager.addMessage(assistantMessage);
 				this._onDidReceiveMessage.fire(assistantMessage);
@@ -478,7 +486,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 							role: 'assistant',
 							content: sessionState.accumulatedContent,
 							timestamp: Date.now(),
-							isStreaming: false
+							isStreaming: false,
+							workEndTime: Date.now()
 						};
 						this._sessionManager.updateMessage(assistantMessage, session);
 						console.log('[ClaudeService] Saved background session message:', event.chatId, 'content length:', sessionState.accumulatedContent.length);
@@ -1003,12 +1012,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			sessionState.currentToolAction = undefined;
 		}
 
+		const now = Date.now();
 		const assistantMessage: IClaudeMessage = {
 			id: messageId,
 			role: 'assistant',
 			content: '',
-			timestamp: Date.now(),
-			isStreaming: true
+			timestamp: now,
+			isStreaming: true,
+			workStartTime: now
 		};
 
 		this._sessionManager.addMessage(assistantMessage);
@@ -1114,7 +1125,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				role: 'assistant',
 				content: this._accumulatedContent,
 				timestamp: Date.now(),
-				isStreaming: false
+				isStreaming: false,
+				workEndTime: Date.now()
 			};
 
 			return finalMessage;
@@ -1154,7 +1166,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					if (message && message.isStreaming) {
 						const updatedMessage: IClaudeMessage = {
 							...message,
-							isStreaming: false
+							isStreaming: false,
+							workEndTime: Date.now()
 						};
 						if (this._sessionManager.updateMessage(updatedMessage)) {
 							this._onDidUpdateMessage.fire(updatedMessage);
@@ -1973,7 +1986,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			role: 'assistant',
 			content: sessionState.accumulatedContent,
 			timestamp: Date.now(),
-			isStreaming
+			isStreaming,
+			workEndTime: isStreaming ? undefined : Date.now()
 		};
 
 		const session = this._sessionManager.getSessionById(sessionId);
