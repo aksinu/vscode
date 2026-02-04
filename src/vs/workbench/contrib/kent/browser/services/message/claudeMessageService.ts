@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../base/common/event.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
-import { generateUuid } from '../../../../base/common/uuid.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { IClaudeMessageService } from '../../../common/types/claudeMessageService.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, IClaudeSession, IClaudeQueuedMessage } from '../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
@@ -85,6 +85,20 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 
 	clearMessages(sessionId?: string): void {
 		// TODO: Implement when needed
+	}
+
+	getCurrentSession(): IClaudeSession | undefined {
+		if (this.getCurrentSessionDelegate) {
+			return this.getCurrentSessionDelegate();
+		}
+		return undefined;
+	}
+
+	hasCurrentSession(): boolean {
+		if (this.hasCurrentSessionDelegate) {
+			return this.hasCurrentSessionDelegate();
+		}
+		return false;
 	}
 
 	// ========== Queue Management ==========

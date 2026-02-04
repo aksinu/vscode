@@ -3,16 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IDisposable } from '../../../../../base/common/lifecycle.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, IClaudeSession, IClaudeStatusInfo, ClaudeServiceState, IClaudeConnectionInfo } from '../../common/claudeTypes.js';
-import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
-import { IClaudeConnection } from './claudeConnection.js';
-import { IClaudeSessionService } from './claudeSessionService.js';
-import { IClaudeMessageService } from '../message/claudeMessageService.js';
-import { IClaudeFileService } from '../file/claudeFileService.js';
-import { IClaudeUIService } from '../ui/claudeUIService.js';
-import { IClaudeRateLimitService } from '../rateLimit/claudeRateLimitService.js';
+import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
+import { IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, IClaudeSession, IClaudeStatusInfo, ClaudeServiceState } from '../../../common/types/claudeTypes.js';
+import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
+import { IClaudeConnection, IClaudeConnectionInfo } from './claudeConnection.js';
+import { IClaudeSessionService } from '../../../common/types/claudeSessionService.js';
+import { IClaudeMessageService } from '../../../common/types/claudeMessageService.js';
+import { IClaudeFileService } from '../../../common/types/claudeFileService.js';
+import { IClaudeUIService } from '../../../common/types/claudeUIService.js';
+import { IClaudeRateLimitService } from '../../../common/types/claudeRateLimitService.js';
 
 /**
  * CLI 이벤트 핸들러에서 사용하는 컨텍스트 그룹 인터페이스

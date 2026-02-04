@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { IClaudeRateLimitInfo, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
-import { IClaudeLogService } from '../../common/claudeLogService.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { IClaudeRateLimitInfo, IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
+import { IClaudeLogService } from '../../../common/claudeLogService.js';
 
 /**
  * Rate limit 상태 변경 이벤트

@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Event } from '../../../../base/common/event.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeFileChange, IClaudeFileChangesSummary, IClaudeSessionChangesHistory } from '../claudeTypes.js';
+import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
+import { IClaudeFileChange, IClaudeFileChangesSummary } from './claudeTypes.js';
+import { IClaudeSessionChangesHistory } from '../services/core/claude.js';
 
 export const IClaudeFileService = createDecorator<IClaudeFileService>('claudeFileService');
 

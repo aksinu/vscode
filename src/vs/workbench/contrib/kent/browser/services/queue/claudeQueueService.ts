@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { IStorageService, StorageScope } from '../../../../../../platform/storage/common/storage.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { IClaudeQueueService } from '../../../common/types/claudeQueueService.js';
 import { IClaudeQueuedMessage, IClaudeSendRequestOptions } from '../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
@@ -18,6 +19,7 @@ import { IClaudeLogService } from '../../../common/claudeLogService.js';
 export class ClaudeQueueService extends Disposable implements IClaudeQueueService {
 	declare readonly _serviceBrand: undefined;
 
+	private static readonly LOG_CATEGORY = 'ClaudeQueueService';
 	private static readonly QUEUE_STORAGE_KEY = 'claude.messageQueue';
 	private static readonly MAX_QUEUE_SIZE = 10;
 
@@ -28,97 +30,245 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 
 	// ========== State ==========
 
-	private _queue: IClaudeQueuedMessage[] = [];
+	private _globalQueue: IClaudeQueuedMessage[] = [];
+	private readonly _sessionQueues = new Map<string, IClaudeQueuedMessage[]>();
+	private readonly _processingQueues = new Set<string>();
+
+	// ========== Delegates ==========
+
+	private _saveSessionQueue: ((sessionId: string, queue: IClaudeQueuedMessage[]) => void) | undefined;
+	private _saveGlobalQueue: ((queue: IClaudeQueuedMessage[]) => void) | undefined;
+	private _processMessage: ((content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => Promise<void>) | undefined;
 
 	constructor(
 		@IClaudeLogService private readonly logService: IClaudeLogService,
 		@IStorageService private readonly storageService: IStorageService
 	) {
 		super();
-		this.logService.info('ClaudeQueueService', 'Service initialized');
+		this.logService.info(ClaudeQueueService.LOG_CATEGORY, 'Service initialized');
 		this._loadQueue();
 	}
 
-	// ========== Queue Management ==========
+	// ========== Delegate Setup ==========
 
-	getQueue(sessionId?: string): IClaudeQueuedMessage[] {
+	setQueueDelegates(
+		saveSessionQueue: (sessionId: string, queue: IClaudeQueuedMessage[]) => void,
+		saveGlobalQueue: (queue: IClaudeQueuedMessage[]) => void,
+		processMessage: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => Promise<void>
+	): void {
+		this._saveSessionQueue = saveSessionQueue;
+		this._saveGlobalQueue = saveGlobalQueue;
+		this._processMessage = processMessage;
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, 'Delegates set');
+	}
+
+	// ========== Queue Operations ==========
+
+	addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeQueuedMessage {
+		const message: IClaudeQueuedMessage = {
+			id: generateUuid(),
+			content,
+			context: options?.context,
+			timestamp: Date.now()
+		};
+
 		if (sessionId) {
-			return this._queue.filter(msg => msg.sessionId === sessionId);
+			const queue = this._getOrCreateSessionQueue(sessionId);
+			if (queue.length >= ClaudeQueueService.MAX_QUEUE_SIZE) {
+				this.logService.warn(ClaudeQueueService.LOG_CATEGORY, `Session queue full for ${sessionId}`);
+			} else {
+				queue.push(message);
+				this._saveSessionQueue?.(sessionId, queue);
+				this._onDidChangeQueue.fire([...queue]);
+			}
+		} else {
+			if (this._globalQueue.length >= ClaudeQueueService.MAX_QUEUE_SIZE) {
+				this.logService.warn(ClaudeQueueService.LOG_CATEGORY, 'Global queue full');
+			} else {
+				this._globalQueue.push(message);
+				this._saveGlobalQueue?.(this._globalQueue);
+				this._onDidChangeQueue.fire([...this._globalQueue]);
+			}
 		}
-		return [...this._queue];
+
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Message added to queue: ${content.substring(0, 50)}`);
+		return message;
 	}
 
-	addToQueue(message: IClaudeQueuedMessage): void {
-		// Remove oldest message if queue is full
-		if (this._queue.length >= ClaudeQueueService.MAX_QUEUE_SIZE) {
-			this._queue.shift();
-			this.logService.warn('ClaudeQueueService', 'Queue full, removing oldest message');
+	addToGlobalQueue(message: IClaudeQueuedMessage): void {
+		if (this._globalQueue.length >= ClaudeQueueService.MAX_QUEUE_SIZE) {
+			this._globalQueue.shift();
+			this.logService.warn(ClaudeQueueService.LOG_CATEGORY, 'Queue full, removing oldest message');
 		}
 
-		this._queue.push(message);
-		this._saveQueue();
-		this._onDidChangeQueue.fire([...this._queue]);
-		this.logService.info('ClaudeQueueService', `Message added to queue. Queue size: ${this._queue.length}`);
+		this._globalQueue.push(message);
+		this._saveGlobalQueue?.(this._globalQueue);
+		this._onDidChangeQueue.fire([...this._globalQueue]);
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Message added to global queue. Size: ${this._globalQueue.length}`);
 	}
 
-	removeFromQueue(messageId: string): boolean {
-		const index = this._queue.findIndex(msg => msg.id === messageId);
-		if (index !== -1) {
-			this._queue.splice(index, 1);
-			this._saveQueue();
-			this._onDidChangeQueue.fire([...this._queue]);
-			this.logService.info('ClaudeQueueService', `Message removed from queue. Queue size: ${this._queue.length}`);
-			return true;
+	removeFromQueue(id: string, sessionId?: string): boolean {
+		if (sessionId) {
+			const queue = this._sessionQueues.get(sessionId);
+			if (queue) {
+				const index = queue.findIndex(m => m.id === id);
+				if (index !== -1) {
+					queue.splice(index, 1);
+					this._saveSessionQueue?.(sessionId, queue);
+					this._onDidChangeQueue.fire([...queue]);
+					return true;
+				}
+			}
+		} else {
+			const index = this._globalQueue.findIndex(m => m.id === id);
+			if (index !== -1) {
+				this._globalQueue.splice(index, 1);
+				this._saveGlobalQueue?.(this._globalQueue);
+				this._onDidChangeQueue.fire([...this._globalQueue]);
+				return true;
+			}
 		}
 		return false;
 	}
 
 	clearQueue(sessionId?: string): void {
 		if (sessionId) {
-			const beforeSize = this._queue.length;
-			this._queue = this._queue.filter(msg => msg.sessionId !== sessionId);
-			const afterSize = this._queue.length;
-			this.logService.info('ClaudeQueueService', `Cleared ${beforeSize - afterSize} messages for session ${sessionId}`);
+			this._sessionQueues.set(sessionId, []);
+			this._saveSessionQueue?.(sessionId, []);
 		} else {
-			const queueSize = this._queue.length;
-			this._queue = [];
-			this.logService.info('ClaudeQueueService', `Cleared entire queue (${queueSize} messages)`);
+			this._globalQueue = [];
+			this._saveGlobalQueue?.([]);
 		}
-
-		this._saveQueue();
-		this._onDidChangeQueue.fire([...this._queue]);
+		this._onDidChangeQueue.fire([]);
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Queue cleared${sessionId ? ` for session ${sessionId}` : ''}`);
 	}
 
-	getQueueSize(sessionId?: string): number {
+	getQueuedMessages(sessionId?: string): IClaudeQueuedMessage[] {
 		if (sessionId) {
-			return this._queue.filter(msg => msg.sessionId === sessionId).length;
+			return [...(this._sessionQueues.get(sessionId) || [])];
 		}
-		return this._queue.length;
+		return [...this._globalQueue];
+	}
+
+	getGlobalQueue(): IClaudeQueuedMessage[] {
+		return [...this._globalQueue];
+	}
+
+	updateQueuedMessage(id: string, newContent: string, sessionId?: string): boolean {
+		const queue = sessionId ? this._sessionQueues.get(sessionId) : this._globalQueue;
+		if (!queue) return false;
+
+		const index = queue.findIndex(m => m.id === id);
+		if (index !== -1) {
+			// Replace with new object since content is readonly
+			queue[index] = { ...queue[index], content: newContent };
+			if (sessionId) {
+				this._saveSessionQueue?.(sessionId, queue);
+			} else {
+				this._saveGlobalQueue?.(queue);
+			}
+			this._onDidChangeQueue.fire([...queue]);
+			return true;
+		}
+		return false;
+	}
+
+	reorderQueue(fromIndex: number, toIndex: number, sessionId?: string): boolean {
+		const queue = sessionId ? this._sessionQueues.get(sessionId) : this._globalQueue;
+		if (!queue) return false;
+
+		if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) {
+			return false;
+		}
+
+		const [item] = queue.splice(fromIndex, 1);
+		queue.splice(toIndex, 0, item);
+
+		if (sessionId) {
+			this._saveSessionQueue?.(sessionId, queue);
+		} else {
+			this._saveGlobalQueue?.(queue);
+		}
+		this._onDidChangeQueue.fire([...queue]);
+		return true;
+	}
+
+	// ========== Queue State ==========
+
+	isProcessingQueue(sessionId?: string): boolean {
+		const key = sessionId || '__global__';
+		return this._processingQueues.has(key);
+	}
+
+	getMaxQueueSize(): number {
+		return ClaudeQueueService.MAX_QUEUE_SIZE;
+	}
+
+	// ========== Queue Processing ==========
+
+	async processQueue(sessionId?: string): Promise<void> {
+		const key = sessionId || '__global__';
+		if (this._processingQueues.has(key)) {
+			return;
+		}
+
+		const queue = sessionId ? this._sessionQueues.get(sessionId) : this._globalQueue;
+		if (!queue || queue.length === 0) {
+			return;
+		}
+
+		this._processingQueues.add(key);
+
+		try {
+			const message = queue.shift();
+			if (message && this._processMessage) {
+				if (sessionId) {
+					this._saveSessionQueue?.(sessionId, queue);
+				} else {
+					this._saveGlobalQueue?.(queue);
+				}
+				this._onDidChangeQueue.fire([...queue]);
+
+				await this._processMessage(message.content, { context: message.context }, sessionId);
+			}
+		} catch (error) {
+			this.logService.error(ClaudeQueueService.LOG_CATEGORY, 'Error processing queue:', error);
+		} finally {
+			this._processingQueues.delete(key);
+		}
+	}
+
+	// ========== Session Queue Helpers ==========
+
+	loadSessionQueue(sessionId: string, queue: IClaudeQueuedMessage[]): void {
+		this._sessionQueues.set(sessionId, queue);
+	}
+
+	loadGlobalQueue(queue: IClaudeQueuedMessage[]): void {
+		this._globalQueue = queue;
+	}
+
+	getSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
+		return [...(this._sessionQueues.get(sessionId) || [])];
 	}
 
 	// ========== Private Methods ==========
 
+	private _getOrCreateSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
+		if (!this._sessionQueues.has(sessionId)) {
+			this._sessionQueues.set(sessionId, []);
+		}
+		return this._sessionQueues.get(sessionId)!;
+	}
+
 	private _loadQueue(): void {
 		try {
 			const stored = this.storageService.get(ClaudeQueueService.QUEUE_STORAGE_KEY, StorageScope.WORKSPACE, '[]');
-			this._queue = JSON.parse(stored);
-			this.logService.info('ClaudeQueueService', `Loaded ${this._queue.length} messages from storage`);
+			this._globalQueue = JSON.parse(stored);
+			this.logService.info(ClaudeQueueService.LOG_CATEGORY, `Loaded ${this._globalQueue.length} messages from storage`);
 		} catch (error) {
-			this.logService.error('ClaudeQueueService', 'Failed to load queue from storage', error);
-			this._queue = [];
-		}
-	}
-
-	private _saveQueue(): void {
-		try {
-			this.storageService.store(
-				ClaudeQueueService.QUEUE_STORAGE_KEY,
-				JSON.stringify(this._queue),
-				StorageScope.WORKSPACE,
-				StorageTarget.MACHINE
-			);
-		} catch (error) {
-			this.logService.error('ClaudeQueueService', 'Failed to save queue to storage', error);
+			this.logService.error(ClaudeQueueService.LOG_CATEGORY, 'Failed to load queue from storage', error);
+			this._globalQueue = [];
 		}
 	}
 }

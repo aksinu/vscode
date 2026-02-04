@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { generateUuid } from '../../../../../base/common/uuid.js';
-import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo, IClaudeSubagentUsage } from '../../common/claudeTypes.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../common/claudeCLI.js';
-import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
-import { IClaudeLogService } from '../../common/claudeLogService.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
+import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo, IClaudeSubagentUsage } from '../../../common/types/claudeTypes.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
+import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
+import { IClaudeLogService } from '../../../common/claudeLogService.js';
 import { ICLIEventHandlerUnifiedContext, ICLIEventHandlerContext } from './cliEventHandlerContext.js';
 
 /**
@@ -84,13 +84,12 @@ export class CLIEventHandler extends Disposable {
 	private static readonly LOG_CATEGORY = 'CLIEventHandler';
 
 	// 현재 진행 중인 데이터 처리 작업 (race condition 방지용)
-	private _pendingDataOperation: Promise<void> = Promise.resolve();
 	private _dataOperationQueue: (() => Promise<void>)[] = [];
 	private _isProcessingDataQueue = false;
 
 	private readonly callbacks?: ICLIEventHandlerCallbacks;
 	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
-	private readonly context?: ICLIEventHandlerContext;
+	private readonly _context?: ICLIEventHandlerContext;
 
 	/**
 	 * Legacy 생성자 (47개 개별 콜백)
@@ -113,7 +112,8 @@ export class CLIEventHandler extends Disposable {
 		// 타입 구분
 		if ('getConnection' in callbacksOrContext) {
 			// 최신 통합 컨텍스트 (메모리 최적화)
-			this.context = callbacksOrContext;
+			this._context = callbacksOrContext;
+			void this._context; // Reserved for future use
 			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using optimized context pattern (memory efficient)');
 		} else if ('connection' in callbacksOrContext) {
 			// 6개 그룹 컨텍스트
@@ -201,7 +201,7 @@ export class CLIEventHandler extends Disposable {
 			// 서브에이전트 정보 추출 (Task 도구 사용 내역)
 			const subagents = this.extractSubagentUsage();
 
-			this.callbacks.setUsage({
+			this.getSessionInteraction().setUsage({
 				inputTokens: event.usage.input_tokens || 0,
 				outputTokens: event.usage.output_tokens || 0,
 				cacheReadTokens: event.usage.cache_read_input_tokens,
@@ -216,7 +216,7 @@ export class CLIEventHandler extends Disposable {
 		const text = this.extractText(event);
 
 		if (text) {
-			this.callbacks.appendContent(text);
+			this.getMessage().appendContent(text);
 			this.updateCurrentMessage();
 		}
 	}
@@ -233,74 +233,78 @@ export class CLIEventHandler extends Disposable {
 		}
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: pending operations done');
 
-		if (!this.callbacks.getCurrentMessageId() || !this.callbacks.hasCurrentSession()) {
+		const message = this.getMessage();
+		const sessionInteraction = this.getSessionInteraction();
+		const toolAction = this.getToolAction();
+
+		if (!message.getCurrentMessageId() || !sessionInteraction.hasCurrentSession()) {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: no message or session, returning');
 			return;
 		}
 
 		// AskUser 대기 중이면 상태 유지
-		if (this.callbacks.isWaitingForUser() && this.callbacks.getCurrentAskUserRequest()) {
+		if (sessionInteraction.isWaitingForUser() && sessionInteraction.getCurrentAskUserRequest()) {
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI completed but waiting for user response');
 			const waitingMessage: IClaudeMessage = {
-				id: this.callbacks.getCurrentMessageId()!,
+				id: message.getCurrentMessageId()!,
 				role: 'assistant',
-				content: this.callbacks.getAccumulatedContent(),
+				content: message.getAccumulatedContent(),
 				timestamp: Date.now(),
 				isStreaming: false,
-				toolActions: [...this.callbacks.getToolActions()],
-				askUserRequest: this.callbacks.getCurrentAskUserRequest(),
+				toolActions: [...toolAction.getToolActions()],
+				askUserRequest: sessionInteraction.getCurrentAskUserRequest(),
 				isWaitingForUser: true
 			};
 
-			this.callbacks.updateSessionMessage(waitingMessage);
-			this.callbacks.fireMessageUpdate(waitingMessage);
-			this.callbacks.setState('idle');
-			this.callbacks.saveSessions();
+			message.updateSessionMessage(waitingMessage);
+			message.fireMessageUpdate(waitingMessage);
+			this.getState().setState('idle');
+			sessionInteraction.saveSessions();
 			return;
 		}
 
 		// 최종 메시지
 		const finalMessage: IClaudeMessage = {
-			id: this.callbacks.getCurrentMessageId()!,
+			id: message.getCurrentMessageId()!,
 			role: 'assistant',
-			content: this.callbacks.getAccumulatedContent(),
+			content: message.getAccumulatedContent(),
 			timestamp: Date.now(),
 			isStreaming: false,
-			toolActions: [...this.callbacks.getToolActions()],
-			usage: this.callbacks.getUsage()
+			toolActions: [...toolAction.getToolActions()],
+			usage: sessionInteraction.getUsage()
 		};
 
-		this.callbacks.updateSessionMessage(finalMessage);
-		this.callbacks.fireMessageUpdate(finalMessage);
+		message.updateSessionMessage(finalMessage);
+		message.fireMessageUpdate(finalMessage);
 
 		// 상태 리셋 (큐 처리 전에 먼저 완료해야 함!)
-		this.callbacks.setState('idle');
-		this.callbacks.setWaitingForUser(false);
-		this.callbacks.setCurrentAskUserRequest(undefined);
+		this.getState().setState('idle');
+		sessionInteraction.setWaitingForUser(false);
+		sessionInteraction.setCurrentAskUserRequest(undefined);
 
 		// 응답 성공 시 연결 확인
-		this.callbacks.confirmConnected();
+		this.getConnection().confirmConnected();
 
 		// 파일 변경사항 처리 (상태 리셋 전에 호출해야 함! await 필수!)
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] Calling onCommandComplete...');
-		await this.callbacks.onCommandComplete();
+		await this.getFileOperation().onCommandComplete();
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] onCommandComplete done');
 
 		// 세션 저장
-		this.callbacks.saveSessions();
+		this.getSessionInteraction().saveSessions();
 
 		// 상태 리셋
-		this.callbacks.setCurrentMessageId(undefined);
-		this.callbacks.setAccumulatedContent('');
-		this.callbacks.setCurrentToolAction(undefined);
-		this.callbacks.setCliSessionId(undefined);
-		this.callbacks.setUsage(undefined);
+		this.getMessage().setCurrentMessageId(undefined);
+		this.getMessage().setAccumulatedContent('');
+		this.getToolAction().setCurrentToolAction(undefined);
+		this.getSessionInteraction().setCliSessionId(undefined);
+		this.getSessionInteraction().setUsage(undefined);
 		// 큐 리셋 (새로운 큐 시스템)
 		this._dataOperationQueue = [];
 		this._isProcessingDataQueue = false;
 
 		// 큐에 대기 중인 메시지 처리
-		this.callbacks.processQueue();
+		this.getFileOperation().processQueue();
 	}
 
 	/**
@@ -309,20 +313,24 @@ export class CLIEventHandler extends Disposable {
 	handleError(error: string): void {
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleError:', error);
 
+		const fileOperation = this.getFileOperation();
+		const sessionInteraction = this.getSessionInteraction();
+		const message = this.getMessage();
+
 		// Rate limit 에러인지 확인
-		if (this.callbacks.isRateLimitError(error)) {
+		if (fileOperation.isRateLimitError(error)) {
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Rate limit detected in error message');
-			const retrySeconds = this.callbacks.parseRetrySeconds(error) || 60;
-			this.callbacks.startRateLimitHandling(retrySeconds, error);
+			const retrySeconds = fileOperation.parseRetrySeconds(error) || 60;
+			fileOperation.startRateLimitHandling(retrySeconds, error);
 			return;
 		}
 
-		if (!this.callbacks.hasCurrentSession()) {
+		if (!sessionInteraction.hasCurrentSession()) {
 			return;
 		}
 
 		const errorMessage: IClaudeMessage = {
-			id: this.callbacks.getCurrentMessageId() || generateUuid(),
+			id: message.getCurrentMessageId() || generateUuid(),
 			role: 'assistant',
 			content: `Error: ${error}`,
 			timestamp: Date.now(),
@@ -330,34 +338,36 @@ export class CLIEventHandler extends Disposable {
 		};
 
 		// 기존 스트리밍 메시지가 있으면 업데이트, 없으면 추가
-		if (this.callbacks.getCurrentMessageId()) {
-			this.callbacks.updateSessionMessage(errorMessage);
-			this.callbacks.fireMessageUpdate(errorMessage);
+		if (message.getCurrentMessageId()) {
+			message.updateSessionMessage(errorMessage);
+			message.fireMessageUpdate(errorMessage);
 		} else {
-			this.callbacks.fireMessageReceive(errorMessage);
+			message.fireMessageReceive(errorMessage);
 		}
 
-		this.callbacks.setState('error');
-		this.callbacks.setCurrentMessageId(undefined);
-		this.callbacks.setAccumulatedContent('');
+		this.getState().setState('error');
+		message.setCurrentMessageId(undefined);
+		message.setAccumulatedContent('');
 	}
 
 	/**
 	 * AskUser 질문에 응답
 	 */
 	async respondToAskUser(responses: string[]): Promise<void> {
-		if (!this.callbacks.isWaitingForUser() || !this.callbacks.getCurrentAskUserRequest()) {
+		const sessionInteraction = this.getSessionInteraction();
+
+		if (!sessionInteraction.isWaitingForUser() || !sessionInteraction.getCurrentAskUserRequest()) {
 			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Not waiting for user input');
 			return;
 		}
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'User responded:', responses);
-		const cliSessionId = this.callbacks.getCliSessionId();
+		const cliSessionId = sessionInteraction.getCliSessionId();
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI session ID for resume:', cliSessionId);
 
 		// 상태 리셋
-		this.callbacks.setWaitingForUser(false);
-		this.callbacks.setCurrentAskUserRequest(undefined);
+		sessionInteraction.setWaitingForUser(false);
+		sessionInteraction.setCurrentAskUserRequest(undefined);
 
 		// 응답 텍스트
 		const responseText = responses.join(', ');
@@ -367,14 +377,14 @@ export class CLIEventHandler extends Disposable {
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Resuming session with response:', responseText);
 
 			this.updateCurrentMessage();
-			this.callbacks.setState('streaming');
+			this.getState().setState('streaming');
 
 			try {
 				const cliOptions: IClaudeCLIRequestOptions = {
 					resumeSessionId: cliSessionId
 				};
 
-				await this.callbacks.getChannel().call('sendPrompt', [responseText, cliOptions]);
+				await this.getConnection().getChannel().call('sendPrompt', [responseText, cliOptions]);
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Resume failed:', error);
 			}
@@ -390,12 +400,12 @@ export class CLIEventHandler extends Disposable {
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'System event - Claude initializing...');
 		const systemEvent = event as { session_id?: string };
 		if (systemEvent.session_id) {
-			this.callbacks.setCliSessionId(systemEvent.session_id);
+			this.getSessionInteraction().setCliSessionId(systemEvent.session_id);
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI session ID:', systemEvent.session_id);
 		}
 
-		if (this.callbacks.getCurrentMessageId() && this.callbacks.hasCurrentSession()) {
-			this.callbacks.setAccumulatedContent('');
+		if (this.getMessage().getCurrentMessageId() && this.getSessionInteraction().hasCurrentSession()) {
+			this.getMessage().setAccumulatedContent('');
 			this.updateCurrentMessage();
 		}
 	}
@@ -410,15 +420,16 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
-		const toolAction: IClaudeToolAction = {
+		const toolActionObj: IClaudeToolAction = {
 			id: event.tool_use_id || generateUuid(),
 			tool: toolName,
 			status: 'running',
 			input: event.tool_input
 		};
 
-		this.callbacks.setCurrentToolAction(toolAction);
-		this.callbacks.addToolAction(toolAction);
+		const toolActionCtx = this.getToolAction();
+		toolActionCtx.setCurrentToolAction(toolActionObj);
+		toolActionCtx.addToolAction(toolActionObj);
 
 		// 파일 수정 도구인 경우 스냅샷 캡처 (await 필수!)
 		const isFileTool = this.isFileModifyTool(toolName);
@@ -429,12 +440,12 @@ export class CLIEventHandler extends Disposable {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] extractFilePath: ${filePath || 'null'}`);
 			if (filePath) {
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] Capturing BEFORE edit: ${filePath}`);
-				await this.callbacks.captureFileBeforeEdit(filePath);
+				await this.getFileOperation().captureFileBeforeEdit(filePath);
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] BEFORE capture done: ${filePath}`);
 			}
 		}
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use started:', toolAction.tool, toolAction.input);
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use started:', toolActionObj.tool, toolActionObj.input);
 		this.updateCurrentMessage();
 	}
 
@@ -488,16 +499,18 @@ export class CLIEventHandler extends Disposable {
 		const questions: IClaudeAskUserQuestion[] = input.questions.map(q => ({
 			question: q.question,
 			header: q.header,
-			options: q.options.map(o => ({ label: o.label, description: o.description })),
+			options: q.options.map((o: { label: string; description?: string }) => ({ label: o.label, description: o.description })),
 			multiSelect: q.multiSelect
 		}));
 
+		const sessionInteraction = this.getSessionInteraction();
+
 		// Auto Accept 모드: 첫 번째 옵션 자동 선택 (세션 설정 > 로컬 설정)
-		if (this.callbacks.isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
+		if (this.getState().isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled, selecting:', firstOption);
 
-			this.callbacks.setCurrentAskUserRequest({
+			sessionInteraction.setCurrentAskUserRequest({
 				id: event.tool_use_id || generateUuid(),
 				questions,
 				autoAccepted: true,
@@ -505,25 +518,25 @@ export class CLIEventHandler extends Disposable {
 			} as IClaudeAskUserRequest & { autoAccepted?: boolean; autoAcceptedOption?: string });
 
 			// AutoAccept 모드에서도 사용자에게 질문과 자동 선택된 답변을 표시하기 위해 필요
-			this.callbacks.setWaitingForUser(true);
+			sessionInteraction.setWaitingForUser(true);
 			this.updateCurrentMessage();
 
 			setTimeout(() => {
 				this.respondToAskUser([firstOption]).catch(error => {
 					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
 					// 에러 시 대기 상태 해제
-					this.callbacks.setWaitingForUser(false);
+					sessionInteraction.setWaitingForUser(false);
 					this.updateCurrentMessage();
 				});
 			}, 500);
 			return;
 		}
 
-		this.callbacks.setCurrentAskUserRequest({
+		sessionInteraction.setCurrentAskUserRequest({
 			id: event.tool_use_id || generateUuid(),
 			questions
 		});
-		this.callbacks.setWaitingForUser(true);
+		sessionInteraction.setWaitingForUser(true);
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response...');
 		this.updateCurrentMessage();
@@ -537,27 +550,30 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
+		const message = this.getMessage();
+		const sessionInteraction = this.getSessionInteraction();
+
 		// 현재 메시지가 없으면 생성
-		if (!this.callbacks.getCurrentMessageId()) {
+		if (!message.getCurrentMessageId()) {
 			const newId = generateUuid();
-			this.callbacks.setCurrentMessageId(newId);
-			this.callbacks.setAccumulatedContent('');
-			this.callbacks.createAssistantMessage(newId);
+			message.setCurrentMessageId(newId);
+			message.setAccumulatedContent('');
+			message.createAssistantMessage(newId);
 		}
 
-		const questions: IClaudeAskUserQuestion[] = event.questions.map(q => ({
+		const questions: IClaudeAskUserQuestion[] = event.questions.map((q: { question: string; header?: string; options: Array<{ label: string; description?: string }>; multiSelect?: boolean }) => ({
 			question: q.question,
 			header: q.header,
-			options: q.options.map(o => ({ label: o.label, description: o.description })),
+			options: q.options.map((o: { label: string; description?: string }) => ({ label: o.label, description: o.description })),
 			multiSelect: q.multiSelect
 		}));
 
 		// Auto Accept 모드 (세션 설정 > 로컬 설정)
-		if (this.callbacks.isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
+		if (this.getState().isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
 			const firstOption = questions[0].options[0].label;
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled (input_request), selecting:', firstOption);
 
-			this.callbacks.setCurrentAskUserRequest({
+			sessionInteraction.setCurrentAskUserRequest({
 				id: generateUuid(),
 				questions,
 				autoAccepted: true,
@@ -569,29 +585,30 @@ export class CLIEventHandler extends Disposable {
 				this.respondToAskUser([firstOption]).catch(error => {
 					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
 					// 에러 시 대기 상태 해제
-					this.callbacks.setWaitingForUser(false);
+					sessionInteraction.setWaitingForUser(false);
 					this.updateCurrentMessage();
 				});
 			}, 500);
 			return;
 		}
 
-		this.callbacks.setCurrentAskUserRequest({
+		sessionInteraction.setCurrentAskUserRequest({
 			id: generateUuid(),
 			questions
 		});
-		this.callbacks.setWaitingForUser(true);
+		sessionInteraction.setWaitingForUser(true);
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response (input_request)...');
 		this.updateCurrentMessage();
 	}
 
 	private async handleToolResult(event: IClaudeCLIStreamEvent): Promise<void> {
-		const currentToolAction = this.callbacks.getCurrentToolAction();
+		const toolAction = this.getToolAction();
+		const currentToolAction = toolAction.getCurrentToolAction();
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: currentTool=${currentToolAction?.tool || 'null'}, is_error=${event.is_error}, tool_result_length=${String(event.tool_result || '').length}`);
 
 		if (currentToolAction) {
-			this.callbacks.updateToolAction(currentToolAction.id, {
+			toolAction.updateToolAction(currentToolAction.id, {
 				status: event.is_error ? 'error' : 'completed',
 				output: event.tool_result,
 				error: event.is_error ? event.tool_result : undefined
@@ -606,14 +623,14 @@ export class CLIEventHandler extends Disposable {
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: extractFilePath=${filePath || 'null'}, input=${JSON.stringify(currentToolAction.input)}`);
 				if (filePath) {
 					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: Calling captureFileAfterEdit for ${filePath}`);
-					await this.callbacks.captureFileAfterEdit(filePath);
+					await this.getFileOperation().captureFileAfterEdit(filePath);
 					this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: captureFileAfterEdit DONE for ${filePath}`);
 				}
 			} else {
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: SKIPPED capture (isFileTool=${isFileTool}, is_error=${event.is_error})`);
 			}
 
-			this.callbacks.setCurrentToolAction(undefined);
+			toolAction.setCurrentToolAction(undefined);
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use completed:', currentToolAction.tool);
 			this.updateCurrentMessage();
 		} else {
@@ -656,7 +673,7 @@ export class CLIEventHandler extends Disposable {
 	 * 서브에이전트 사용 정보 추출 (Task 도구 사용 내역)
 	 */
 	private extractSubagentUsage(): IClaudeSubagentUsage[] {
-		const toolActions = this.callbacks.getToolActions();
+		const toolActions = this.getToolAction().getToolActions();
 		const subagents: IClaudeSubagentUsage[] = [];
 
 		for (const action of toolActions) {
@@ -677,25 +694,29 @@ export class CLIEventHandler extends Disposable {
 	}
 
 	private updateCurrentMessage(): void {
-		const currentMessageId = this.callbacks.getCurrentMessageId();
-		if (!currentMessageId || !this.callbacks.hasCurrentSession()) {
+		const message = this.getMessage();
+		const toolAction = this.getToolAction();
+		const sessionInteraction = this.getSessionInteraction();
+
+		const currentMessageId = message.getCurrentMessageId();
+		if (!currentMessageId || !sessionInteraction.hasCurrentSession()) {
 			return;
 		}
 
 		const updatedMessage: IClaudeMessage = {
 			id: currentMessageId,
 			role: 'assistant',
-			content: this.callbacks.getAccumulatedContent(),
+			content: message.getAccumulatedContent(),
 			timestamp: Date.now(),
-			isStreaming: !this.callbacks.isWaitingForUser(),
-			toolActions: [...this.callbacks.getToolActions()],
-			currentToolAction: this.callbacks.getCurrentToolAction(),
-			askUserRequest: this.callbacks.getCurrentAskUserRequest(),
-			isWaitingForUser: this.callbacks.isWaitingForUser()
+			isStreaming: !sessionInteraction.isWaitingForUser(),
+			toolActions: [...toolAction.getToolActions()],
+			currentToolAction: toolAction.getCurrentToolAction(),
+			askUserRequest: sessionInteraction.getCurrentAskUserRequest(),
+			isWaitingForUser: sessionInteraction.isWaitingForUser()
 		};
 
-		this.callbacks.updateSessionMessage(updatedMessage);
-		this.callbacks.fireMessageUpdate(updatedMessage);
+		message.updateSessionMessage(updatedMessage);
+		message.fireMessageUpdate(updatedMessage);
 	}
 
 	/**

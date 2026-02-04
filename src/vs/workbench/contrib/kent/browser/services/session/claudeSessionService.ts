@@ -3,13 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { IStorageService } from '../../../../../platform/storage/common/storage.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { IStorageService } from '../../../../../../platform/storage/common/storage.js';
+import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
 import { IClaudeSessionService, ISessionState } from '../../../common/types/claudeSessionService.js';
-import { IClaudeSession, ClaudeServiceState } from '../../../common/types/claudeTypes.js';
-import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
+import { IClaudeSession, ClaudeServiceState, IClaudeToolAction, IClaudeQueuedMessage, IClaudeMessage } from '../../../common/types/claudeTypes.js';
 import { ClaudeSessionManager } from './claudeSessionManager.js';
 
 /**
@@ -125,7 +124,7 @@ export class ClaudeSessionService extends Disposable implements IClaudeSessionSe
 
 		// 기본 세션 상태 생성
 		const defaultState: ISessionState = {
-			state: ClaudeServiceState.Idle,
+			state: 'idle',
 			currentMessageId: undefined,
 			accumulatedContent: undefined,
 			isWaitingForUser: false,
@@ -146,7 +145,7 @@ export class ClaudeSessionService extends Disposable implements IClaudeSessionSe
 
 	getState(): ClaudeServiceState {
 		const currentState = this.getCurrentSessionState();
-		return currentState?.state || ClaudeServiceState.Idle;
+		return currentState?.state || 'idle';
 	}
 
 	setState(state: ClaudeServiceState, sessionId?: string): void {

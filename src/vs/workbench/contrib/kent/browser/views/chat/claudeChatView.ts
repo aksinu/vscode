@@ -3,30 +3,30 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { Codicon } from '../../../../../base/common/codicons.js';
-import { ThemeIcon } from '../../../../../base/common/themables.js';
-import { DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { VSBuffer } from '../../../../../base/common/buffer.js';
-import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
-import { IModelService } from '../../../../../editor/common/services/model.js';
-import { ILanguageService } from '../../../../../editor/common/languages/language.js';
-import { localize } from '../../../../../nls.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
-import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
-import { IHoverService } from '../../../../../platform/hover/browser/hover.js';
-import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
-import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
-import { IOpenerService } from '../../../../../platform/opener/common/opener.js';
-import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IViewPaneOptions, ViewPane } from '../../../../browser/parts/views/viewPane.js';
-import { IViewDescriptorService } from '../../../../common/views.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { Codicon } from '../../../../../../base/common/codicons.js';
+import { ThemeIcon } from '../../../../../../base/common/themables.js';
+import { DisposableStore } from '../../../../../../base/common/lifecycle.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../../base/common/buffer.js';
+import { ICodeEditor } from '../../../../../../editor/browser/editorBrowser.js';
+import { IModelService } from '../../../../../../editor/common/services/model.js';
+import { ILanguageService } from '../../../../../../editor/common/languages/language.js';
+import { localize } from '../../../../../../nls.js';
+import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
+import { IContextKeyService } from '../../../../../../platform/contextkey/common/contextkey.js';
+import { IContextMenuService } from '../../../../../../platform/contextview/browser/contextView.js';
+import { IHoverService } from '../../../../../../platform/hover/browser/hover.js';
+import { IInstantiationService } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IKeybindingService } from '../../../../../../platform/keybinding/common/keybinding.js';
+import { IOpenerService } from '../../../../../../platform/opener/common/opener.js';
+import { IThemeService } from '../../../../../../platform/theme/common/themeService.js';
+import { IViewPaneOptions, ViewPane } from '../../../../../browser/parts/views/viewPane.js';
+import { IViewDescriptorService } from '../../../../../common/views.js';
 import { IClaudeService, IClaudeFileChangeSummaryItem } from '../../../common/services/core/claude.js';
 import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels } from '../../../common/types/claudeTypes.js';
-import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
 import { AutocompleteManager } from '../ui/claudeAutocomplete.js';
 import { StatusBarManager } from '../ui/claudeStatusBar.js';
@@ -41,14 +41,14 @@ import { ClaudeSettingsPanel } from '../settings/claudeSettingsPanel.js';
 import { SessionSettingsPanel, ISessionSettings } from '../settings/claudeSessionSettingsPanel.js';
 import { SessionTabs } from '../session/claudeSessionTabs.js';
 import { ChangesHistoryPanel } from '../ui/claudeChangesHistoryPanel.js';
-import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
-import { ITerminalService } from '../../../terminal/browser/terminal.js';
-import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
-import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
-import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
-import { ISCMService } from '../../../scm/common/scm.js';
-import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
+import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
+import { ITerminalService } from '../../../../terminal/browser/terminal.js';
+import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IQuickInputService } from '../../../../../../platform/quickinput/common/quickInput.js';
+import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
+import { ISCMService } from '../../../../scm/common/scm.js';
+import { ClaudePermissionMode } from '../../../common/config/claudeLocalConfig.js';
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -184,7 +184,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.updateMessage(message);
 		}));
 
-		this._register(this.claudeService.onDidChangeState(state => {
+		this._register(this.claudeService.onDidChangeState((state: string) => {
 			console.log('[ClaudeChatView] State changed:', state);
 			const inProgress = state === 'sending' || state === 'streaming';
 			console.log('[ClaudeChatView] inProgress:', inProgress, 'state:', state);
@@ -210,7 +210,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.sessionTabs?.render();
 		}));
 
-		this._register(this.claudeService.onDidChangeSession((session) => {
+		this._register(this.claudeService.onDidChangeSession((session: any) => {
 			this.clearMessages();
 			// 세션의 메시지들 렌더링
 			if (session) {
@@ -223,7 +223,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.sessionTabs?.render();
 		}));
 
-		this._register(this.claudeService.onDidChangeQueue(queue => {
+		this._register(this.claudeService.onDidChangeQueue((queue: IClaudeQueuedMessage[]) => {
 			this.updateQueueUI(queue);
 		}));
 

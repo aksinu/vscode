@@ -4,15 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { IClaudeRateLimitService, IRateLimitStatus, IRateLimitPendingRequest, IRateLimitCallbacks } from '../../../common/types/claudeRateLimitService.js';
-import { IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { ILogService } from '../../../../../platform/log/common/log.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { ILogService } from '../../../../../../platform/log/common/log.js';
 
 /**
  * Rate limit service implementation
  */
 export class ClaudeRateLimitService extends Disposable implements IClaudeRateLimitService {
+	declare readonly _serviceBrand: undefined;
 
 	private readonly _onDidChangeStatus = this._register(new Emitter<IRateLimitStatus>());
 	readonly onDidChangeStatus: Event<IRateLimitStatus> = this._onDidChangeStatus.event;
@@ -20,7 +20,7 @@ export class ClaudeRateLimitService extends Disposable implements IClaudeRateLim
 	private _waiting = false;
 	private _countdown = 0;
 	private _message?: string;
-	private _countdownTimer?: NodeJS.Timer;
+	private _countdownTimer?: ReturnType<typeof setInterval> | undefined;
 	private _pendingRequest?: IRateLimitPendingRequest;
 	private _callbacks?: IRateLimitCallbacks;
 
@@ -135,7 +135,6 @@ export class ClaudeRateLimitService extends Disposable implements IClaudeRateLim
 		this._countdown = 0;
 
 		const pendingRequest = this._pendingRequest;
-		const message = this._message;
 
 		this._pendingRequest = undefined;
 		this._message = undefined;

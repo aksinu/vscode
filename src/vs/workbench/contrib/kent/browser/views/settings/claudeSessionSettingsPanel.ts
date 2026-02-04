@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { localize } from '../../../../../nls.js';
-import { validateClaudeModel, CLAUDE_DEFAULT_MODEL, getAvailableModelsForUI, resolveModelName, getModelDisplayName } from '../../common/claudeTypes.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { Disposable, IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { localize } from '../../../../../../nls.js';
+import { validateClaudeModel, CLAUDE_DEFAULT_MODEL, getAvailableModelsForUI, resolveModelName, getModelDisplayName, IClaudeModelPickItem } from '../../../common/types/claudeTypes.js';
 
 /**
  * 세션 설정 데이터
@@ -189,7 +189,7 @@ export class SessionSettingsPanel extends Disposable {
 		}));
 
 		// 오버레이 클릭 시 닫기
-		this.disposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e) => {
+		this.disposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e: MouseEvent) => {
 			if (e.target === this.overlay) {
 				this.close();
 			}
@@ -254,8 +254,9 @@ export class SessionSettingsPanel extends Disposable {
 		hint.textContent = localize('modelHint', "Short names: opus, sonnet, haiku, s35...");
 
 		// 경고 메시지 요소
-		this.modelWarningElement = append(info, $('.claude-settings-warning'));
-		this.modelWarningElement.style.display = 'none';
+		const warningElement = append(info, $('.claude-settings-warning'));
+		warningElement.style.display = 'none';
+		this.modelWarningElement = warningElement;
 
 		const control = append(item, $('.claude-settings-control'));
 
@@ -295,7 +296,7 @@ export class SessionSettingsPanel extends Disposable {
 			// 별칭 해석
 			const resolved = resolveModelName(currentModel);
 			// 목록에 있는지 확인
-			const inList = models.some(m => m.model === resolved);
+			const inList = models.some((m: IClaudeModelPickItem) => m.model === resolved);
 			if (inList) {
 				select.value = resolved;
 			} else {

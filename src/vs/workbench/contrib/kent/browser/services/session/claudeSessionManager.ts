@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { generateUuid } from '../../../../../base/common/uuid.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IClaudeMessage, IClaudeSession, IClaudeQueuedMessage } from '../../common/claudeTypes.js';
-import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../../platform/storage/common/storage.js';
+import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
+import { IClaudeMessage, IClaudeSession, IClaudeQueuedMessage } from '../../../common/types/claudeTypes.js';
+import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
 
 /**
  * 저장되는 세션 데이터 구조
@@ -369,7 +369,7 @@ export class ClaudeSessionManager extends Disposable {
 			return false;
 		}
 
-		const msgIndex = targetSession.messages.findIndex(m => m.id === message.id);
+		const msgIndex = targetSession.messages.findIndex((m: IClaudeMessage) => m.id === message.id);
 		if (msgIndex !== -1) {
 			(targetSession.messages as IClaudeMessage[])[msgIndex] = message;
 			return true;

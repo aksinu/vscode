@@ -3,14 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable, DisposableStore, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { ClaudeConnectionStatus } from '../../common/claudeTypes.js';
-import { CLAUDE_CLI_CHANNEL_NAME, CLAUDE_CLI_MULTI_CHANNEL_NAME, ClaudeCLIMultiChannelClient } from '../../common/claudeCLIChannel.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeCLIMultiEvent } from '../../common/claudeCLI.js';
-import type { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
-import { IClaudeLogService } from '../../common/claudeLogService.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable, DisposableStore, IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
+import { ClaudeConnectionStatus } from '../../../common/types/claudeTypes.js';
+import { CLAUDE_CLI_CHANNEL_NAME, CLAUDE_CLI_MULTI_CHANNEL_NAME, ClaudeCLIMultiChannelClient } from '../../../common/claudeCLIChannel.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeCLIMultiEvent } from '../../../common/claudeCLI.js';
+import type { IMainProcessService } from '../../../../../../platform/ipc/common/mainProcessService.js';
+import { IClaudeLogService } from '../../../common/claudeLogService.js';
 
 /**
  * 연결 정보 인터페이스
@@ -20,6 +20,19 @@ export interface IClaudeConnectionInfo {
 	version?: string;
 	lastConnected?: number;
 	error?: string;
+}
+
+/**
+ * Claude 연결 인터페이스
+ */
+export interface IClaudeConnection {
+	readonly onDidChangeStatus: Event<IClaudeConnectionInfo>;
+	readonly onDidConnect: Event<void>;
+	readonly onDidDisconnect: Event<string | undefined>;
+	getChannel(): IChannel;
+	getInfo(): IClaudeConnectionInfo;
+	connect(): Promise<boolean>;
+	disconnect(): void;
 }
 
 /**

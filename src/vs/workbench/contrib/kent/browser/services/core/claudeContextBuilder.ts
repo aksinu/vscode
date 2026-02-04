@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IClaudeMessage, IClaudeSendRequestOptions } from '../../common/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions } from '../../../common/types/claudeTypes.js';
 
 /**
  * 프롬프트 컨텍스트 빌더

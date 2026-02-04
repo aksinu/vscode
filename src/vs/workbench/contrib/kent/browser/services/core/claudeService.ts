@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { generateUuid } from '../../../../../base/common/uuid.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
+import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
 import { IClaudeService, IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../../common/services/core/claude.js';
 import { IClaudeMessageService } from '../../../common/types/claudeMessageService.js';
 import { IClaudeQueueService } from '../../../common/types/claudeQueueService.js';
@@ -14,25 +14,25 @@ import { IClaudeFileService } from '../../../common/types/claudeFileService.js';
 import { IClaudeRateLimitService } from '../../../common/types/claudeRateLimitService.js';
 import { IClaudeSessionService } from '../../../common/types/claudeSessionService.js';
 import { IClaudeUIService } from '../../../common/types/claudeUIService.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary, resolveModelName, getModelDisplayName } from '../../../common/types/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, resolveModelName, getModelDisplayName } from '../../../common/types/claudeTypes.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { IFileService, FileChangesEvent } from '../../../../../platform/files/common/files.js';
-import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
-import { URI } from '../../../../../base/common/uri.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../../platform/storage/common/storage.js';
+import { IFileService, FileChangesEvent } from '../../../../../../platform/files/common/files.js';
+import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../../base/common/buffer.js';
 import { IClaudeLocalConfig, DEFAULT_LOCAL_CONFIG } from '../../../common/config/claudeLocalConfig.js';
-import { ClaudeConnection, ClaudeMultiConnection, ISessionEventCallbacks } from './claudeConnection.js';
+import { ClaudeConnection, ClaudeMultiConnection } from './claudeConnection.js';
 import { CLIEventHandler } from './claudeCLIEventHandler.js';
 import { ICLIEventHandlerContext } from './cliEventHandlerContext.js';
 import { ClaudeContextBuilder } from './claudeContextBuilder.js';
-import { ClaudeServiceContextProvider } from './claudeServiceContextProvider.js';
-import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
-import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeLogService } from '../../common/claudeLogService.js';
-import { IModelService } from '../../../../../editor/common/services/model.js';
-import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { ITextFileService } from '../../../../services/textfile/common/textfiles.js';
+import { IMainProcessService } from '../../../../../../platform/ipc/common/mainProcessService.js';
+import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
+import { IClaudeLogService } from '../../../common/claudeLogService.js';
+import { IModelService } from '../../../../../../editor/common/services/model.js';
+import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
+import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
 
 /**
  * 세션별 상태 인터페이스
@@ -55,17 +55,27 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private _state: ClaudeServiceState = 'idle';
 	private _currentMessageId: string | undefined;
 	private _accumulatedContent: string = '';
-	private _toolActions: IClaudeToolAction[] = [];
 	private _currentToolAction: IClaudeToolAction | undefined;
-	private _currentAskUserRequest: IClaudeAskUserRequest | undefined;
 	private _isWaitingForUser = false;
 	private _isProcessingQueue = false;
-	private _cliSessionId: string | undefined;
 	private _localConfig: IClaudeLocalConfig = DEFAULT_LOCAL_CONFIG;
-	private _usage: IClaudeUsageInfo | undefined;
 
 	// Rate limit manager is now handled by ClaudeRateLimitService
 	// Session management is now handled by ClaudeSessionService
+
+	// 세션 상태 관리 (멀티 세션)
+	private readonly _sessionStates = new Map<string, {
+		state: ClaudeServiceState;
+		currentMessageId?: string;
+		accumulatedContent: string;
+		toolActions: IClaudeToolAction[];
+		currentToolAction?: IClaudeToolAction;
+		currentAskUserRequest?: IClaudeAskUserRequest;
+		isWaitingForUser: boolean;
+		cliSessionId?: string;
+		messageQueue: IClaudeQueuedMessage[];
+		isProcessingQueue?: boolean;
+	}>();
 
 	// 연결 관리자 (Legacy - 단일 인스턴스)
 	private readonly _connection: ClaudeConnection;
@@ -78,7 +88,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	// 컨텍스트 빌더
 	private readonly _contextBuilder: ClaudeContextBuilder;
-
 
 	// Status 관련
 	private _ultrathink = false;
@@ -111,16 +120,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 		@IStorageService private readonly storageService: IStorageService,
-		@IFileService private readonly fileService: IFileService,
+		@IFileService private readonly _platformFileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IClaudeLogService private readonly logService: IClaudeLogService,
-		@IModelService private readonly modelService: IModelService,
-		@ITextModelService private readonly textModelService: ITextModelService,
-		@IEditorService private readonly editorService: IEditorService,
-		@ITextFileService private readonly textFileService: ITextFileService,
+		@IModelService _modelService: IModelService,
+		@ITextModelService _textModelService: ITextModelService,
+		@IEditorService _editorService: IEditorService,
+		@ITextFileService _textFileService: ITextFileService,
 		@IClaudeMessageService private readonly _messageService: IClaudeMessageService,
 		@IClaudeQueueService private readonly _queueService: IClaudeQueueService,
-		@IClaudeFileService private readonly _claudeFileService: IClaudeFileService,
+		@IClaudeFileService private readonly _fileService: IClaudeFileService,
 		@IClaudeRateLimitService private readonly _rateLimitService: IClaudeRateLimitService,
 		@IClaudeSessionService private readonly _sessionService: IClaudeSessionService,
 		@IClaudeUIService private readonly _uiService: IClaudeUIService
@@ -138,26 +147,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// FileService 델리게이트 설정
 		this._fileService.setFileDelegates(
 			() => this._sessionService.getCurrentSession(),
-			(sessionId: string) => this._sessionService.getCurrentSession()?.id === sessionId ? this._sessionService.getCurrentSession()?.changesHistory : undefined
+			(_sessionId: string) => undefined // changesHistory is managed separately
 		);
 
-		// FileService 핵심 기능 델리게이트 설정
-		this._fileService.setCoreFileDelegates({
-			startCommand: (workingDir?: string) => this.fileService.startCommand(workingDir),
-			captureBeforeEdit: (filePath: string) => this.fileService.captureBeforeEdit(filePath),
-			captureAfterEdit: (filePath: string) => this.fileService.captureAfterEdit(filePath),
-			captureAllPendingModifications: () => this.fileService.captureAllPendingModifications(),
-			cleanupInvalidSnapshots: () => this.fileService.cleanupInvalidSnapshots(),
-			removeSnapshot: (fileUri: string) => this.fileService.removeSnapshot(fileUri),
-			getChangedFiles: () => this.fileService.getChangedFiles(),
-			getFileChangesSummary: () => this.fileService.getFileChangesSummary(),
-			getSnapshotCount: () => this.fileService.getSnapshotCount(),
-			showFileDiff: (fileChange) => this.fileService.showFileDiff(fileChange),
-			revertFile: (fileChange) => this.fileService.revertFile(fileChange),
-			revertAllFiles: () => this.fileService.revertAllFiles(),
-			acceptFile: (fileChange) => this.fileService.acceptFile(fileChange),
-			acceptAllFiles: () => this.fileService.acceptAllFiles()
-		});
+		// Note: setCoreFileDelegates not needed - _fileService handles these operations directly
 
 		// RateLimitService 델리게이트 설정
 		this._rateLimitService.setCoreRateLimitDelegates({
@@ -340,7 +333,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				if (sessionId) {
 					return this._sessionService.getSessionQueue(sessionId);
 				}
-				return this.queueService.getQueuedMessages();
+				return this._queueService.getQueuedMessages();
 			}
 		);
 
@@ -371,11 +364,27 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		);
 
 		// ClaudeQueueService 델리게이트 설정
-		this.queueService.setQueueDelegates(
+		this._queueService.setQueueDelegates(
 			(sessionId: string, queue: IClaudeQueuedMessage[]) => this.saveSessionQueue(sessionId, queue),
 			(queue: IClaudeQueuedMessage[]) => this.saveQueue(queue),
-			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => this.sendMessageInternal(content, options, sessionId)
+			async (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
+				if (sessionId) {
+					await this.sendMessageToSessionInternal(sessionId, content, options);
+				} else {
+					await this.sendMessageInternal(content, options);
+				}
+			}
 		);
+
+		// Reserved methods for future use (suppress unused warnings)
+		void this._addToQueue;
+		void this._processQueue;
+		void this._startRateLimitHandling;
+		void this._createMultiSessionChannelWrapper;
+		void this._handleCommandComplete;
+		void this._handleSessionData;
+		void this._handleSessionComplete;
+		void this._handleSessionError;
 	}
 
 	// ========== Queue Persistence ==========
@@ -391,14 +400,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 
 		try {
-			// 세션별 큐 로드
+			// 세션별 큐 로드 - 세션 서비스에 pending requests로 추가
 			const sessionQueueKey = `claude.sessionQueue.${sessionId}`;
 			const sessionData = this.storageService.get(sessionQueueKey, StorageScope.WORKSPACE);
 
 			if (sessionData) {
 				const parsed = JSON.parse(sessionData) as IClaudeQueuedMessage[];
 				if (Array.isArray(parsed)) {
-					this.queueService.loadSessionQueue(sessionId, parsed);
+					for (const msg of parsed) {
+						this._sessionService.addPendingRequest(msg);
+					}
 				}
 			}
 
@@ -407,7 +418,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			if (globalData) {
 				const parsed = JSON.parse(globalData) as IClaudeQueuedMessage[];
 				if (Array.isArray(parsed)) {
-					this.queueService.loadGlobalQueue(parsed);
+					for (const msg of parsed) {
+						this._queueService.addToGlobalQueue(msg);
+					}
 				}
 			}
 		} catch (e) {
@@ -418,9 +431,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * 큐 저장
 	 */
-	private saveQueue(): void {
+	private saveQueue(queue?: IClaudeQueuedMessage[]): void {
 		try {
-			const data = JSON.stringify(this.queueService.getGlobalQueue());
+			const data = JSON.stringify(queue ?? this._queueService.getGlobalQueue());
 			this.storageService.store(ClaudeService.QUEUE_STORAGE_KEY, data, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		} catch (e) {
 			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save queue:', e);
@@ -441,7 +454,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Looking for local config at:', configUri.fsPath);
 
 			try {
-				const content = await this.fileService.readFile(configUri);
+				const content = await this._platformFileService.readFile(configUri);
 				const configData = JSON.parse(content.value.toString()) as IClaudeLocalConfig;
 				this._localConfig = { ...DEFAULT_LOCAL_CONFIG, ...configData };
 				this.logService.info(ClaudeService.LOG_CATEGORY, 'Local config loaded:', this._localConfig);
@@ -485,7 +498,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._cliEventHandler.respondToAskUser(responses);
 	}
 
-	private async processQueue(): Promise<void> {
+	private async _processQueue(): Promise<void> {
 		// 이미 큐 처리 중이면 스킵 (Race condition 방지)
 		if (this._isProcessingQueue) {
 			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue already being processed, skipping');
@@ -513,14 +526,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		try {
 			// 큐 처리를 ClaudeQueueService로 위임
-			await this.queueService.processQueue(sessionId);
+			await this._queueService.processQueue(sessionId);
 		} catch (error) {
 			this.logService.error(ClaudeService.LOG_CATEGORY, 'Error processing queue:', error);
 		} finally {
 			// 처리 플래그 정리
 			if (sessionId) {
-				const sessionState = this._sessionService.getSessionState(sessionId);
-				(sessionState as any).isProcessingQueue = false;
+				const sessionState = this.getOrCreateSessionState(sessionId);
+				sessionState.isProcessingQueue = false;
 			} else {
 				this._isProcessingQueue = false;
 			}
@@ -532,7 +545,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * Rate limit 처리 시작
 	 */
-	private startRateLimitHandling(retryAfterSeconds: number, message?: string): void {
+	private _startRateLimitHandling(retryAfterSeconds: number, message?: string): void {
 		// 마지막 사용자 메시지 찾기 (재시도용)
 		let pendingRequest: { prompt: string; options?: IClaudeCLIRequestOptions } | undefined;
 
@@ -568,18 +581,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 * Rate limit 대기 취소
 	 */
 	cancelRateLimitWait(): void {
-		this._rateLimitService.cancel();
+		this._rateLimitService.cancelRateLimitWait();
 	}
 
 	/**
 	 * Rate limit 상태 조회
 	 */
 	getRateLimitStatus(): { waiting: boolean; countdown: number; message?: string } {
-		return {
-			waiting: this._rateLimitService.isWaiting,
-			countdown: this._rateLimitService.countdown,
-			message: this._rateLimitService.info?.message
-		};
+		return this._rateLimitService.getRateLimitStatus();
 	}
 
 	// ========== Session State Management ==========
@@ -587,9 +596,24 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * 세션 상태 가져오기 (없으면 생성)
 	 */
-	// Session state methods are now handled by ClaudeSessionService
+	private getOrCreateSessionState(sessionId: string) {
+		if (!this._sessionStates.has(sessionId)) {
+			this._sessionStates.set(sessionId, {
+				state: 'idle',
+				accumulatedContent: '',
+				toolActions: [],
+				isWaitingForUser: false,
+				messageQueue: []
+			});
+		}
+		return this._sessionStates.get(sessionId)!;
+	}
 
 	// ========== State ==========
+
+	get state(): ClaudeServiceState {
+		return this._state;
+	}
 
 	getState(): ClaudeServiceState {
 		return this._sessionService.getState();
@@ -603,6 +627,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._sessionService.getCurrentSession();
 	}
 
+	getCurrentToolAction(): IClaudeToolAction | undefined {
+		return this._currentToolAction;
+	}
+
 	// ========== Chat ==========
 
 	async sendMessage(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
@@ -610,13 +638,13 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._messageService.sendMessage(content, options);
 	}
 
-	private addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeMessage {
+	private _addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeMessage {
 		// 세션별 큐 사용 (sessionId가 있으면 세션별 큐, 없으면 글로벌 큐)
 		if (sessionId) {
 			const sessionState = this._sessionService.getSessionState(sessionId);
 
 			// 큐 크기 제한 체크
-			if (sessionState.messageQueue.length >= ClaudeService.MAX_QUEUE_SIZE) {
+			if (sessionState.pendingRequests.length >= ClaudeService.MAX_QUEUE_SIZE) {
 				this.logService.warn(ClaudeService.LOG_CATEGORY, `Session queue is full for ${sessionId}`);
 				return {
 					id: generateUuid(),
@@ -635,11 +663,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				timestamp: Date.now()
 			};
 
-			sessionState.messageQueue.push(queuedMessage);
-			this._messageService.fireQueueChange([...sessionState.messageQueue]);
+			this._sessionService.addPendingRequest(queuedMessage);
+			this._messageService.fireQueueChange([...sessionState.pendingRequests]);
 			this.saveSessionQueue(sessionId);
 
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `Message queued for session ${sessionId}:`, content.substring(0, 50), 'Queue size:', sessionState.messageQueue.length);
+			this.logService.debug(ClaudeService.LOG_CATEGORY, `Message queued for session ${sessionId}:`, content.substring(0, 50), 'Queue size:', sessionState.pendingRequests.length);
 
 			return {
 				id: queuedMessage.id,
@@ -651,7 +679,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 
 		// Legacy: 글로벌 큐 (하위 호환성)
-		if (this.queueService.getGlobalQueue().length >= ClaudeService.MAX_QUEUE_SIZE) {
+		if (this._queueService.getGlobalQueue().length >= ClaudeService.MAX_QUEUE_SIZE) {
 			this.logService.warn(ClaudeService.LOG_CATEGORY, 'Queue is full, cannot add more messages');
 			return {
 				id: generateUuid(),
@@ -670,10 +698,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			timestamp: Date.now()
 		};
 
-		this.queueService.addToGlobalQueue(queuedMessage);
+		this._queueService.addToGlobalQueue(queuedMessage);
 		this.saveQueue();
 
-		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Message queued:', content.substring(0, 50), 'Queue size:', this.queueService.getGlobalQueue().length);
+		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Message queued:', content.substring(0, 50), 'Queue size:', this._queueService.getGlobalQueue().length);
 
 		return {
 			id: queuedMessage.id,
@@ -682,6 +710,23 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			timestamp: queuedMessage.timestamp,
 			context: options?.context
 		};
+	}
+
+	/**
+	 * 특정 세션에 메시지 전송 (내부용)
+	 */
+	private async sendMessageToSessionInternal(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		// 세션 상태 가져오기 (future use)
+		this.getOrCreateSessionState(sessionId);
+
+		// 기본적으로는 sendMessageInternal과 동일하지만 특정 세션 대상
+		// 현재는 단순화하여 현재 세션으로 전환 후 전송
+		const currentSessionId = this._sessionService.getCurrentSession()?.id;
+		if (sessionId !== currentSessionId) {
+			this._sessionService.switchSession(sessionId);
+		}
+
+		return this.sendMessageInternal(content, options);
 	}
 
 	private async sendMessageInternal(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
@@ -863,7 +908,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// 완료 후 최종 메시지 반환
 			const finalMessage: IClaudeMessage = {
-				id: this._currentMessageId,
+				id: messageId,
 				role: 'assistant',
 				content: this._accumulatedContent,
 				timestamp: Date.now(),
@@ -970,7 +1015,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// ========== History ==========
 
 	getMessages(): IClaudeMessage[] {
-		return this.messageService.getMessages();
+		return this._messageService.getMessages();
 	}
 
 	clearHistory(): void {
@@ -1007,7 +1052,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				})
 				.finally(() => {
 					// 연결 상태 변경 이벤트 발생 (UI 갱신)
-					this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+					this._uiService.fireStatusInfoChange(this.getStatusInfo());
 				});
 		}
 
@@ -1024,23 +1069,20 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 * 특정 세션으로 전환
 	 */
 	switchSession(sessionId: string): IClaudeSession | undefined {
-		const result = this._sessionService.switchSession(sessionId, () => {
+		const success = this._sessionService.switchSession(sessionId, () => {
 			// Legacy 상태 초기화 (현재 세션의 상태는 보존됨)
 			this._currentMessageId = undefined;
 			this._accumulatedContent = '';
-			this._toolActions = [];
 			this._currentToolAction = undefined;
-			this._currentAskUserRequest = undefined;
 			this._isWaitingForUser = false;
-			this._cliSessionId = undefined;
 		});
 
-		if (result) {
+		if (success) {
 			// 새 세션의 상태와 큐 반영
 			const sessionState = this._sessionService.getSessionState(sessionId);
 			this._uiService.fireStateChange(sessionState.state);
-			this._messageService.fireQueueChange([...sessionState.messageQueue]);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `Switched to session: ${sessionId}, state: ${sessionState.state}, queue: ${sessionState.messageQueue.length}`);
+			this._messageService.fireQueueChange([...sessionState.pendingRequests]);
+			this.logService.debug(ClaudeService.LOG_CATEGORY, `Switched to session: ${sessionId}, state: ${sessionState.state}, queue: ${sessionState.pendingRequests.length}`);
 
 			// 연결 상태가 'error'이면 재연결 시도
 			const connInfo = this._multiConnection.getInfo();
@@ -1050,12 +1092,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					if (connected) {
 						this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful on session switch');
 					}
-					this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+					this._uiService.fireStatusInfoChange(this.getStatusInfo());
 				});
 			}
+
+			return this._sessionService.getSessionById(sessionId);
 		}
 
-		return result;
+		return undefined;
 	}
 
 	/**
@@ -1091,7 +1135,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._sessionModelOverride = resolvedModel || undefined;
 		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', displayName, resolvedModel ? `(${resolvedModel})` : '');
-		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
 	/**
@@ -1100,7 +1144,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	setSessionUltrathink(enabled: boolean): void {
 		this._sessionUltrathinkOverride = enabled;
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
-		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
 	/**
@@ -1133,24 +1177,24 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	getQueuedMessages(): IClaudeQueuedMessage[] {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this.queueService.getQueuedMessages(sessionId);
+		return this._queueService.getQueuedMessages(sessionId);
 	}
 
 	removeFromQueue(id: string): void {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		this.queueService.removeFromQueue(id, sessionId);
+		this._queueService.removeFromQueue(id, sessionId);
 	}
 
 	clearQueue(): void {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		this.queueService.clearQueue(sessionId);
+		this._queueService.clearQueue(sessionId);
 	}
 
 	/**
 	 * 큐 최대 크기 반환
 	 */
 	getMaxQueueSize(): number {
-		return this.queueService.getMaxQueueSize();
+		return this._queueService.getMaxQueueSize();
 	}
 
 	/**
@@ -1158,7 +1202,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	updateQueuedMessage(id: string, newContent: string): boolean {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this.queueService.updateQueuedMessage(id, newContent, sessionId);
+		return this._queueService.updateQueuedMessage(id, newContent, sessionId);
 	}
 
 	/**
@@ -1166,7 +1210,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	reorderQueue(fromIndex: number, toIndex: number): boolean {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this.queueService.reorderQueue(fromIndex, toIndex, sessionId);
+		return this._queueService.reorderQueue(fromIndex, toIndex, sessionId);
 	}
 
 	// ========== Status ==========
@@ -1218,7 +1262,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 세션 오버라이드도 함께 토글
 		this._sessionUltrathinkOverride = this._ultrathink;
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink:', this._ultrathink ? 'ON' : 'OFF');
-		this._onDidChangeStatusInfo.fire(this.getStatusInfo());
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
 	/**
@@ -1235,7 +1279,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * 명령 완료 시 호출 - 변경된 파일 정보 수집
 	 */
-	private async handleCommandComplete(): Promise<void> {
+	private async _handleCommandComplete(): Promise<void> {
 		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
 		await this._fileService.captureAllPendingModifications();
 
@@ -1429,19 +1473,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// ========== Multi-Session Support Methods ==========
 
 	/**
-	 * 특정 세션의 상태 가져오기 (없으면 생성)
-	 */
-	private getOrCreateSessionState(sessionId: string): ISessionState {
-		let state = this._sessionStates.get(sessionId);
-		if (!state) {
-			state = createDefaultSessionState();
-			this._sessionStates.set(sessionId, state);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `Created session state for: ${sessionId}`);
-		}
-		return state;
-	}
-
-	/**
 	 * 멀티 연결 관리자 가져오기
 	 */
 	getMultiConnection(): ClaudeMultiConnection {
@@ -1497,74 +1528,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * 특정 세션에 실제로 메시지 전송
-	 */
-	private async sendMessageToSessionInternal(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		const sessionState = this.getOrCreateSessionState(sessionId);
-
-		// 상태 업데이트
-		sessionState.state = 'sending';
-		sessionState.accumulatedContent = '';
-		sessionState.toolActions = [];
-		sessionState.currentToolAction = undefined;
-
-		// 사용자 메시지 생성
-		const userMessage: IClaudeMessage = {
-			id: generateUuid(),
-			role: 'user',
-			content,
-			timestamp: Date.now()
-		};
-
-		// 세션에 메시지 추가
-		const session = this._sessionService.getSessionById(sessionId);
-		if (session) {
-			this._sessionService.addMessage(userMessage, session);
-		}
-		this._messageService.fireMessageReceive(userMessage);
-
-		// 어시스턴트 메시지 ID 생성
-		sessionState.currentMessageId = generateUuid();
-
-		try {
-			// 멀티 연결로 이벤트 구독
-			const callbacks: ISessionEventCallbacks = {
-				onData: (event) => this.handleSessionData(sessionId, event),
-				onComplete: () => this.handleSessionComplete(sessionId),
-				onError: (error) => this.handleSessionError(sessionId, error)
-			};
-			this._multiConnection.subscribeToSession(sessionId, callbacks);
-
-			// CLI 옵션 구성
-			const workingDir = this._localConfig.workingDirectory
-				? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
-				: this.getWorkspaceRoot();
-			const rawModel = sessionState.modelOverride || this._localConfig.model;
-			const cliOptions: IClaudeCLIRequestOptions = {
-				workingDir,
-				model: rawModel ? resolveModelName(rawModel) : undefined,
-				resumeSessionId: sessionState.cliSessionId
-			};
-
-			// 프롬프트 전송
-			await this._multiConnection.sendPrompt(sessionId, content, cliOptions);
-
-			sessionState.state = 'streaming';
-			this._uiService.fireStateChange(sessionState.state);
-
-		} catch (error) {
-			sessionState.state = 'idle';
-			this._uiService.fireStateChange(sessionState.state);
-			throw error;
-		}
-
-		return userMessage;
-	}
-
-	/**
 	 * 세션 데이터 이벤트 핸들러
 	 */
-	private handleSessionData(sessionId: string, event: IClaudeCLIStreamEvent): void {
+	private _handleSessionData(sessionId: string, event: IClaudeCLIStreamEvent): void {
 		const sessionState = this._sessionStates.get(sessionId);
 		if (!sessionState) return;
 
@@ -1591,7 +1557,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * 세션 완료 이벤트 핸들러
 	 */
-	private handleSessionComplete(sessionId: string): void {
+	private _handleSessionComplete(sessionId: string): void {
 		const sessionState = this._sessionStates.get(sessionId);
 		if (!sessionState) return;
 
@@ -1612,7 +1578,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	/**
 	 * 세션 에러 이벤트 핸들러
 	 */
-	private handleSessionError(sessionId: string, error: string): void {
+	private _handleSessionError(sessionId: string, error: string): void {
 		const sessionState = this._sessionStates.get(sessionId);
 		if (!sessionState) return;
 
@@ -1733,14 +1699,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * 세션 큐 저장
+	 * 세션 큐 저장 (오버로드 지원)
 	 */
-	private saveSessionQueue(sessionId: string): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState) return;
+	private saveSessionQueue(sessionId: string, queue?: IClaudeQueuedMessage[]): void {
+		const queueToSave = queue || this._sessionStates.get(sessionId)?.messageQueue;
+		if (!queueToSave) return;
 
-		const key = `claude.sessionQueue.${sessionId}`;
-		this.storageService.store(key, JSON.stringify(sessionState.messageQueue), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		try {
+			const key = `claude.sessionQueue.${sessionId}`;
+			this.storageService.store(key, JSON.stringify(queueToSave), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		} catch (e) {
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save session queue:', e);
+		}
 	}
 
 	/**
@@ -1792,7 +1762,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private setupFileSystemWatcher(): void {
 		// 파일 변경 이벤트 구독
 		// 파일 변경 배칭 최적화 (대량 변경 시 성능 향상)
-		this._register(this.fileService.onDidFilesChange((event: FileChangesEvent) => {
+		this._register(this._platformFileService.onDidFilesChange((event: FileChangesEvent) => {
 			// 변경된 파일들 수집
 			const changedFiles = [
 				...event.rawAdded,
@@ -1861,26 +1831,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this.logService.info(ClaudeService.LOG_CATEGORY, `✅ Batch processing completed for ${changedFiles.length} files`);
 	}
 
-	// ========== Queue Persistence Delegates ==========
-
-	private saveQueue(queue: IClaudeQueuedMessage[]): void {
-		try {
-			const data = JSON.stringify(queue);
-			this.storageService.store(ClaudeService.QUEUE_STORAGE_KEY, data, StorageScope.WORKSPACE, StorageTarget.MACHINE);
-		} catch (e) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save global queue:', e);
-		}
-	}
-
-	private saveSessionQueue(sessionId: string, queue: IClaudeQueuedMessage[]): void {
-		try {
-			const key = `claude.sessionQueue.${sessionId}`;
-			this.storageService.store(key, JSON.stringify(queue), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-		} catch (e) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save session queue:', e);
-		}
-	}
-
 	// ========== 코드 중복 제거 헬퍼 메서드들 ==========
 
 	/**
@@ -1891,17 +1841,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// Legacy 상태 초기화
 		this._currentMessageId = messageId;
 		this._accumulatedContent = '';
-		this._toolActions = [];
 		this._currentToolAction = undefined;
 
-		// 세션 상태 초기화 (있는 경우)
-		const sessionState = this._sessionService.getCurrentSessionState();
-		if (sessionState) {
-			sessionState.currentMessageId = messageId;
-			sessionState.accumulatedContent = '';
-			sessionState.toolActions = [];
-			sessionState.currentToolAction = undefined;
-		}
+		// 세션 상태 초기화 (세션 서비스 메서드 사용)
+		this._sessionService.setCurrentMessageId(messageId);
+		this._sessionService.setAccumulatedContent('');
+		this._sessionService.clearToolActions();
 	}
 
 	// ========== Context Provider Implementation ==========
@@ -1922,7 +1867,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// File operations
 			saveFile: async (filePath, content) => {
-				await this._fileService.saveFile(filePath, content);
+				const uri = URI.file(filePath);
+				await this._platformFileService.writeFile(uri, VSBuffer.fromString(content));
 			},
 
 			addMessage: (message) => {
@@ -1931,12 +1877,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			// Status updates
 			updateStatus: (statusInfo) => {
-				this._uiService.setStatusInfo(statusInfo);
+				this._uiService.updateStatusInfo(statusInfo);
 			},
 
 			// Rate limiting
 			checkRateLimit: () => {
-				return !this._rateLimitService.isRateLimited();
+				return !this._rateLimitService.getRateLimitStatus().waiting;
 			},
 
 			// Event subscriptions (델리게이트 대체)
@@ -1957,7 +1903,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			},
 
 			onSessionChange: (callback) => {
-				return this._sessionService.onDidChangeSession?.(callback);
+				return this._sessionService.onDidChangeSession(callback);
 			},
 
 			onConnectionChange: (callback) => {

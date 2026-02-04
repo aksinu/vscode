@@ -3,15 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { VSBuffer } from '../../../../../base/common/buffer.js';
-import { localize } from '../../../../../nls.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
-import { INotificationService } from '../../../../../platform/notification/common/notification.js';
-import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
-import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
-import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../common/claudeTypes.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../../base/common/buffer.js';
+import { localize } from '../../../../../../nls.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
+import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
+import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
+import { validateClaudeModel, CLAUDE_DEFAULT_MODEL } from '../../../common/types/claudeTypes.js';
 import { ClaudeModalDialog } from '../ui/claudeModalDialog.js';
 
 /**
@@ -162,7 +162,7 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		}));
 
 		// 오버레이 클릭 시 닫기
-		this.modalDisposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e) => {
+		this.modalDisposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e: MouseEvent) => {
 			if (e.target === this.overlay) {
 				this.close();
 			}
@@ -195,8 +195,9 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		hint.textContent = `Available: ${this.callbacks.getAvailableModels().join(', ')}`;
 
 		// 경고 메시지 요소
-		this.modelWarningElement = append(info, $('.claude-settings-warning'));
-		this.modelWarningElement.style.display = 'none';
+		const warningElement = append(info, $('.claude-settings-warning'));
+		warningElement.style.display = 'none';
+		this.modelWarningElement = warningElement;
 
 		const control = append(item, $('.claude-settings-control'));
 		const input = append(control, $('input.claude-settings-input')) as HTMLInputElement;

@@ -3,19 +3,19 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, clearNode } from '../../../../../base/browser/dom.js';
-import { renderMarkdown, MarkdownRenderOptions } from '../../../../../base/browser/markdownRenderer.js';
-import { Codicon } from '../../../../../base/common/codicons.js';
-import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
-import { ThemeIcon } from '../../../../../base/common/themables.js';
-import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
-import { INotificationService } from '../../../../../platform/notification/common/notification.js';
-import { localize } from '../../../../../nls.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { ITextModel } from '../../../../../editor/common/model.js';
-import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
+import { $, append, clearNode } from '../../../../../../base/browser/dom.js';
+import { renderMarkdown, MarkdownRenderOptions } from '../../../../../../base/browser/markdownRenderer.js';
+import { Codicon } from '../../../../../../base/common/codicons.js';
+import { Disposable, DisposableStore } from '../../../../../../base/common/lifecycle.js';
+import { IMarkdownString, MarkdownString } from '../../../../../../base/common/htmlContent.js';
+import { ThemeIcon } from '../../../../../../base/common/themables.js';
+import { IClipboardService } from '../../../../../../platform/clipboard/common/clipboardService.js';
+import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
+import { localize } from '../../../../../../nls.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, IClaudeFileChange, IClaudeFileChangesSummary } from '../../../common/types/claudeTypes.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
+import { ITextModel } from '../../../../../../editor/common/model.js';
+import { ICodeEditor } from '../../../../../../editor/browser/editorBrowser.js';
 
 export interface IClaudeMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string) => void;
@@ -210,7 +210,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		// 메시지 복사 버튼 (Event Delegation 패턴 사용 - 메모리 효율성 향상)
 		const copyMessageButton = append(headerElement, $('button.claude-message-copy'));
 		copyMessageButton.title = localize('copyMessage', "Copy message");
-		const copyIcon = append(copyMessageButton, $('.codicon.codicon-copy'));
+		append(copyMessageButton, $('.codicon.codicon-copy'));
 
 		// Event Delegation을 위한 data 속성 설정 (개별 리스너 대신)
 		copyMessageButton.setAttribute('data-action', 'copy-message');
@@ -273,7 +273,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		});
 
 		const renderOptions: MarkdownRenderOptions = {
-			codeBlockRendererSync: (languageId, value) => {
+			codeBlockRendererSync: (languageId: string, value: string) => {
 				return this.renderCodeBlock(languageId, value, disposables);
 			}
 		};
@@ -974,7 +974,7 @@ export class ClaudeMessageRenderer extends Disposable {
 		const clearSelectionHandler = (e: MouseEvent) => {
 			e.stopPropagation();
 			selectedFiles.clear();
-			fileList.querySelectorAll('.claude-file-checkbox input').forEach((cb) => {
+			fileList.querySelectorAll('.claude-file-checkbox input').forEach((cb: Element) => {
 				(cb as HTMLInputElement).checked = false;
 			});
 			updateSelectionUI();

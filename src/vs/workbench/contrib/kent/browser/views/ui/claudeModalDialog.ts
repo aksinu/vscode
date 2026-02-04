@@ -3,8 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $ } from '../../../../../base/browser/dom.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
+import { $ } from '../../../../../../base/browser/dom.js';
+import { Disposable, IDisposable } from '../../../../../../base/common/lifecycle.js';
 
 /**
  * Claude 모달 다이얼로그 추상 기본 클래스
@@ -122,9 +122,10 @@ export abstract class ClaudeModalDialog<TCallbacks = any> extends Disposable {
 	 * @returns 생성된 오버레이 요소
 	 */
 	protected createBaseOverlay(parentContainer: HTMLElement): HTMLElement {
-		this.overlay = $('.overlay');
-		parentContainer.appendChild(this.overlay);
-		return this.overlay;
+		const overlay = $('.overlay');
+		parentContainer.appendChild(overlay);
+		this.overlay = overlay;
+		return overlay;
 	}
 
 	/**

@@ -19,8 +19,8 @@ import { ResourceContextKey } from '../../../../common/contextkeys.js';
 import { EditorContextKeys } from '../../../../../editor/common/editorContextKeys.js';
 import { IClaudeService } from '../../common/services/core/claude.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
-import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/claudeContextKeys.js';
-import { ClaudeChatViewPane } from '../view/claudeChatView.js';
+import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/config/claudeContextKeys.js';
+import { ClaudeChatViewPane } from '../views/chat/claudeChatView.js';
 
 // ========== 채팅창 열기 ==========
 
@@ -182,7 +182,7 @@ export class AttachFileToClaude extends Action2 {
 			files = [resource];
 		} else {
 			const selection = explorerService.getContext(true);
-			files = selection.map(item => item.resource);
+			files = selection.map((item: { resource: URI }) => item.resource);
 		}
 
 		if (files.length === 0) {
@@ -223,7 +223,7 @@ export class AttachFolderToClaude extends Action2 {
 		});
 	}
 
-	override async run(accessor: ServicesAccessor, resource?: URI): Promise<void> {
+	async run(accessor: ServicesAccessor, resource?: URI): Promise<void> {
 		const viewsService = accessor.get(IViewsService);
 		const explorerService = accessor.get(IExplorerService);
 
@@ -233,7 +233,7 @@ export class AttachFolderToClaude extends Action2 {
 			folders = [resource];
 		} else {
 			const selection = explorerService.getContext(true);
-			folders = selection.filter(item => item.isDirectory).map(item => item.resource);
+			folders = selection.filter((item: { isDirectory: boolean; resource: URI }) => item.isDirectory).map((item: { resource: URI }) => item.resource);
 		}
 
 		if (folders.length === 0) {
@@ -273,7 +273,7 @@ export class AskClaudeAboutSelection extends Action2 {
 		});
 	}
 
-	override async run(accessor: ServicesAccessor): Promise<void> {
+	async run(accessor: ServicesAccessor): Promise<void> {
 		const viewsService = accessor.get(IViewsService);
 		const editorService = accessor.get(IEditorService);
 
@@ -340,7 +340,7 @@ export class AttachCurrentFileToClaude extends Action2 {
 		});
 	}
 
-	override async run(accessor: ServicesAccessor, resource?: URI): Promise<void> {
+	async run(accessor: ServicesAccessor, resource?: URI): Promise<void> {
 		const viewsService = accessor.get(IViewsService);
 		const editorService = accessor.get(IEditorService);
 
@@ -377,7 +377,7 @@ export class CleanupClaudeLogsAction extends Action2 {
 		});
 	}
 
-	override async run(accessor: ServicesAccessor): Promise<void> {
+	async run(accessor: ServicesAccessor): Promise<void> {
 		const logService = accessor.get(IClaudeLogService);
 		await logService.cleanupOldLogs();
 	}

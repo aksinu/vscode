@@ -3,9 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeUsageInfo, ClaudeServiceState } from '../../common/claudeTypes.js';
-import { IClaudeLocalConfig } from '../../common/claudeLocalConfig.js';
+import { IClaudeToolAction, ClaudeServiceState } from '../../../common/types/claudeTypes.js';
 import {
 	ICLIEventHandlerUnifiedContext,
 	IConnectionContext,
@@ -88,12 +86,12 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 		updateToolAction: (id, update) => {
 			const sessionState = this.claudeService._sessionService.getCurrentSessionState();
 			if (sessionState) {
-				const idx = sessionState.toolActions.findIndex(a => a.id === id);
+				const idx = sessionState.toolActions.findIndex((a: IClaudeToolAction) => a.id === id);
 				if (idx !== -1) {
 					sessionState.toolActions[idx] = { ...sessionState.toolActions[idx], ...update };
 				}
 			}
-			const idx = this.claudeService._toolActions.findIndex(a => a.id === id);
+			const idx = this.claudeService._toolActions.findIndex((a: IClaudeToolAction) => a.id === id);
 			if (idx !== -1) {
 				this.claudeService._toolActions[idx] = { ...this.claudeService._toolActions[idx], ...update };
 			}

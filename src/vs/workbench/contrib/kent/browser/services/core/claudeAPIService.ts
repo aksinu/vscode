@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Event } from '../../../../base/common/event.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, IClaudeSession } from './claudeTypes.js';
+import { Event } from '../../../../../../base/common/event.js';
+import { createDecorator } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, IClaudeSession } from '../../../common/types/claudeTypes.js';
 
 export interface IClaudeAPIService {
 	// Connection Status Events

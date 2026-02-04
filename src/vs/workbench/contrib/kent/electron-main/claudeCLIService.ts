@@ -9,7 +9,7 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIService, IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
-import { IClaudeExecutableConfig, normalizePermissionMode } from '../common/claudeLocalConfig.js';
+import { IClaudeExecutableConfig, normalizePermissionMode } from '../common/config/claudeLocalConfig.js';
 
 /**
  * Rate limit 에러 메시지 파싱

@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { localize } from '../../../../../nls.js';
-import { IClaudeStatusInfo } from '../../common/claudeTypes.js';
-import { ClaudePermissionMode } from '../../common/claudeLocalConfig.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { localize } from '../../../../../../nls.js';
+import { IClaudeStatusInfo } from '../../../common/types/claudeTypes.js';
+import { ClaudePermissionMode } from '../../../common/config/claudeLocalConfig.js';
 import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
 
 /**

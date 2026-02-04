@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { IDisposable } from '../../../../../base/common/lifecycle.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { basename } from '../../../../../base/common/resources.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { basename } from '../../../../../../base/common/resources.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 
 /**
  * OpenFilesBar 콜백 인터페이스

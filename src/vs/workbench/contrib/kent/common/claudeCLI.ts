@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeExecutableConfig } from './claudeLocalConfig.js';
+import { IClaudeExecutableConfig } from './config/claudeLocalConfig.js';
 
 export const IClaudeCLIService = createDecorator<IClaudeCLIService>('claudeCLIService');
 

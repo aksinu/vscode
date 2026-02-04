@@ -22,7 +22,7 @@ import { IClaudeSettingsService } from '../common/types/claudeSettingsService.js
 import { ClaudeService } from './services/core/claudeService.js';
 import { ClaudeMessageService } from './services/message/claudeMessageService.js';
 import { ClaudeQueueService } from './services/queue/claudeQueueService.js';
-import { ClaudeRateLimitService } from './services/ratelimit/claudeRateLimitService.js';
+import { ClaudeRateLimitService } from './services/rateLimit/claudeRateLimitService.js';
 import { ClaudeFileService } from './services/file/claudeFileService.js';
 import { ClaudeSessionService } from './services/session/claudeSessionService.js';
 import { ClaudeUIService } from './services/ui/claudeUIService.js';

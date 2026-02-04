@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, clearNode } from '../../../../../base/browser/dom.js';
-import { Codicon } from '../../../../../base/common/codicons.js';
-import { ThemeIcon } from '../../../../../base/common/themables.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { localize } from '../../../../../nls.js';
-import { IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../common/claude.js';
-import { IClaudeFileChange } from '../../common/claudeTypes.js';
+import { $, append, clearNode } from '../../../../../../base/browser/dom.js';
+import { Codicon } from '../../../../../../base/common/codicons.js';
+import { ThemeIcon } from '../../../../../../base/common/themables.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { localize } from '../../../../../../nls.js';
+import { IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../../common/services/core/claude.js';
+import { IClaudeFileChange } from '../../../common/types/claudeTypes.js';
 
 /**
  * Changes History 패널 콜백
@@ -213,7 +213,7 @@ export class ChangesHistoryPanel extends Disposable {
 				const diffBtn = append(actions, $('button.action-btn'));
 				diffBtn.appendChild($(ThemeIcon.asCSSSelector(Codicon.diff)));
 				diffBtn.title = localize('showDiff', "Show Diff");
-				diffBtn.onclick = (e) => {
+				diffBtn.onclick = (e: MouseEvent) => {
 					e.stopPropagation();
 					this.callbacks.onShowDiff(change);
 				};

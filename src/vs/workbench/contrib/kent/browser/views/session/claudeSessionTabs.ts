@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType, clearNode } from '../../../../../base/browser/dom.js';
-import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { localize } from '../../../../../nls.js';
-import { IClaudeSession } from '../../common/claudeTypes.js';
+import { $, append, addDisposableListener, EventType, clearNode } from '../../../../../../base/browser/dom.js';
+import { Disposable, IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { localize } from '../../../../../../nls.js';
+import { IClaudeSession, IClaudeMessage } from '../../../common/types/claudeTypes.js';
 
 /**
  * 세션 탭 이벤트
@@ -119,7 +119,7 @@ export class SessionTabs extends Disposable {
 			closeButton.title = localize('closeSession', "Close Session");
 			append(closeButton, $('span.codicon.codicon-close'));
 
-			this.disposables.push(addDisposableListener(closeButton, EventType.CLICK, (e) => {
+			this.disposables.push(addDisposableListener(closeButton, EventType.CLICK, (e: MouseEvent) => {
 				e.stopPropagation();
 				this.callbacks.onDeleteSession(session.id);
 			}));
@@ -149,7 +149,7 @@ export class SessionTabs extends Disposable {
 		}
 
 		// 2. 첫 번째 사용자 메시지에서 제목 추출
-		const firstUserMsg = session.messages.find(m => m.role === 'user');
+		const firstUserMsg = session.messages.find((m: IClaudeMessage) => m.role === 'user');
 		if (firstUserMsg) {
 			return this.extractTitleFromMessage(firstUserMsg.content);
 		}

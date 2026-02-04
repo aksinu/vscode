@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Event } from '../../../../base/common/event.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, IClaudeToolAction } from './claudeTypes.js';
-import { IClaudeLocalConfig } from './claudeLocalConfig.js';
+import { Event } from '../../../../../../base/common/event.js';
+import { createDecorator } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, IClaudeToolAction } from '../../types/claudeTypes.js';
+import { IClaudeLocalConfig } from '../../config/claudeLocalConfig.js';
 
 export const IClaudeService = createDecorator<IClaudeService>('claudeService');
 

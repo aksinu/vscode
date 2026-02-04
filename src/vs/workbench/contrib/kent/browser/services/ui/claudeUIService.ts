@@ -3,9 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../base/common/event.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
-import { timeout } from '../../../../base/common/async.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { IClaudeUIService } from '../../../common/types/claudeUIService.js';
 import { ClaudeServiceState, IClaudeStatusInfo, IClaudeToolAction } from '../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
@@ -32,8 +31,7 @@ export class ClaudeUIService extends Disposable implements IClaudeUIService {
 
 	// ========== Internal State ==========
 
-	private _currentState: ClaudeServiceState = ClaudeServiceState.Disconnected;
-	private _currentStatusInfo: IClaudeStatusInfo | undefined;
+	private _currentState: ClaudeServiceState = 'idle';
 	private _currentToolAction: IClaudeToolAction | undefined;
 
 	// ========== Debouncing ==========
@@ -83,18 +81,16 @@ export class ClaudeUIService extends Disposable implements IClaudeUIService {
 		}
 
 		// 기본 상태 정보 반환
+		const state = this.getState();
 		return {
-			state: this.getState(),
-			isConnected: this.getState() === ClaudeServiceState.Connected,
-			connectionStatus: this.getState() === ClaudeServiceState.Connected ? 'connected' : 'disconnected',
-			sessionInfo: undefined,
-			usage: undefined,
-			rateLimitInfo: undefined
+			connectionStatus: state === 'error' ? 'error' : 'disconnected',
+			model: '',
+			ultrathink: false,
+			executionMethod: 'cli'
 		};
 	}
 
 	updateStatusInfo(statusInfo: IClaudeStatusInfo): void {
-		this._currentStatusInfo = statusInfo;
 		this.fireStatusInfoChange(statusInfo);
 	}
 

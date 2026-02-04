@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, EventType } from '../../../../../base/browser/dom.js';
-import { DisposableStore, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
-import { localize } from '../../../../../nls.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { basename } from '../../../../../base/common/resources.js';
+import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
+import { DisposableStore, IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { ICodeEditor } from '../../../../../../editor/browser/editorBrowser.js';
+import { localize } from '../../../../../../nls.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { basename } from '../../../../../../base/common/resources.js';
 
 /**
  * 자동완성 아이템 타입

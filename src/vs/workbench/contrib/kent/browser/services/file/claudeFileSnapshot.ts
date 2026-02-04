@@ -3,20 +3,20 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { IFileService } from '../../../../../platform/files/common/files.js';
-import { IModelService } from '../../../../../editor/common/services/model.js';
-import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { ITextFileService } from '../../../../services/textfile/common/textfiles.js';
-import { basename } from '../../../../../base/common/resources.js';
-import { localize } from '../../../../../nls.js';
-import { IClaudeLogService } from '../../common/claudeLogService.js';
-import { IClaudeFileChange, IClaudeFileChangesSummary } from '../../common/claudeTypes.js';
-import { VSBuffer } from '../../../../../base/common/buffer.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
+import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { URI } from '../../../../../../base/common/uri.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IModelService } from '../../../../../../editor/common/services/model.js';
+import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
+import { IEditorService } from '../../../../../services/editor/common/editorService.js';
+import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
+import { basename } from '../../../../../../base/common/resources.js';
+import { localize } from '../../../../../../nls.js';
+import { IClaudeLogService } from '../../../common/claudeLogService.js';
+import { IClaudeFileChange, IClaudeFileChangesSummary } from '../../../common/types/claudeTypes.js';
+import { VSBuffer } from '../../../../../../base/common/buffer.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../../platform/storage/common/storage.js';
 
 /**
  * 파일 스냅샷 정보 (내부용)

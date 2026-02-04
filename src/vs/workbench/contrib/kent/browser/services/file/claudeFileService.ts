@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../../base/common/lifecycle.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { IClaudeFileService } from '../../../common/types/claudeFileService.js';
-import { IClaudeFileChange, IClaudeFileChangesSummary, IClaudeSessionChangesHistory } from '../../../common/types/claudeTypes.js';
+import { IClaudeFileChange, IClaudeFileChangesSummary } from '../../../common/types/claudeTypes.js';
+import { IClaudeSessionChangesHistory } from '../../../common/services/core/claude.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
 
 /**
@@ -17,9 +18,6 @@ export class ClaudeFileService extends Disposable implements IClaudeFileService 
 	declare readonly _serviceBrand: undefined;
 
 	// ========== Delegates ==========
-
-	private _getCurrentSessionDelegate?: () => any;
-	private _getSessionChangesHistoryDelegate?: (sessionId: string) => any;
 
 	// Core file operations delegates
 	private _startCommandDelegate?: (workingDir?: string) => void;
@@ -103,14 +101,12 @@ export class ClaudeFileService extends Disposable implements IClaudeFileService 
 			return this._getFileChangesSummaryDelegate();
 		}
 		return {
-			totalFiles: 0,
-			addedFiles: 0,
-			modifiedFiles: 0,
-			deletedFiles: 0,
-			renamedFiles: 0,
+			filesCreated: 0,
+			filesModified: 0,
+			filesDeleted: 0,
 			totalLinesAdded: 0,
-			totalLinesDeleted: 0,
-			changedFiles: []
+			totalLinesRemoved: 0,
+			changes: []
 		};
 	}
 
@@ -120,7 +116,11 @@ export class ClaudeFileService extends Disposable implements IClaudeFileService 
 		}
 		return {
 			sessionId: '',
-			changes: []
+			totalFilesChanged: 0,
+			totalLinesAdded: 0,
+			totalLinesRemoved: 0,
+			entries: [],
+			filesSummary: []
 		};
 	}
 
@@ -193,11 +193,10 @@ export class ClaudeFileService extends Disposable implements IClaudeFileService 
 	// ========== Delegates setup ==========
 
 	setFileDelegates(
-		getCurrentSession: () => any,
-		getSessionChangesHistory: (sessionId: string) => any
+		_getCurrentSession: () => any,
+		_getSessionChangesHistory: (sessionId: string) => any
 	): void {
-		this._getCurrentSessionDelegate = getCurrentSession;
-		this._getSessionChangesHistoryDelegate = getSessionChangesHistory;
+		// These delegates are reserved for future use
 	}
 
 	setCoreFileDelegates(delegates: {
