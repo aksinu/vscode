@@ -274,6 +274,8 @@ export interface IClaudeMessage {
 	readonly workStartTime?: number;
 	/** 작업 완료 시간 (assistant 메시지, 스트리밍 완료할 때 설정) */
 	readonly workEndTime?: number;
+	/** 첨부 파일들 (user 메시지) */
+	readonly attachments?: IClaudeAttachment[];
 }
 
 /**
