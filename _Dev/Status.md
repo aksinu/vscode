@@ -8,9 +8,9 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 4 - 성능 최적화 |
-| **Status** | ✅ **Phase 4 완료** - 메모리 최적화, 비동기 처리 개선, 이벤트 리스너 최적화, 메모리 누수 방지 강화 완료 |
-| **Updated** | 2026-02-03 |
+| **Phase** | Phase 6 완료 - 리팩토링 마무리 |
+| **Status** | ✅ **리팩토링 완료** - 추가 모듈화 불필요, 현재 구조 유지 |
+| **Updated** | 2026-02-04 |
 | **Build** | ⚠️ 컴파일 필요 |
 
 ---
@@ -18,8 +18,52 @@
 ## Recently Completed
 
 ```
+Task: 추가 모듈화 분석
+Status: ✅ 분석 완료 - 추가 모듈화 불필요
+
+결론: 현재 구조 유지
+- ClaudeChatViewPane 1065줄은 VS Code ViewPane 표준 범위 내
+- 19개 모듈 (5개 Manager + 14개 컴포넌트)로 충분히 분리됨
+- 남은 코드 특성:
+  - 대부분 컴포넌트 조합/초기화 코드
+  - ViewPane 필수 메서드 (constructor, renderBody, layoutBody, dispose)
+  - 단순 위임 패턴으로 작성됨
+- 추가 분리 시 문제:
+  - 파일 수 증가 → 복잡도 상승
+  - 작은 클래스 파편화
+  - 투자 대비 효과 미미
+
+Task: 리팩토링 Phase 6 - ClaudeChatViewPane 모듈화
+Status: ✅ ClaudeChatViewPane Manager 패턴으로 분리 완료
+
+Phase 6: ClaudeChatViewPane Manager 분리 ✅
+- ClaudeChatViewPane 1682줄 → 1065줄로 축소 (~37% 감소)
+- 5개 Manager 클래스로 기능별 분리:
+  - GitCommitManager (223줄): Git 커밋 기능, 메시지 생성, SCM/터미널 실행
+  - QueueUIManager (200줄): 메시지 큐 UI, 드래그앤드롭, 편집/삭제
+  - ClipboardManager (110줄): 붙여넣기 처리, 이미지/코드 참조 변환
+  - MessageListManager (120줄): 메시지 DOM 관리, 스크롤, 세션 구분선
+  - ViewConnectionManager (105줄): 연결 초기화, 재시도, 에러 처리
+- 폴더 구조: browser/views/chat/managers/
+- 기존 14개 컴포넌트와 함께 총 19개 모듈로 분리
+
+Task: 리팩토링 Phase 5 - ClaudeService 모듈화
+Status: ✅ ClaudeService Manager 패턴으로 분리 완료
+
+Phase 5: ClaudeService Manager 분리 ✅
+- ClaudeService 1852줄 → 942줄로 축소 (~49% 감소)
+- 5개 Manager 클래스로 기능별 분리:
+  - ConfigManager (91줄): 로컬 설정 로드/리로드, 워크스페이스 루트
+  - HistoryManager (125줄): 세션 변경사항 히스토리 관리
+  - FileWatcherManager (103줄): 파일 시스템 감시 및 배칭 처리
+  - MultiSessionManager (305줄): 멀티 세션 상태, 큐, 컨텐츠 축적
+  - ChatManager (362줄): 메시지 전송 핵심 로직, CLI 옵션 빌드
+- 폴더 구조: browser/services/core/managers/
+- IClaudeService 인터페이스 변경 없이 내부 구조만 개선
+- ClaudeServiceContextProvider와의 호환성 유지
+
 Task: 리팩토링 Phase 4 (4-1~4-4) - 성능 최적화 진행 중
-Status: 🔄 메모리 최적화 완료, 비동기 처리 개선 완료, 이벤트 리스너 최적화 진행 중
+Status: ✅ 메모리 최적화 완료, 비동기 처리 개선 완료, 이벤트 리스너 최적화 완료
 
 Phase 4-1: 메모리 사용량 최적화 (CLIEventHandler 델리게이트 패턴 개선) ✅
 - 47개 과도한 델리게이트를 통합 컨텍스트 패턴으로 교체
@@ -189,6 +233,16 @@ yarn compile          # 빌드
 - 연결 오버레이 (`claudeConnectionOverlay.ts`)
 - 컴포넌트 분리 (Autocomplete, RateLimit, StatusBar 등)
 
+### Phase 6 리팩토링 (2026-02-04 완료)
+- **ClaudeChatViewPane 모듈화**: 1682줄 → 1065줄 (~37% 감소)
+- **Manager 패턴 적용**: 5개 Manager 클래스로 기능별 분리
+- **폴더 구조**: browser/views/chat/managers/ 신규 생성
+
+### Phase 5 리팩토링 (2026-02-04 완료)
+- **ClaudeService 모듈화**: 1852줄 → 942줄 (~49% 감소)
+- **Manager 패턴 적용**: 5개 Manager 클래스로 기능별 분리
+- **폴더 구조**: browser/services/core/managers/ 신규 생성
+
 ### Phase 1 리팩토링 (2026-02-03 완료)
 - **서비스 분리**: ClaudeService에서 Queue, File, RateLimit, Session 서비스 분리
 - **폴더 구조 개선**: 서비스별 폴더 구조로 재정리 (core/queue/session/message/file/rateLimit)
@@ -321,6 +375,80 @@ onDidComplete         ──▶ handleCommandComplete()
 ---
 
 ## Activity Log
+
+### 2026-02-04
+- **추가 모듈화 분석 완료**
+  - **결론**: 추가 모듈화 불필요, 현재 구조 유지
+  - **분석 결과**:
+    - ClaudeChatViewPane 1065줄 (VS Code ViewPane 표준 범위 내)
+    - 19개 모듈로 충분히 분리됨 (5개 Manager + 14개 컴포넌트)
+    - 남은 코드: 컴포넌트 조합/초기화/위임 코드
+  - **폴더 구조 (최종)**:
+    ```
+    browser/views/chat/
+    ├── claudeChatView.ts (1065줄)
+    └── managers/ (5개 Manager)
+
+    browser/views/ui/ (UI 컴포넌트)
+    browser/views/session/ (세션 관련)
+    browser/views/settings/ (설정 관련)
+    ```
+
+- **ClaudeChatViewPane 모듈화 완료 (Phase 6)**
+  - **목표**: ClaudeChatViewPane 1682줄 → ~900줄로 축소
+  - **결과**: 1682줄 → 1065줄 (~37% 감소)
+  - **신규 파일 (5개 Manager)**:
+    - `managers/gitCommitManager.ts` (223줄): Git 커밋 기능 전체 (hasChangesToCommit, handleCommitChanges, generateCommitMessage, executeGitCommit, executeGitCommand)
+    - `managers/queueUIManager.ts` (200줄): 메시지 큐 UI 렌더링, 드래그앤드롭 재정렬, 아이템 편집/삭제
+    - `managers/clipboardManager.ts` (110줄): 붙여넣기 처리, 이미지/코드 참조 변환
+    - `managers/messageListManager.ts` (120줄): 메시지 DOM 관리 (append, update, clear, scroll, divider)
+    - `managers/viewConnectionManager.ts` (105줄): 연결 초기화, 재시도, 에러 처리
+    - `managers/index.ts`: 모듈 re-export
+  - **ClaudeChatViewPane 변경**:
+    - Manager 클래스들로 위임 패턴 적용
+    - 기존 14개 분리 컴포넌트 유지
+    - 인라인 로직 ~620줄 → 5개 Manager로 이동
+  - **폴더 구조**:
+    ```
+    browser/views/chat/
+    ├── claudeChatView.ts (1065줄, 조합/위임)
+    ├── managers/
+    │   ├── gitCommitManager.ts
+    │   ├── queueUIManager.ts
+    │   ├── clipboardManager.ts
+    │   ├── messageListManager.ts
+    │   ├── viewConnectionManager.ts
+    │   └── index.ts
+    └── ... (기존 파일들)
+    ```
+
+- **ClaudeService 모듈화 완료 (Phase 5)**
+  - **목표**: ClaudeService 1852줄 → ~400줄로 축소
+  - **결과**: 1852줄 → 942줄 (~49% 감소)
+  - **신규 파일 (5개 Manager)**:
+    - `managers/configManager.ts` (91줄): 로컬 설정 로드/리로드/가져오기, 워크스페이스 루트
+    - `managers/historyManager.ts` (125줄): 세션 변경사항 히스토리 (getSessionChangesHistory)
+    - `managers/fileWatcherManager.ts` (103줄): 파일 시스템 감시, 배칭 처리
+    - `managers/multiSessionManager.ts` (305줄): 멀티 세션 상태, 큐, 컨텐츠 축적, 백그라운드 세션 처리
+    - `managers/chatManager.ts` (362줄): 메시지 전송 핵심 로직, CLI 옵션 빌드, continue 모드
+    - `managers/index.ts`: 모듈 re-export
+  - **ClaudeService 변경**:
+    - Manager 클래스들로 위임 패턴 적용
+    - IClaudeService 인터페이스 변경 없음 (하위 호환성 유지)
+    - ClaudeServiceContextProvider 호환성 위해 내부 프로퍼티 노출 유지
+  - **폴더 구조**:
+    ```
+    browser/services/core/
+    ├── claudeService.ts (942줄, 위임만)
+    ├── managers/
+    │   ├── configManager.ts
+    │   ├── historyManager.ts
+    │   ├── fileWatcherManager.ts
+    │   ├── multiSessionManager.ts
+    │   ├── chatManager.ts
+    │   └── index.ts
+    └── ... (기존 파일들)
+    ```
 
 ### 2026-02-03
 - **Use Custom Script 기능 제거 완료**

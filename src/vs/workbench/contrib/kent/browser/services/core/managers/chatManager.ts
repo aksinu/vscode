@@ -1,0 +1,362 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { Disposable } from '../../../../../../../base/common/lifecycle.js';
+import { generateUuid } from '../../../../../../../base/common/uuid.js';
+import { IConfigurationService } from '../../../../../../../platform/configuration/common/configuration.js';
+import { IClaudeCLIRequestOptions } from '../../../../common/claudeCLI.js';
+import { IClaudeSessionService } from '../../../../common/types/claudeSessionService.js';
+import { IClaudeMessageService } from '../../../../common/types/claudeMessageService.js';
+import { IClaudeFileService } from '../../../../common/types/claudeFileService.js';
+import { IClaudeUIService } from '../../../../common/types/claudeUIService.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, resolveModelName } from '../../../../common/types/claudeTypes.js';
+import { IClaudeLogService } from '../../../../common/claudeLogService.js';
+import { ClaudeContextBuilder } from '../claudeContextBuilder.js';
+import { ClaudeMultiConnection } from '../claudeConnection.js';
+import { ConfigManager } from './configManager.js';
+import { MultiSessionManager } from './multiSessionManager.js';
+
+/**
+ * ChatManager - 메시지 전송 핵심 로직
+ * 책임: sendMessageInternal, sendMessageToSessionInternal, initializeNewMessageState
+ */
+export class ChatManager extends Disposable {
+
+	private static readonly LOG_CATEGORY = 'ChatManager';
+
+	// 컨텍스트 빌더
+	private readonly _contextBuilder: ClaudeContextBuilder;
+
+	// Legacy 단일 상태 (하위 호환성)
+	private _currentMessageId: string | undefined;
+	private _accumulatedContent: string = '';
+	private _continueMode = false;
+
+	// Session overrides
+	private _sessionModelOverride: string | undefined;
+	private _sessionUltrathinkOverride: boolean | undefined;
+
+	constructor(
+		private readonly _configurationService: IConfigurationService,
+		private readonly _sessionService: IClaudeSessionService,
+		private readonly _messageService: IClaudeMessageService,
+		private readonly _fileService: IClaudeFileService,
+		private readonly _uiService: IClaudeUIService,
+		private readonly _logService: IClaudeLogService,
+		private readonly _configManager: ConfigManager,
+		private readonly _multiSessionManager: MultiSessionManager,
+		private readonly _multiConnection: ClaudeMultiConnection
+	) {
+		super();
+		this._contextBuilder = new ClaudeContextBuilder();
+	}
+
+	/**
+	 * 메시지 전송 (내부 구현)
+	 */
+	async sendMessageInternal(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		if (!this._sessionService.hasCurrentSession()) {
+			this._sessionService.startNewSession();
+		}
+
+		// --continue 플래그 감지 (텍스트 또는 버튼)
+		let continueLastSession = this._continueMode;
+		let actualContent = content;
+
+		// 버튼으로 continue 모드 활성화된 경우 초기화
+		if (this._continueMode) {
+			this._continueMode = false;
+			this._logService.info(ChatManager.LOG_CATEGORY, 'Continue mode (button) activated');
+		}
+
+		if (content.trim().startsWith('--continue') || content.trim().startsWith('-c ')) {
+			continueLastSession = true;
+			// --continue 이후의 텍스트를 프롬프트로 사용
+			actualContent = content.trim()
+				.replace(/^--continue\s*/, '')
+				.replace(/^-c\s*/, '')
+				.trim();
+
+			// 프롬프트가 없으면 빈 문자열 (CLI가 이전 대화 로드)
+			if (!actualContent) {
+				actualContent = '';
+			}
+
+			this._logService.info(ChatManager.LOG_CATEGORY, 'Continue mode detected, prompt:', actualContent || '(empty)');
+		}
+
+		// 파일 스냅샷 매니저 초기화 - 새 명령 시작
+		const workingDir = this._configManager.getWorkingDirectory();
+		this._fileService.startCommand(workingDir);
+
+		// 사용자 메시지 추가 (원본 content 사용)
+		const userMessage: IClaudeMessage = {
+			id: generateUuid(),
+			role: 'user',
+			content,
+			timestamp: Date.now(),
+			context: options?.context
+		};
+
+		this._sessionService.addMessage(userMessage);
+		this._messageService.fireMessageReceive(userMessage);
+
+		// 사용자 메시지 저장
+		this._sessionService.saveSessions();
+
+		// 프롬프트 구성 - continue 모드가 아닐 때만 컨텍스트 포함
+		let prompt: string;
+		if (continueLastSession) {
+			// continue 모드: actualContent만 사용 (빈 문자열 가능)
+			prompt = actualContent;
+		} else {
+			// 일반 모드: 이전 대화 컨텍스트 포함
+			prompt = this._contextBuilder.buildPromptWithContext(
+				content,
+				this._sessionService.getMessages(),
+				options?.context
+			);
+		}
+
+		// 스트리밍 메시지 생성 (헬퍼 메서드로 중복 제거)
+		const messageId = generateUuid();
+		this.initializeNewMessageState(messageId);
+
+		const now = Date.now();
+		const assistantMessage: IClaudeMessage = {
+			id: messageId,
+			role: 'assistant',
+			content: '',
+			timestamp: now,
+			isStreaming: true,
+			workStartTime: now
+		};
+
+		this._sessionService.addMessage(assistantMessage);
+		this._messageService.fireMessageReceive(assistantMessage);
+
+		// CLI 호출
+		this._sessionService.setState('streaming');
+		this._logService.debug(ChatManager.LOG_CATEGORY, 'State set to streaming, calling CLI...');
+		this._logService.debug(ChatManager.LOG_CATEGORY, 'Sending prompt to CLI:', prompt.substring(0, 100));
+
+		try {
+			// 채널 테스트 (Multi-Session)
+			const testSessionId = this._sessionService.getCurrentSession()?.id || 'test';
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Testing channel with isRunning for session:', testSessionId);
+			const isRunning = await Promise.race([
+				this._multiConnection.isRunning(testSessionId),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Channel timeout')), 5000))
+			]);
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Channel test passed, isRunning:', isRunning);
+
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Calling sendPrompt...');
+
+			// CLI 옵션 빌드
+			const cliOptions = this.buildCLIOptions(options, continueLastSession);
+
+			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
+			const sessionId = this._sessionService.getCurrentSession()?.id;
+			if (!sessionId) {
+				throw new Error('No active session');
+			}
+
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Using multi-session sendPrompt for sessionId:', sessionId);
+			const timeoutMs = 15 * 60 * 1000; // 15분
+			await Promise.race([
+				this._multiConnection.sendPrompt(sessionId, prompt, cliOptions),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 15 minutes')), timeoutMs))
+			]);
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
+
+			// 완료 후 최종 메시지 반환
+			const finalMessage: IClaudeMessage = {
+				id: messageId,
+				role: 'assistant',
+				content: this._accumulatedContent,
+				timestamp: Date.now(),
+				isStreaming: false,
+				workEndTime: Date.now()
+			};
+
+			return finalMessage;
+		} catch (error) {
+			this._logService.error(ChatManager.LOG_CATEGORY, 'sendPrompt error:', error);
+
+			// 타임아웃 에러 시 세션 상태 복구
+			const sessionId = this._sessionService.getCurrentSession()?.id;
+			if (sessionId) {
+				this._multiSessionManager.handleSessionError(sessionId);
+			}
+			this._sessionService.setState('idle');
+			this._uiService.fireStateChange('idle');
+
+			throw error;
+		}
+	}
+
+	/**
+	 * 특정 세션에 메시지 전송 (내부용)
+	 */
+	async sendMessageToSessionInternal(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		// 세션 상태 가져오기 (future use)
+		this._multiSessionManager.getOrCreateSessionState(sessionId);
+
+		// 기본적으로는 sendMessageInternal과 동일하지만 특정 세션 대상
+		// 현재는 단순화하여 현재 세션으로 전환 후 전송
+		const currentSessionId = this._sessionService.getCurrentSession()?.id;
+		if (sessionId !== currentSessionId) {
+			this._sessionService.switchSession(sessionId);
+		}
+
+		return this.sendMessageInternal(content, options);
+	}
+
+	/**
+	 * 새 메시지 시작 시 상태를 초기화하는 헬퍼 메서드
+	 * Legacy와 세션별 상태 모두 동기화
+	 */
+	initializeNewMessageState(messageId: string): void {
+		// Legacy 상태 초기화
+		this._currentMessageId = messageId;
+		this._accumulatedContent = '';
+
+		// 세션 상태 초기화 (세션 서비스 메서드 사용)
+		this._sessionService.setCurrentMessageId(messageId);
+		this._sessionService.setAccumulatedContent('');
+		this._sessionService.clearToolActions();
+	}
+
+	/**
+	 * CLI 옵션 빌드
+	 */
+	private buildCLIOptions(options?: IClaudeSendRequestOptions, continueLastSession: boolean = false): IClaudeCLIRequestOptions {
+		const localConfig = this._configManager.getLocalConfig();
+
+		// 모델 우선순위: options > session override > local config > VS Code config
+		const rawModel = options?.model
+			|| this._sessionModelOverride
+			|| localConfig.model
+			|| this._configurationService.getValue<string>('claude.model');
+		const effectiveModel = resolveModelName(rawModel);
+
+		// 로컬 설정 > VS Code 설정 우선순위로 옵션 결정
+		const maxTurns = localConfig.maxTurns
+			?? this._configurationService.getValue<number>('claude.maxTurns');
+		const maxBudgetUsd = localConfig.maxBudgetUsd
+			?? this._configurationService.getValue<number>('claude.maxBudgetUsd');
+		const fallbackModel = localConfig.fallbackModel
+			?? this._configurationService.getValue<string>('claude.fallbackModel');
+		const appendSystemPrompt = this._configurationService.getValue<string>('claude.appendSystemPrompt');
+		const disallowedTools = localConfig.disallowedTools
+			?? this._configurationService.getValue<string[]>('claude.disallowedTools');
+		const permissionMode = localConfig.permissionMode
+			?? this._configurationService.getValue<'default' | 'plan' | 'accept-edits'>('claude.permissionMode');
+		const betas = localConfig.betas
+			?? this._configurationService.getValue<string[]>('claude.betas');
+
+		return {
+			model: effectiveModel,
+			systemPrompt: options?.systemPrompt || this._configurationService.getValue<string>('claude.systemPrompt'),
+			workingDir: this._configManager.getWorkingDirectory(),
+			executable: localConfig.executable,
+			continueLastSession,
+			// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
+			maxTurns,
+			maxBudgetUsd,
+			fallbackModel,
+			appendSystemPrompt,
+			disallowedTools,
+			permissionMode,
+			betas,
+			// 로컬 설정 전용 옵션
+			addDirs: localConfig.addDirs,
+			mcpConfig: localConfig.mcpConfig,
+			agents: localConfig.agents
+		};
+	}
+
+	// ========== Getters/Setters for external access ==========
+
+	get currentMessageId(): string | undefined {
+		return this._currentMessageId;
+	}
+
+	get accumulatedContent(): string {
+		return this._accumulatedContent;
+	}
+
+	set accumulatedContent(value: string) {
+		this._accumulatedContent = value;
+	}
+
+	appendContent(text: string): void {
+		this._accumulatedContent += text;
+	}
+
+	get continueMode(): boolean {
+		return this._continueMode;
+	}
+
+	set continueMode(value: boolean) {
+		this._continueMode = value;
+	}
+
+	setSessionModelOverride(model: string | undefined): void {
+		this._sessionModelOverride = model;
+	}
+
+	getSessionModelOverride(): string | undefined {
+		return this._sessionModelOverride;
+	}
+
+	setSessionUltrathinkOverride(enabled: boolean | undefined): void {
+		this._sessionUltrathinkOverride = enabled;
+	}
+
+	getSessionUltrathinkOverride(): boolean | undefined {
+		return this._sessionUltrathinkOverride;
+	}
+
+	/**
+	 * 요청 취소
+	 */
+	cancelRequest(): void {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		if (sessionId) {
+			this._multiConnection.cancelRequest(sessionId);
+
+			// 세션 상태 초기화
+			const sessionState = this._sessionService.getSessionState(sessionId);
+
+			// 현재 스트리밍 중인 메시지 업데이트
+			if (sessionState.currentMessageId) {
+				const currentSession = this._sessionService.getCurrentSession();
+				if (currentSession) {
+					const message = currentSession.messages.find(m => m.id === sessionState.currentMessageId);
+					if (message && message.isStreaming) {
+						const updatedMessage: IClaudeMessage = {
+							...message,
+							isStreaming: false,
+							workEndTime: Date.now()
+						};
+						if (this._sessionService.updateMessage(updatedMessage)) {
+							this._messageService.fireMessageUpdate(updatedMessage);
+						}
+					}
+				}
+			}
+
+			sessionState.state = 'idle';
+			sessionState.currentMessageId = undefined;
+			sessionState.accumulatedContent = '';
+		}
+
+		// Legacy 상태 초기화
+		this._sessionService.setState('idle');
+		this._currentMessageId = undefined;
+		this._accumulatedContent = '';
+	}
+}

@@ -7,25 +7,22 @@ import { Event } from '../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
-import { IClaudeService, IClaudeSessionChangesHistory, IClaudeChangesHistoryEntry, IClaudeFileChangeSummaryItem } from '../../../common/services/core/claude.js';
+import { IClaudeService, IClaudeSessionChangesHistory } from '../../../common/services/core/claude.js';
 import { IClaudeMessageService } from '../../../common/types/claudeMessageService.js';
 import { IClaudeQueueService } from '../../../common/types/claudeQueueService.js';
 import { IClaudeFileService } from '../../../common/types/claudeFileService.js';
 import { IClaudeRateLimitService } from '../../../common/types/claudeRateLimitService.js';
 import { IClaudeSessionService } from '../../../common/types/claudeSessionService.js';
 import { IClaudeUIService } from '../../../common/types/claudeUIService.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeAskUserRequest, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, resolveModelName, getModelDisplayName } from '../../../common/types/claudeTypes.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, ClaudeServiceState, IClaudeSession, IClaudeToolAction, IClaudeQueuedMessage, IClaudeStatusInfo, IClaudeFileChange, IClaudeFileChangesSummary, IClaudeAskUserRequest, IClaudeUsageInfo, resolveModelName, getModelDisplayName } from '../../../common/types/claudeTypes.js';
+import { IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../../platform/storage/common/storage.js';
-import { IFileService, FileChangesEvent } from '../../../../../../platform/files/common/files.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
-import { URI } from '../../../../../../base/common/uri.js';
-import { VSBuffer } from '../../../../../../base/common/buffer.js';
-import { IClaudeLocalConfig, DEFAULT_LOCAL_CONFIG } from '../../../common/config/claudeLocalConfig.js';
+import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
 import { ClaudeConnection, ClaudeMultiConnection } from './claudeConnection.js';
 import { CLIEventHandler } from './claudeCLIEventHandler.js';
-import { ICLIEventHandlerContext } from './cliEventHandlerContext.js';
-import { ClaudeContextBuilder } from './claudeContextBuilder.js';
+import { ClaudeServiceContextProvider } from './claudeServiceContextProvider.js';
 import { IMainProcessService } from '../../../../../../platform/ipc/common/mainProcessService.js';
 import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
@@ -34,15 +31,8 @@ import { ITextModelService } from '../../../../../../editor/common/services/reso
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
 
-/**
- * 세션별 상태 인터페이스
- */
-// Session state interface is now handled by ClaudeSessionService
-
-/**
- * 기본 세션 상태 생성
- */
-// Session state creation is now handled by ClaudeSessionService
+// Manager imports
+import { ConfigManager, HistoryManager, FileWatcherManager, MultiSessionManager, ChatManager } from './managers/index.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -51,50 +41,42 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private static readonly MAX_QUEUE_SIZE = 10;
 	private static readonly QUEUE_STORAGE_KEY = 'claude.messageQueue';
 
-	// ========== Legacy 단일 상태 (하위 호환성) ==========
+	// ========== Managers ==========
+	private readonly _configManager: ConfigManager;
+	private readonly _historyManager: HistoryManager;
+	private readonly _fileWatcherManager: FileWatcherManager;
+	private readonly _multiSessionManager: MultiSessionManager;
+	private readonly _chatManager: ChatManager;
+
+	// ========== Legacy 단일 상태 (하위 호환성 + ContextProvider 접근용) ==========
 	private _state: ClaudeServiceState = 'idle';
-	private _currentMessageId: string | undefined;
-	private _accumulatedContent: string = '';
-	private _currentToolAction: IClaudeToolAction | undefined;
-	private _isWaitingForUser = false;
+	_currentToolAction: IClaudeToolAction | undefined;
+	_isWaitingForUser = false;
 	private _isProcessingQueue = false;
-	private _localConfig: IClaudeLocalConfig = DEFAULT_LOCAL_CONFIG;
-
-	// Rate limit manager is now handled by ClaudeRateLimitService
-	// Session management is now handled by ClaudeSessionService
-
-	// 세션 상태 관리 (멀티 세션)
-	private readonly _sessionStates = new Map<string, {
-		state: ClaudeServiceState;
-		currentMessageId?: string;
-		accumulatedContent: string;
-		toolActions: IClaudeToolAction[];
-		currentToolAction?: IClaudeToolAction;
-		currentAskUserRequest?: IClaudeAskUserRequest;
-		isWaitingForUser: boolean;
-		cliSessionId?: string;
-		messageQueue: IClaudeQueuedMessage[];
-		isProcessingQueue?: boolean;
-	}>();
+	_currentMessageId: string | undefined;
+	_accumulatedContent: string = '';
+	_toolActions: IClaudeToolAction[] = [];
+	_currentAskUserRequest: IClaudeAskUserRequest | undefined;
+	_cliSessionId: string | undefined;
+	_usage: IClaudeUsageInfo | undefined;
 
 	// 연결 관리자 (Legacy - 단일 인스턴스)
 	private readonly _connection: ClaudeConnection;
 
 	// 멀티 연결 관리자 (Multi-Session)
-	private readonly _multiConnection: ClaudeMultiConnection;
+	readonly _multiConnection: ClaudeMultiConnection;
 
 	// CLI 이벤트 핸들러
 	private readonly _cliEventHandler: CLIEventHandler;
 
-	// 컨텍스트 빌더
-	private readonly _contextBuilder: ClaudeContextBuilder;
-
 	// Status 관련
 	private _ultrathink = false;
-	private _sessionModelOverride: string | undefined;
-	private _sessionUltrathinkOverride: boolean | undefined;
 	private _sessionAutoAcceptOverride: boolean | undefined;
-	private _continueMode = false;
+
+	// Expose _localConfig for ContextProvider (delegate to ConfigManager)
+	get _localConfig(): IClaudeLocalConfig {
+		return this._configManager.getLocalConfig();
+	}
 
 	// Message events are now delegated to ClaudeMessageService
 	readonly onDidReceiveMessage: Event<IClaudeMessage> = this._messageService.onDidReceiveMessage;
@@ -120,8 +102,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 		@IStorageService private readonly storageService: IStorageService,
-		@IFileService private readonly _platformFileService: IFileService,
-		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+		@IFileService _platformFileService: IFileService,
+		@IWorkspaceContextService _workspaceContextService: IWorkspaceContextService,
 		@IClaudeLogService private readonly logService: IClaudeLogService,
 		@IModelService _modelService: IModelService,
 		@ITextModelService _textModelService: ITextModelService,
@@ -136,9 +118,83 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	) {
 		super();
 
-		// 컨텍스트 빌더 생성
-		this._contextBuilder = new ClaudeContextBuilder();
+		// ========== Manager 생성 ==========
+		this._configManager = this._register(new ConfigManager(
+			_platformFileService,
+			_workspaceContextService,
+			logService
+		));
 
+		this._historyManager = this._register(new HistoryManager(
+			_sessionService
+		));
+
+		this._fileWatcherManager = this._register(new FileWatcherManager(
+			_platformFileService,
+			_fileService,
+			logService
+		));
+
+		this._multiSessionManager = this._register(new MultiSessionManager(
+			_sessionService,
+			_messageService,
+			logService
+		));
+
+		// ========== 연결 관리자 생성 ==========
+		this._connection = this._register(new ClaudeConnection(mainProcessService, this.logService));
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Connection manager created');
+
+		this._multiConnection = this._register(new ClaudeMultiConnection(mainProcessService, this.logService));
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Multi-connection manager created');
+
+		// ChatManager는 multiConnection 생성 후 생성
+		this._chatManager = this._register(new ChatManager(
+			configurationService,
+			_sessionService,
+			_messageService,
+			_fileService,
+			_uiService,
+			logService,
+			this._configManager,
+			this._multiSessionManager,
+			this._multiConnection
+		));
+
+		// ========== 델리게이트 설정 ==========
+		this.setupDelegates();
+
+		// ========== 이벤트 구독 ==========
+		this.setupEventSubscriptions();
+
+		// ========== 초기화 ==========
+		this._configManager.loadLocalConfig();
+
+		// 초기화 시 유효하지 않은 스냅샷 정리
+		setTimeout(() => {
+			this._fileService.cleanupInvalidSnapshots();
+		}, 1000);
+
+		// CLI 이벤트 핸들러 생성
+		const contextProvider = new ClaudeServiceContextProvider(this);
+		this._cliEventHandler = this._register(new CLIEventHandler(contextProvider, this.logService));
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
+
+		// CLI 이벤트 구독
+		this.setupCLIEventSubscriptions();
+
+		// 세션 초기화
+		this._sessionService.initialize();
+
+		// 큐 복원
+		this.loadQueue();
+
+		// 파일 시스템 워처 설정
+		this._register(this._fileWatcherManager.setupFileSystemWatcher());
+	}
+
+	// ========== 델리게이트 설정 ==========
+	private setupDelegates(): void {
 		// SessionService 델리게이트 설정
 		this._sessionService.setOnDidChangeStateDelegate((state: ClaudeServiceState) => {
 			this._uiService.fireStateChange(state);
@@ -147,10 +203,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// FileService 델리게이트 설정
 		this._fileService.setFileDelegates(
 			() => this._sessionService.getCurrentSession(),
-			(_sessionId: string) => undefined // changesHistory is managed separately
+			(_sessionId: string) => undefined
 		);
-
-		// Note: setCoreFileDelegates not needed - _fileService handles these operations directly
 
 		// RateLimitService 델리게이트 설정
 		this._rateLimitService.setCoreRateLimitDelegates({
@@ -164,160 +218,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				await this._multiConnection.sendPrompt(sessionId, request.prompt, request.options);
 			}
 		});
-
-		// 연결 관리자 생성 (Legacy 단일 인스턴스)
-		this._connection = this._register(new ClaudeConnection(mainProcessService, this.logService));
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Connection manager created');
-
-		// 멀티 연결 관리자 생성 (Multi-Session)
-		this._multiConnection = this._register(new ClaudeMultiConnection(mainProcessService, this.logService));
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Multi-connection manager created');
-
-		// 연결 상태 변경 이벤트 전달 (UIService로 위임)
-		this._register(this._connection.onDidChangeStatus(() => {
-			this._uiService.fireStatusInfoChange(this.getStatusInfo());
-		}));
-
-		// 멀티 연결 상태 변경 이벤트 전달 (UIService로 위임)
-		this._register(this._multiConnection.onDidChangeStatus(() => {
-			this._uiService.fireStatusInfoChange(this.getStatusInfo());
-		}));
-
-		// 로컬 설정 로드 (비동기)
-		this.loadLocalConfig();
-
-		// 초기화 시 유효하지 않은 스냅샷 정리
-		setTimeout(() => {
-			this._fileService.cleanupInvalidSnapshots();
-		}, 1000); // 1초 후 실행 (초기화 완료 후)
-
-		// CLI 이벤트 핸들러 생성 (최적화된 컨텍스트 패턴 사용)
-		const contextProvider = this.createContextProvider();
-		this._cliEventHandler = this._register(new CLIEventHandler(contextProvider, this.logService));
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
-
-		// CLI 이벤트 구독 (Multi-Session)
-		this._register(this._multiConnection.onDidReceiveData(event => {
-			const currentSessionId = this._sessionService.getCurrentSession()?.id;
-			const isCurrentSession = event.chatId === currentSessionId;
-
-			// 현재 세션: handleData가 컨텐츠 누적 담당 (appendContent 사용)
-			// 백그라운드 세션: accumulateSessionContent로 컨텐츠 누적
-			// 중복 호출 방지 - 둘 중 하나만 호출
-			if (isCurrentSession) {
-				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
-				this._cliEventHandler.handleData(event.data).catch(error => {
-					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
-				});
-			} else {
-				// 백그라운드 세션만 accumulateSessionContent 사용
-				this.accumulateSessionContent(event.chatId, event.data);
-				console.log('[ClaudeService] Background session data:', event.chatId, event.data.type);
-			}
-		}));
-
-		// Complete 이벤트 - 모든 세션의 상태 업데이트 (중요!)
-		this._register(this._multiConnection.onDidCompleteAny(event => {
-			const currentSessionId = this._sessionService.getCurrentSession()?.id;
-			const isCurrentSession = event.chatId === currentSessionId;
-			console.log('[ClaudeService] CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId);
-
-			// 세션 상태 가져오기
-			const sessionState = this._sessionStates.get(event.chatId);
-
-			// 현재 세션이면 UI 이벤트 핸들러 호출 (await 필수! - 상태 리셋과 큐 처리가 완료된 후에 다음 진행)
-			if (isCurrentSession) {
-				this._cliEventHandler.handleComplete().then(() => {
-					// handleComplete 완료 후 Legacy 상태 업데이트
-					this._state = 'idle';
-					this._uiService.fireStateChange('idle');
-					console.log('[ClaudeService] handleComplete done, legacy state set to idle');
-				}).catch(error => {
-					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
-					// 에러 발생해도 상태 복구
-					this._state = 'idle';
-					this._uiService.fireStateChange('idle');
-					if (sessionState) {
-						sessionState.state = 'idle';
-						sessionState.isWaitingForUser = false;
-					}
-				});
-			} else if (sessionState) {
-				// 백그라운드 세션인 경우: 축적된 컨텐츠를 세션 메시지로 저장
-				if (sessionState.currentMessageId && sessionState.accumulatedContent) {
-					const session = this._sessionService.getSessionById(event.chatId);
-					if (session) {
-						const assistantMessage: IClaudeMessage = {
-							id: sessionState.currentMessageId,
-							role: 'assistant',
-							content: sessionState.accumulatedContent,
-							timestamp: Date.now(),
-							isStreaming: false,
-							workEndTime: Date.now()
-						};
-						this._sessionService.updateMessage(assistantMessage, session);
-						console.log('[ClaudeService] Saved background session message:', event.chatId, 'content length:', sessionState.accumulatedContent.length);
-					}
-				}
-
-				// 백그라운드 세션 상태를 idle로 변경
-				sessionState.state = 'idle';
-				sessionState.isWaitingForUser = false;
-				sessionState.currentMessageId = undefined;
-				console.log('[ClaudeService] Background session state reset to idle:', event.chatId);
-
-				// 백그라운드 세션의 큐 처리
-				this.processSessionQueue(event.chatId);
-			}
-		}));
-
-		// Error 이벤트 - 모든 세션의 상태 업데이트
-		this._register(this._multiConnection.onDidErrorAny(event => {
-			const currentSessionId = this._sessionService.getCurrentSession()?.id;
-			console.log('[ClaudeService] CLI error for session:', event.chatId, event.error, '(current:', currentSessionId, ')');
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'CLI error for session:', event.chatId, event.error);
-
-			// 세션 상태를 idle로 변경 (어떤 세션이든)
-			const sessionState = this._sessionStates.get(event.chatId);
-			if (sessionState) {
-				sessionState.state = 'idle';
-				sessionState.isWaitingForUser = false;
-				console.log('[ClaudeService] Session state reset to idle after error:', event.chatId);
-			}
-
-			// 현재 세션이면 UI 이벤트 핸들러도 호출
-			if (event.chatId === currentSessionId) {
-				// Rate limit 에러인지 먼저 확인
-				const isRateLimit = this._rateLimitService.isRateLimitError(event.error);
-
-				if (isRateLimit) {
-					// Rate limit 에러: 연결 상태는 유지, rate limit 처리
-					console.log('[ClaudeService] Rate limit error detected, keeping connection status');
-					this._cliEventHandler.handleError(event.error);
-					// Legacy 상태도 업데이트 (rate limit은 idle로)
-					this._state = 'idle';
-					this._uiService.fireStateChange('idle');
-				} else {
-					// 일반 에러: 연결 상태를 'error'로 변경 (UI 갱신 트리거)
-					this._multiConnection.setError(event.error);
-					this._cliEventHandler.handleError(event.error);
-					// Legacy 상태도 업데이트 (일반 에러는 'error' 상태 fire)
-					this._state = 'error';
-					this._uiService.fireStateChange('error');
-				}
-			}
-		}));
-
-		// 세션 초기화 (저장된 세션 로드 + 현재 세션 설정)
-		this._sessionService.initialize();
-
-		// 큐 복원 (저장된 큐 로드)
-		this.loadQueue();
-
-		// 파일 시스템 이벤트 구독 (파일 변경 시 스냅샷 정리)
-		this.setupFileSystemWatcher();
 
 		// ClaudeMessageService 델리게이트 설정
 		this._messageService.setSessionDelegates(
@@ -340,8 +240,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// ClaudeMessageService 핵심 서비스 델리게이트 설정
 		this._messageService.setCoreServiceDelegates(
 			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => sessionId
-				? this.sendMessageToSessionInternal(sessionId, content, options)
-				: this.sendMessageInternal(content, options),
+				? this._chatManager.sendMessageToSessionInternal(sessionId, content, options)
+				: this._chatManager.sendMessageInternal(content, options),
 			(id: string) => {
 				const assistantMessage: IClaudeMessage = {
 					id,
@@ -369,29 +269,95 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			(queue: IClaudeQueuedMessage[]) => this.saveQueue(queue),
 			async (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
 				if (sessionId) {
-					await this.sendMessageToSessionInternal(sessionId, content, options);
+					await this._chatManager.sendMessageToSessionInternal(sessionId, content, options);
 				} else {
-					await this.sendMessageInternal(content, options);
+					await this._chatManager.sendMessageInternal(content, options);
 				}
 			}
 		);
+	}
 
-		// Reserved methods for future use (suppress unused warnings)
-		void this._addToQueue;
-		void this._processQueue;
-		void this._startRateLimitHandling;
-		void this._createMultiSessionChannelWrapper;
-		void this._handleCommandComplete;
-		void this._handleSessionData;
-		void this._handleSessionComplete;
-		void this._handleSessionError;
+	// ========== 이벤트 구독 설정 ==========
+	private setupEventSubscriptions(): void {
+		// 연결 상태 변경 이벤트 전달
+		this._register(this._connection.onDidChangeStatus(() => {
+			this._uiService.fireStatusInfoChange(this.getStatusInfo());
+		}));
+
+		this._register(this._multiConnection.onDidChangeStatus(() => {
+			this._uiService.fireStatusInfoChange(this.getStatusInfo());
+		}));
+	}
+
+	// ========== CLI 이벤트 구독 ==========
+	private setupCLIEventSubscriptions(): void {
+		// CLI 이벤트 구독 (Multi-Session)
+		this._register(this._multiConnection.onDidReceiveData(event => {
+			const currentSessionId = this._sessionService.getCurrentSession()?.id;
+			const isCurrentSession = event.chatId === currentSessionId;
+
+			if (isCurrentSession) {
+				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
+				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
+				this._cliEventHandler.handleData(event.data).catch(error => {
+					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
+				});
+			} else {
+				// 백그라운드 세션만 accumulateSessionContent 사용
+				this._multiSessionManager.accumulateSessionContent(event.chatId, event.data);
+				console.log('[ClaudeService] Background session data:', event.chatId, event.data.type);
+			}
+		}));
+
+		// Complete 이벤트
+		this._register(this._multiConnection.onDidCompleteAny(event => {
+			const currentSessionId = this._sessionService.getCurrentSession()?.id;
+			const isCurrentSession = event.chatId === currentSessionId;
+			console.log('[ClaudeService] CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
+
+			if (isCurrentSession) {
+				this._cliEventHandler.handleComplete().then(() => {
+					this._state = 'idle';
+					this._uiService.fireStateChange('idle');
+				}).catch(error => {
+					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
+					this._state = 'idle';
+					this._uiService.fireStateChange('idle');
+					this._multiSessionManager.handleSessionError(event.chatId);
+				});
+			} else {
+				// 백그라운드 세션 완료 처리
+				this._multiSessionManager.handleBackgroundSessionComplete(event.chatId);
+				this.processSessionQueue(event.chatId);
+			}
+		}));
+
+		// Error 이벤트
+		this._register(this._multiConnection.onDidErrorAny(event => {
+			const currentSessionId = this._sessionService.getCurrentSession()?.id;
+			console.log('[ClaudeService] CLI error for session:', event.chatId, event.error);
+
+			this._multiSessionManager.handleSessionError(event.chatId);
+
+			if (event.chatId === currentSessionId) {
+				const isRateLimit = this._rateLimitService.isRateLimitError(event.error);
+
+				if (isRateLimit) {
+					this._cliEventHandler.handleError(event.error);
+					this._state = 'idle';
+					this._uiService.fireStateChange('idle');
+				} else {
+					this._multiConnection.setError(event.error);
+					this._cliEventHandler.handleError(event.error);
+					this._state = 'error';
+					this._uiService.fireStateChange('error');
+				}
+			}
+		}));
 	}
 
 	// ========== Queue Persistence ==========
 
-	/**
-	 * 저장된 큐 로드 (현재 세션의 큐 로드)
-	 */
 	private loadQueue(): void {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
 		if (!sessionId) {
@@ -400,7 +366,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 
 		try {
-			// 세션별 큐 로드 - 세션 서비스에 pending requests로 추가
 			const sessionQueueKey = `claude.sessionQueue.${sessionId}`;
 			const sessionData = this.storageService.get(sessionQueueKey, StorageScope.WORKSPACE);
 
@@ -413,7 +378,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				}
 			}
 
-			// Legacy: 글로벌 큐도 로드 (마이그레이션 목적)
 			const globalData = this.storageService.get(ClaudeService.QUEUE_STORAGE_KEY, StorageScope.WORKSPACE);
 			if (globalData) {
 				const parsed = JSON.parse(globalData) as IClaudeQueuedMessage[];
@@ -428,9 +392,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 	}
 
-	/**
-	 * 큐 저장
-	 */
 	private saveQueue(queue?: IClaudeQueuedMessage[]): void {
 		try {
 			const data = JSON.stringify(queue ?? this._queueService.getGlobalQueue());
@@ -440,112 +401,397 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 	}
 
-	// ========== Local Config ==========
+	private saveSessionQueue(sessionId: string, queue?: IClaudeQueuedMessage[]): void {
+		const queueToSave = queue || this._multiSessionManager.getSessionQueue(sessionId);
+		if (!queueToSave) return;
 
-	private async loadLocalConfig(): Promise<void> {
 		try {
-			const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
-			if (!workspaceFolder) {
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'No workspace folder, using default config');
-				return;
-			}
-
-			const configUri = URI.joinPath(workspaceFolder.uri, '.vscode', 'claude.local.json');
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Looking for local config at:', configUri.fsPath);
-
-			try {
-				const content = await this._platformFileService.readFile(configUri);
-				const configData = JSON.parse(content.value.toString()) as IClaudeLocalConfig;
-				this._localConfig = { ...DEFAULT_LOCAL_CONFIG, ...configData };
-				this.logService.info(ClaudeService.LOG_CATEGORY, 'Local config loaded:', this._localConfig);
-			} catch {
-				// 파일이 없으면 기본값 사용
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'No local config file, using defaults');
-			}
+			const key = `claude.sessionQueue.${sessionId}`;
+			this.storageService.store(key, JSON.stringify(queueToSave), StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		} catch (e) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to load local config:', e);
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save session queue:', e);
 		}
 	}
 
-	/**
-	 * 로컬 설정 가져오기
-	 */
+	// ========== Config (ConfigManager로 위임) ==========
+
 	getLocalConfig(): IClaudeLocalConfig {
-		return this._localConfig;
+		return this._configManager.getLocalConfig();
 	}
 
-	/**
-	 * 로컬 설정 다시 로드 (UI에서 설정 변경 후 호출)
-	 */
 	async reloadLocalConfig(): Promise<void> {
-		await this.loadLocalConfig();
-	}
-
-	/**
-	 * 워크스페이스 루트 경로 가져오기
-	 */
-	private getWorkspaceRoot(): string | undefined {
-		const workspaceFolder = this.workspaceContextService.getWorkspace().folders[0];
-		return workspaceFolder?.uri.fsPath;
+		await this._configManager.reloadLocalConfig();
 	}
 
 	// ========== AskUser Response ==========
 
-	/**
-	 * AskUser 질문에 응답 (CLIEventHandler로 위임)
-	 */
 	async respondToAskUser(responses: string[]): Promise<void> {
 		return this._cliEventHandler.respondToAskUser(responses);
 	}
 
-	private async _processQueue(): Promise<void> {
-		// 이미 큐 처리 중이면 스킵 (Race condition 방지)
-		if (this._isProcessingQueue) {
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue already being processed, skipping');
+	// ========== Rate Limit Handling ==========
+
+	cancelRateLimitWait(): void {
+		this._rateLimitService.cancelRateLimitWait();
+	}
+
+	getRateLimitStatus(): { waiting: boolean; countdown: number; message?: string } {
+		return this._rateLimitService.getRateLimitStatus();
+	}
+
+	// ========== State ==========
+
+	get state(): ClaudeServiceState {
+		return this._state;
+	}
+
+	getState(): ClaudeServiceState {
+		return this._sessionService.getState();
+	}
+
+	getCurrentSession(): IClaudeSession | undefined {
+		return this._sessionService.getCurrentSession();
+	}
+
+	getCurrentToolAction(): IClaudeToolAction | undefined {
+		return this._currentToolAction;
+	}
+
+	// ========== Chat (ChatManager로 위임) ==========
+
+	async sendMessage(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		return this._messageService.sendMessage(content, options);
+	}
+
+	cancelRequest(): void {
+		this._chatManager.cancelRequest();
+	}
+
+	// ========== History ==========
+
+	getMessages(): IClaudeMessage[] {
+		return this._messageService.getMessages();
+	}
+
+	clearHistory(): void {
+		this._sessionService.clearHistory();
+	}
+
+	// ========== Session ==========
+
+	startNewSession(): IClaudeSession {
+		const session = this._sessionService.startNewSession();
+		this._sessionService.getSessionState(session.id);
+		this._uiService.fireStateChange('idle');
+		this._messageService.fireQueueChange([]);
+
+		const connInfo = this._multiConnection.getInfo();
+		if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
+			this._multiConnection.connect()
+				.then(connected => {
+					if (connected) {
+						this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful');
+					}
+				})
+				.finally(() => {
+					this._uiService.fireStatusInfoChange(this.getStatusInfo());
+				});
+		}
+
+		return session;
+	}
+
+	getSessions(): IClaudeSession[] {
+		return this._sessionService.getSessions();
+	}
+
+	switchSession(sessionId: string): IClaudeSession | undefined {
+		const success = this._sessionService.switchSession(sessionId, () => {
+			this._currentToolAction = undefined;
+			this._isWaitingForUser = false;
+		});
+
+		if (success) {
+			const sessionState = this._sessionService.getSessionState(sessionId);
+			this._uiService.fireStateChange(sessionState.state);
+			this._messageService.fireQueueChange([...sessionState.pendingRequests]);
+
+			const connInfo = this._multiConnection.getInfo();
+			if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
+				this._multiConnection.connect().then(() => {
+					this._uiService.fireStatusInfoChange(this.getStatusInfo());
+				});
+			}
+
+			return this._sessionService.getSessionById(sessionId);
+		}
+
+		return undefined;
+	}
+
+	deleteSession(sessionId: string): boolean {
+		this._multiConnection.destroySession(sessionId);
+		this._multiSessionManager.deleteSessionState(sessionId);
+
+		const key = `claude.sessionQueue.${sessionId}`;
+		this.storageService.remove(key, StorageScope.WORKSPACE);
+
+		return this._sessionService.deleteSession(sessionId);
+	}
+
+	renameSession(sessionId: string, title: string): boolean {
+		return this._sessionService.renameSession(sessionId, title);
+	}
+
+	setSessionModel(model: string): void {
+		const resolvedModel = model ? resolveModelName(model) : undefined;
+		this._chatManager.setSessionModelOverride(resolvedModel || undefined);
+		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', displayName);
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
+	setSessionUltrathink(enabled: boolean): void {
+		this._chatManager.setSessionUltrathinkOverride(enabled);
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
+	setSessionAutoAccept(enabled: boolean): void {
+		this._sessionAutoAcceptOverride = enabled;
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session auto-accept override:', enabled ? 'ON' : 'OFF');
+	}
+
+	isAutoAcceptEnabled(): boolean {
+		return this._sessionAutoAcceptOverride !== undefined
+			? this._sessionAutoAcceptOverride
+			: (this._configManager.getLocalConfig().autoAccept ?? false);
+	}
+
+	async continueLastSession(): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
+		this._chatManager.continueMode = true;
+	}
+
+	isSessionRunning(sessionId: string): boolean {
+		return !this._multiSessionManager.isSessionIdle(sessionId);
+	}
+
+	// ========== Queue ==========
+
+	getQueuedMessages(): IClaudeQueuedMessage[] {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		return this._queueService.getQueuedMessages(sessionId);
+	}
+
+	removeFromQueue(id: string): void {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		this._queueService.removeFromQueue(id, sessionId);
+	}
+
+	clearQueue(): void {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		this._queueService.clearQueue(sessionId);
+	}
+
+	getMaxQueueSize(): number {
+		return this._queueService.getMaxQueueSize();
+	}
+
+	updateQueuedMessage(id: string, newContent: string): boolean {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		return this._queueService.updateQueuedMessage(id, newContent, sessionId);
+	}
+
+	reorderQueue(fromIndex: number, toIndex: number): boolean {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		return this._queueService.reorderQueue(fromIndex, toIndex, sessionId);
+	}
+
+	// ========== Status ==========
+
+	get connection(): ClaudeConnection {
+		return this._connection;
+	}
+
+	getStatusInfo(): IClaudeStatusInfo {
+		const connInfo = this._multiConnection.getInfo();
+		const effectiveUltrathink = this._chatManager.getSessionUltrathinkOverride() !== undefined
+			? this._chatManager.getSessionUltrathinkOverride()!
+			: (this._configManager.getLocalConfig().ultrathink ?? this._ultrathink);
+
+		return {
+			connectionStatus: connInfo.status,
+			model: this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4',
+			ultrathink: effectiveUltrathink,
+			executionMethod: 'cli',
+			scriptPath: undefined,
+			lastConnected: connInfo.lastConnected,
+			version: connInfo.version
+		};
+	}
+
+	async checkConnection(): Promise<boolean> {
+		return this._multiConnection.connect();
+	}
+
+	async toggleUltrathink(): Promise<void> {
+		this._ultrathink = !this._ultrathink;
+		this._chatManager.setSessionUltrathinkOverride(this._ultrathink);
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink:', this._ultrathink ? 'ON' : 'OFF');
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
+	isUltrathinkEnabled(): boolean {
+		return this._chatManager.getSessionUltrathinkOverride() !== undefined
+			? this._chatManager.getSessionUltrathinkOverride()!
+			: (this._configManager.getLocalConfig().ultrathink ?? this._ultrathink);
+	}
+
+	// ========== File Snapshot / Diff ==========
+
+	getChangedFiles(): IClaudeFileChange[] {
+		return this._fileService.getChangedFiles();
+	}
+
+	getFileChangesSummary(): IClaudeFileChangesSummary {
+		return this._fileService.getFileChangesSummary();
+	}
+
+	async showFileDiff(fileChange: IClaudeFileChange): Promise<void> {
+		await this._fileService.showFileDiff(fileChange);
+	}
+
+	async revertFile(fileChange: IClaudeFileChange): Promise<boolean> {
+		return this._fileService.revertFile(fileChange);
+	}
+
+	async revertAllFiles(): Promise<number> {
+		return this._fileService.revertAllFiles();
+	}
+
+	acceptFile(fileChange: IClaudeFileChange): void {
+		this._fileService.acceptFile(fileChange);
+	}
+
+	acceptAllFiles(): void {
+		this._fileService.acceptAllFiles();
+	}
+
+	async revertSelectedFiles(fileChanges: IClaudeFileChange[]): Promise<number> {
+		const filePaths = fileChanges.map(fc => fc.filePath);
+		return this._fileService.revertFiles(filePaths);
+	}
+
+	acceptSelectedFiles(fileChanges: IClaudeFileChange[]): void {
+		const filePaths = fileChanges.map(fc => fc.filePath);
+		this._fileService.acceptFiles(filePaths);
+	}
+
+	// ========== Session Changes History (HistoryManager로 위임) ==========
+
+	getSessionChangesHistory(): IClaudeSessionChangesHistory {
+		return this._historyManager.getSessionChangesHistory();
+	}
+
+	// ========== Multi-Session Support Methods ==========
+
+	getMultiConnection(): ClaudeMultiConnection {
+		return this._multiConnection;
+	}
+
+	async sendMessageToSession(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		if (!this._multiSessionManager.isSessionIdle(sessionId) || this._multiSessionManager.isSessionWaitingForUser(sessionId)) {
+			return this.addToSessionQueue(sessionId, content, options);
+		}
+
+		return this._chatManager.sendMessageToSessionInternal(sessionId, content, options);
+	}
+
+	private async addToSessionQueue(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		const queuedMessage = this._multiSessionManager.addToSessionQueue(sessionId, content, options, ClaudeService.MAX_QUEUE_SIZE);
+
+		if (!queuedMessage) {
+			return {
+				id: generateUuid(),
+				role: 'user',
+				content,
+				timestamp: Date.now(),
+				context: options?.context,
+				queueRejected: true
+			};
+		}
+
+		this.saveSessionQueue(sessionId);
+		this._messageService.fireQueueChange(this._multiSessionManager.getSessionQueue(sessionId));
+
+		return {
+			id: queuedMessage.id,
+			role: 'user',
+			content,
+			timestamp: queuedMessage.timestamp,
+			context: options?.context
+		};
+	}
+
+	private async processSessionQueue(sessionId: string): Promise<void> {
+		if (this._multiSessionManager.isSessionProcessingQueue(sessionId) ||
+			this._multiSessionManager.getSessionQueue(sessionId).length === 0) {
 			return;
 		}
 
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-
-		// AskUser 대기 중이면 큐 처리 안 함
-		if (sessionId) {
-			const sessionState = this._sessionService.getSessionState(sessionId);
-			if (sessionState.isWaitingForUser || (sessionState as any).isProcessingQueue) {
-				this.logService.debug(ClaudeService.LOG_CATEGORY, `Waiting for user or processing queue in session ${sessionId}, queue processing paused`);
-				return;
-			}
-			// 세션별 처리 플래그 설정
-			(sessionState as any).isProcessingQueue = true;
-		} else {
-			if (this._isWaitingForUser) {
-				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Waiting for user, queue processing paused');
-				return;
-			}
-			this._isProcessingQueue = true;
-		}
+		this._multiSessionManager.setSessionProcessingQueue(sessionId, true);
 
 		try {
-			// 큐 처리를 ClaudeQueueService로 위임
-			await this._queueService.processQueue(sessionId);
-		} catch (error) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'Error processing queue:', error);
-		} finally {
-			// 처리 플래그 정리
-			if (sessionId) {
-				const sessionState = this.getOrCreateSessionState(sessionId);
-				sessionState.isProcessingQueue = false;
-			} else {
-				this._isProcessingQueue = false;
+			const nextMessage = this._multiSessionManager.getNextFromSessionQueue(sessionId);
+			if (nextMessage) {
+				this.saveSessionQueue(sessionId);
+				this._messageService.fireQueueChange(this._multiSessionManager.getSessionQueue(sessionId));
+				await this._chatManager.sendMessageToSessionInternal(sessionId, nextMessage.content, {
+					context: nextMessage.context
+				});
 			}
+		} finally {
+			this._multiSessionManager.setSessionProcessingQueue(sessionId, false);
 		}
 	}
 
-	// ========== Rate Limit Handling ==========
+	getSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
+		return this._multiSessionManager.getSessionQueue(sessionId);
+	}
+
+	getSessionState(sessionId: string): ClaudeServiceState {
+		const state = this._multiSessionManager.getSessionState(sessionId);
+		return state?.state || 'idle';
+	}
+
+	cancelSessionRequest(sessionId: string): void {
+		this._multiConnection.cancelRequest(sessionId);
+		const state = this._multiSessionManager.getSessionState(sessionId);
+		if (state) {
+			state.state = 'idle';
+			this._uiService.fireStateChange(state.state);
+		}
+	}
+
+	sendUserInputToSession(sessionId: string, input: string): void {
+		this._multiConnection.sendUserInput(sessionId, input);
+	}
+
+	// ========== ContextProvider 접근용 메서드들 ==========
 
 	/**
-	 * Rate limit 처리 시작
+	 * 상태 설정 (ContextProvider용)
 	 */
-	private _startRateLimitHandling(retryAfterSeconds: number, message?: string): void {
+	setState(state: ClaudeServiceState, sessionId?: string): void {
+		this._state = state;
+		this._sessionService.setState(state, sessionId);
+	}
+
+	/**
+	 * Rate limit 처리 시작 (ContextProvider용)
+	 */
+	startRateLimitHandling(retryAfterSeconds: number, message?: string): void {
 		// 마지막 사용자 메시지 찾기 (재시도용)
 		let pendingRequest: { prompt: string; options?: IClaudeCLIRequestOptions } | undefined;
 
@@ -560,13 +806,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			}
 
 			if (lastUserMessage) {
+				const localConfig = this._configManager.getLocalConfig();
 				pendingRequest = {
 					prompt: lastUserMessage.content,
 					options: {
 						model: this.configurationService.getValue<string>('claude.model'),
 						systemPrompt: this.configurationService.getValue<string>('claude.systemPrompt'),
-						workingDir: this.getWorkspaceRoot(),
-						executable: this._localConfig.executable
+						workingDir: this._configManager.getWorkspaceRoot(),
+						executable: localConfig.executable
 					}
 				};
 			}
@@ -578,407 +825,88 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * Rate limit 대기 취소
+	 * 큐 처리 (ContextProvider용)
 	 */
-	cancelRateLimitWait(): void {
-		this._rateLimitService.cancelRateLimitWait();
-	}
-
-	/**
-	 * Rate limit 상태 조회
-	 */
-	getRateLimitStatus(): { waiting: boolean; countdown: number; message?: string } {
-		return this._rateLimitService.getRateLimitStatus();
-	}
-
-	// ========== Session State Management ==========
-
-	/**
-	 * 세션 상태 가져오기 (없으면 생성)
-	 */
-	private getOrCreateSessionState(sessionId: string) {
-		if (!this._sessionStates.has(sessionId)) {
-			this._sessionStates.set(sessionId, {
-				state: 'idle',
-				accumulatedContent: '',
-				toolActions: [],
-				isWaitingForUser: false,
-				messageQueue: []
-			});
+	async processQueue(): Promise<void> {
+		// 이미 큐 처리 중이면 스킵
+		if (this._isProcessingQueue) {
+			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Queue already being processed, skipping');
+			return;
 		}
-		return this._sessionStates.get(sessionId)!;
-	}
 
-	// ========== State ==========
+		const sessionId = this._sessionService.getCurrentSession()?.id;
 
-	get state(): ClaudeServiceState {
-		return this._state;
-	}
-
-	getState(): ClaudeServiceState {
-		return this._sessionService.getState();
-	}
-
-	private setState(state: ClaudeServiceState, sessionId?: string): void {
-		this._sessionService.setState(state, sessionId);
-	}
-
-	getCurrentSession(): IClaudeSession | undefined {
-		return this._sessionService.getCurrentSession();
-	}
-
-	getCurrentToolAction(): IClaudeToolAction | undefined {
-		return this._currentToolAction;
-	}
-
-	// ========== Chat ==========
-
-	async sendMessage(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		// Delegate to ClaudeMessageService
-		return this._messageService.sendMessage(content, options);
-	}
-
-	private _addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeMessage {
-		// 세션별 큐 사용 (sessionId가 있으면 세션별 큐, 없으면 글로벌 큐)
+		// AskUser 대기 중이면 큐 처리 안 함
 		if (sessionId) {
 			const sessionState = this._sessionService.getSessionState(sessionId);
-
-			// 큐 크기 제한 체크
-			if (sessionState.pendingRequests.length >= ClaudeService.MAX_QUEUE_SIZE) {
-				this.logService.warn(ClaudeService.LOG_CATEGORY, `Session queue is full for ${sessionId}`);
-				return {
-					id: generateUuid(),
-					role: 'user',
-					content,
-					timestamp: Date.now(),
-					context: options?.context,
-					queueRejected: true
-				};
+			if (sessionState.isWaitingForUser || (sessionState as any).isProcessingQueue) {
+				return;
 			}
-
-			const queuedMessage: IClaudeQueuedMessage = {
-				id: generateUuid(),
-				content,
-				context: options?.context,
-				timestamp: Date.now()
-			};
-
-			this._sessionService.addPendingRequest(queuedMessage);
-			this._messageService.fireQueueChange([...sessionState.pendingRequests]);
-			this.saveSessionQueue(sessionId);
-
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `Message queued for session ${sessionId}:`, content.substring(0, 50), 'Queue size:', sessionState.pendingRequests.length);
-
-			return {
-				id: queuedMessage.id,
-				role: 'user',
-				content,
-				timestamp: queuedMessage.timestamp,
-				context: options?.context
-			};
-		}
-
-		// Legacy: 글로벌 큐 (하위 호환성)
-		if (this._queueService.getGlobalQueue().length >= ClaudeService.MAX_QUEUE_SIZE) {
-			this.logService.warn(ClaudeService.LOG_CATEGORY, 'Queue is full, cannot add more messages');
-			return {
-				id: generateUuid(),
-				role: 'user',
-				content,
-				timestamp: Date.now(),
-				context: options?.context,
-				queueRejected: true
-			};
-		}
-
-		const queuedMessage: IClaudeQueuedMessage = {
-			id: generateUuid(),
-			content,
-			context: options?.context,
-			timestamp: Date.now()
-		};
-
-		this._queueService.addToGlobalQueue(queuedMessage);
-		this.saveQueue();
-
-		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Message queued:', content.substring(0, 50), 'Queue size:', this._queueService.getGlobalQueue().length);
-
-		return {
-			id: queuedMessage.id,
-			role: 'user',
-			content,
-			timestamp: queuedMessage.timestamp,
-			context: options?.context
-		};
-	}
-
-	/**
-	 * 특정 세션에 메시지 전송 (내부용)
-	 */
-	private async sendMessageToSessionInternal(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		// 세션 상태 가져오기 (future use)
-		this.getOrCreateSessionState(sessionId);
-
-		// 기본적으로는 sendMessageInternal과 동일하지만 특정 세션 대상
-		// 현재는 단순화하여 현재 세션으로 전환 후 전송
-		const currentSessionId = this._sessionService.getCurrentSession()?.id;
-		if (sessionId !== currentSessionId) {
-			this._sessionService.switchSession(sessionId);
-		}
-
-		return this.sendMessageInternal(content, options);
-	}
-
-	private async sendMessageInternal(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		if (!this._sessionService.hasCurrentSession()) {
-			this._sessionService.startNewSession();
-		}
-
-		// --continue 플래그 감지 (텍스트 또는 버튼)
-		let continueLastSession = this._continueMode;
-		let actualContent = content;
-
-		// 버튼으로 continue 모드 활성화된 경우 초기화
-		if (this._continueMode) {
-			this._continueMode = false;
-			this.logService.info(ClaudeService.LOG_CATEGORY, 'Continue mode (button) activated');
-		}
-
-		if (content.trim().startsWith('--continue') || content.trim().startsWith('-c ')) {
-			continueLastSession = true;
-			// --continue 이후의 텍스트를 프롬프트로 사용
-			actualContent = content.trim()
-				.replace(/^--continue\s*/, '')
-				.replace(/^-c\s*/, '')
-				.trim();
-
-			// 프롬프트가 없으면 빈 문자열 (CLI가 이전 대화 로드)
-			if (!actualContent) {
-				actualContent = '';
-			}
-
-			this.logService.info(ClaudeService.LOG_CATEGORY, 'Continue mode detected, prompt:', actualContent || '(empty)');
-		}
-
-		// 파일 스냅샷 매니저 초기화 - 새 명령 시작
-		const workingDir = this._localConfig.workingDirectory
-			? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
-			: this.getWorkspaceRoot();
-		this._fileService.startCommand(workingDir);
-
-		// 사용자 메시지 추가 (원본 content 사용)
-		const userMessage: IClaudeMessage = {
-			id: generateUuid(),
-			role: 'user',
-			content,
-			timestamp: Date.now(),
-			context: options?.context
-		};
-
-		this._sessionService.addMessage(userMessage);
-		this._messageService.fireMessageReceive(userMessage);
-
-		// 사용자 메시지 저장
-		this._sessionService.saveSessions();
-
-		// 프롬프트 구성 - continue 모드가 아닐 때만 컨텍스트 포함
-		let prompt: string;
-		if (continueLastSession) {
-			// continue 모드: actualContent만 사용 (빈 문자열 가능)
-			prompt = actualContent;
+			(sessionState as any).isProcessingQueue = true;
 		} else {
-			// 일반 모드: 이전 대화 컨텍스트 포함
-			prompt = this._contextBuilder.buildPromptWithContext(
-				content,
-				this._sessionService.getMessages(),
-				options?.context
-			);
+			if (this._isWaitingForUser) {
+				return;
+			}
+			this._isProcessingQueue = true;
 		}
-
-		// 스트리밍 메시지 생성 (헬퍼 메서드로 중복 제거)
-		const messageId = generateUuid();
-		this.initializeNewMessageState(messageId);
-
-		const now = Date.now();
-		const assistantMessage: IClaudeMessage = {
-			id: messageId,
-			role: 'assistant',
-			content: '',
-			timestamp: now,
-			isStreaming: true,
-			workStartTime: now
-		};
-
-		this._sessionService.addMessage(assistantMessage);
-		this._messageService.fireMessageReceive(assistantMessage);
-
-		// CLI 호출
-		this.setState('streaming');
-		console.log('[ClaudeService] State set to streaming, calling CLI...');
-		this.logService.debug(ClaudeService.LOG_CATEGORY, 'Sending prompt to CLI:', prompt.substring(0, 100));
 
 		try {
-			// 먼저 채널이 작동하는지 테스트 (Multi-Session)
-			const testSessionId = this._sessionService.getCurrentSession()?.id || 'test';
-			console.log('[ClaudeService] Testing channel with isRunning for session:', testSessionId);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Testing channel with isRunning...');
-			const isRunning = await Promise.race([
-				this._multiConnection.isRunning(testSessionId),
-				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Channel timeout')), 5000))
-			]);
-			console.log('[ClaudeService] Channel test passed, isRunning:', isRunning);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Channel test passed, isRunning:', isRunning);
-
-			console.log('[ClaudeService] Calling sendPrompt...');
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'Calling channel.call sendPrompt...');
-
-			// 모델 우선순위: options > session override > local config > VS Code config
-			// resolveModelName으로 별칭 해석 (예: "opus" → "claude-opus-4-20250514")
-			const rawModel = options?.model
-				|| this._sessionModelOverride
-				|| this._localConfig.model
-				|| this.configurationService.getValue<string>('claude.model');
-			const effectiveModel = resolveModelName(rawModel);
-
-
-			//UltraThink 더이상 사용 XXXX
-			//Ultrathink no longer does anything. Thinking budget is now max by default.
-			// // Ultrathink: session override > local config > instance setting
-			// const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
-			// 	? this._sessionUltrathinkOverride
-			// 	: (this._localConfig.ultrathink ?? this._ultrathink);
-
-			// // Ultrathink 모드일 경우 프롬프트 앞에 "ultrathink:" 키워드 추가
-			// let finalPrompt = prompt;
-			// if (effectiveUltrathink && prompt.trim()) {
-			// 	finalPrompt = `ultrathink: ${prompt}`;
-			// 	this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink mode enabled, prompt prefixed with ultrathink:');
-			// }
-
-			// 로컬 설정 > VS Code 설정 우선순위로 옵션 결정
-			const maxTurns = this._localConfig.maxTurns
-				?? this.configurationService.getValue<number>('claude.maxTurns');
-			const maxBudgetUsd = this._localConfig.maxBudgetUsd
-				?? this.configurationService.getValue<number>('claude.maxBudgetUsd');
-			const fallbackModel = this._localConfig.fallbackModel
-				?? this.configurationService.getValue<string>('claude.fallbackModel');
-			const appendSystemPrompt = this.configurationService.getValue<string>('claude.appendSystemPrompt');
-			const disallowedTools = this._localConfig.disallowedTools
-				?? this.configurationService.getValue<string[]>('claude.disallowedTools');
-			const permissionMode = this._localConfig.permissionMode
-				?? this.configurationService.getValue<'default' | 'plan' | 'accept-edits'>('claude.permissionMode');
-			const betas = this._localConfig.betas
-				?? this.configurationService.getValue<string[]>('claude.betas');
-
-			const cliOptions: IClaudeCLIRequestOptions = {
-				model: effectiveModel,
-				systemPrompt: options?.systemPrompt || this.configurationService.getValue<string>('claude.systemPrompt'),
-				workingDir: this._localConfig.workingDirectory
-					? (this.getWorkspaceRoot() ? `${this.getWorkspaceRoot()}/${this._localConfig.workingDirectory}` : undefined)
-					: this.getWorkspaceRoot(),
-				executable: this._localConfig.executable,
-				continueLastSession,
-				// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
-				maxTurns,
-				maxBudgetUsd,
-				fallbackModel,
-				appendSystemPrompt,
-				disallowedTools,
-				permissionMode,
-				betas,
-				// 로컬 설정 전용 옵션
-				addDirs: this._localConfig.addDirs,
-				mcpConfig: this._localConfig.mcpConfig,
-				agents: this._localConfig.agents
-			};
-
-			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
-			// Multi-session: 현재 세션 ID로 전송
-			const sessionId = this._sessionService.getCurrentSession()?.id;
-			if (!sessionId) {
-				throw new Error('No active session');
-			}
-			console.log('[ClaudeService] Using multi-session sendPrompt for sessionId:', sessionId);
-			const timeoutMs = 15 * 60 * 1000; // 15분
-			await Promise.race([
-				this._multiConnection.sendPrompt(sessionId, prompt, cliOptions),
-				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 15 minutes')), timeoutMs))
-			]);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
-
-			// 완료 후 최종 메시지 반환
-			const finalMessage: IClaudeMessage = {
-				id: messageId,
-				role: 'assistant',
-				content: this._accumulatedContent,
-				timestamp: Date.now(),
-				isStreaming: false,
-				workEndTime: Date.now()
-			};
-
-			return finalMessage;
+			await this._queueService.processQueue(sessionId);
 		} catch (error) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'sendPrompt error:', error);
-
-			// 타임아웃 에러 시 세션 상태 복구
-			const sessionId = this._sessionService.getCurrentSession()?.id;
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'Error processing queue:', error);
+		} finally {
 			if (sessionId) {
-				const sessionState = this._sessionStates.get(sessionId);
-				if (sessionState) {
-					sessionState.state = 'idle';
-					sessionState.isWaitingForUser = false;
-					console.log('[ClaudeService] Session state reset to idle after timeout:', sessionId);
-				}
+				const sessionState = this._multiSessionManager.getOrCreateSessionState(sessionId);
+				sessionState.isProcessingQueue = false;
+			} else {
+				this._isProcessingQueue = false;
 			}
-			this._state = 'idle';
-			this._uiService.fireStateChange('idle');
-
-			throw error;
 		}
-	}
-
-	cancelRequest(): void {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		if (sessionId) {
-			this._multiConnection.cancelRequest(sessionId);
-
-			// 세션 상태 초기화
-			const sessionState = this._sessionService.getSessionState(sessionId);
-
-			// 현재 스트리밍 중인 메시지 업데이트
-			if (sessionState.currentMessageId) {
-				const currentSession = this._sessionService.getCurrentSession();
-				if (currentSession) {
-					const message = currentSession.messages.find(m => m.id === sessionState.currentMessageId);
-					if (message && message.isStreaming) {
-						const updatedMessage: IClaudeMessage = {
-							...message,
-							isStreaming: false,
-							workEndTime: Date.now()
-						};
-						if (this._sessionService.updateMessage(updatedMessage)) {
-							this._messageService.fireMessageUpdate(updatedMessage);
-						}
-					}
-				}
-			}
-
-			sessionState.state = 'idle';
-			sessionState.currentMessageId = undefined;
-			sessionState.accumulatedContent = '';
-		}
-
-		// Legacy 상태 초기화
-		this.setState('idle');
-		this._currentMessageId = undefined;
-		this._accumulatedContent = '';
 	}
 
 	/**
-	 * Multi-Session 채널 래퍼 생성
-	 * CLI EventHandler에서 sendPrompt 호출 시 사용
+	 * 명령 완료 시 호출 (ContextProvider용)
 	 */
-	private _createMultiSessionChannelWrapper(): IChannel {
+	async handleCommandComplete(): Promise<void> {
+		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
+		await this._fileService.captureAllPendingModifications();
+
+		const changesSummary = this._fileService.getFileChangesSummary();
+
+		// 디버깅: 스냅샷 상태 출력
+		for (const change of changesSummary.changes) {
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] - ${change.filePath}: ${change.changeType}, +${change.linesAdded}/-${change.linesRemoved}`);
+		}
+
+		// 현재 메시지에 파일 변경사항 추가
+		if (changesSummary.changes.length > 0 && this._currentMessageId && this._sessionService.hasCurrentSession()) {
+			const messages = this._sessionService.getMessages();
+			const currentMessage = messages.find(m => m.id === this._currentMessageId);
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${this._currentMessageId}, found: ${!!currentMessage}`);
+
+			if (currentMessage) {
+				const updatedMessage: IClaudeMessage = {
+					...currentMessage,
+					fileChanges: changesSummary
+				};
+				this._sessionService.updateMessage(updatedMessage);
+				this._messageService.fireMessageUpdate(updatedMessage);
+				this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Message updated with ${changesSummary.changes.length} file changes`);
+			}
+		}
+	}
+
+	/**
+	 * 파일 서비스 접근용 getter (ContextProvider용)
+	 */
+	get fileService(): IClaudeFileService {
+		return this._fileService;
+	}
+
+	/**
+	 * Multi-Session 채널 래퍼 생성 (ContextProvider용)
+	 */
+	_createMultiSessionChannelWrapper(): IChannel {
 		return {
 			call: async <T>(command: string, args?: unknown[]): Promise<T> => {
 				const sessionId = this._sessionService.getCurrentSession()?.id;
@@ -1009,913 +937,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				// Multi-session에서는 직접 이벤트 구독하므로 여기선 no-op
 				return Event.None as Event<T>;
 			}
-		};
-	}
-
-	// ========== History ==========
-
-	getMessages(): IClaudeMessage[] {
-		return this._messageService.getMessages();
-	}
-
-	clearHistory(): void {
-		this._sessionService.clearHistory();
-	}
-
-	// ========== Session (SessionManager 위임) ==========
-
-	startNewSession(): IClaudeSession {
-		const session = this._sessionService.startNewSession();
-
-		// 새 세션의 상태 초기화
-		this._sessionService.getSessionState(session.id);
-
-		// 상태 및 큐 이벤트 발생
-		this._uiService.fireStateChange('idle');
-		this._messageService.fireQueueChange([]);
-
-		// 연결 상태가 'error'이면 재연결 시도
-		const connInfo = this._multiConnection.getInfo();
-		if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
-			this.logService.info(ClaudeService.LOG_CATEGORY, `Connection status is ${connInfo.status}, attempting reconnect...`);
-			// 비동기로 재연결 시도 (UI 블로킹 방지)
-			this._multiConnection.connect()
-				.then(connected => {
-					if (connected) {
-						this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful');
-					} else {
-						this.logService.warn(ClaudeService.LOG_CATEGORY, 'Reconnection failed');
-					}
-				})
-				.catch(error => {
-					this.logService.error(ClaudeService.LOG_CATEGORY, 'Reconnection error:', error);
-				})
-				.finally(() => {
-					// 연결 상태 변경 이벤트 발생 (UI 갱신)
-					this._uiService.fireStatusInfoChange(this.getStatusInfo());
-				});
-		}
-
-		this.logService.debug(ClaudeService.LOG_CATEGORY, `New session created: ${session.id}`);
-
-		return session;
-	}
-
-	getSessions(): IClaudeSession[] {
-		return this._sessionService.getSessions();
-	}
-
-	/**
-	 * 특정 세션으로 전환
-	 */
-	switchSession(sessionId: string): IClaudeSession | undefined {
-		const success = this._sessionService.switchSession(sessionId, () => {
-			// Legacy 상태 초기화 (현재 세션의 상태는 보존됨)
-			this._currentMessageId = undefined;
-			this._accumulatedContent = '';
-			this._currentToolAction = undefined;
-			this._isWaitingForUser = false;
-		});
-
-		if (success) {
-			// 새 세션의 상태와 큐 반영
-			const sessionState = this._sessionService.getSessionState(sessionId);
-			this._uiService.fireStateChange(sessionState.state);
-			this._messageService.fireQueueChange([...sessionState.pendingRequests]);
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `Switched to session: ${sessionId}, state: ${sessionState.state}, queue: ${sessionState.pendingRequests.length}`);
-
-			// 연결 상태가 'error'이면 재연결 시도
-			const connInfo = this._multiConnection.getInfo();
-			if (connInfo.status === 'error' || connInfo.status === 'disconnected') {
-				this.logService.info(ClaudeService.LOG_CATEGORY, `Connection status is ${connInfo.status}, attempting reconnect on session switch...`);
-				this._multiConnection.connect().then(connected => {
-					if (connected) {
-						this.logService.info(ClaudeService.LOG_CATEGORY, 'Reconnection successful on session switch');
-					}
-					this._uiService.fireStatusInfoChange(this.getStatusInfo());
-				});
-			}
-
-			return this._sessionService.getSessionById(sessionId);
-		}
-
-		return undefined;
-	}
-
-	/**
-	 * 세션 삭제
-	 */
-	deleteSession(sessionId: string): boolean {
-		// CLI 인스턴스 정리
-		this._multiConnection.destroySession(sessionId);
-
-		// 세션 상태 정리
-		this._sessionStates.delete(sessionId);
-
-		// 스토리지에서 세션 큐 삭제
-		const key = `claude.sessionQueue.${sessionId}`;
-		this.storageService.remove(key, StorageScope.WORKSPACE);
-
-		return this._sessionService.deleteSession(sessionId);
-	}
-
-	/**
-	 * 세션 제목 변경
-	 */
-	renameSession(sessionId: string, title: string): boolean {
-		return this._sessionService.renameSession(sessionId, title);
-	}
-
-	/**
-	 * 세션별 모델 오버라이드 설정 (별칭 지원)
-	 */
-	setSessionModel(model: string): void {
-		// 별칭 해석 (예: "opus" → "claude-opus-4-20250514")
-		const resolvedModel = model ? resolveModelName(model) : undefined;
-		this._sessionModelOverride = resolvedModel || undefined;
-		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', displayName, resolvedModel ? `(${resolvedModel})` : '');
-		this._uiService.fireStatusInfoChange(this.getStatusInfo());
-	}
-
-	/**
-	 * 세션별 Ultrathink 오버라이드 설정
-	 */
-	setSessionUltrathink(enabled: boolean): void {
-		this._sessionUltrathinkOverride = enabled;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
-		this._uiService.fireStatusInfoChange(this.getStatusInfo());
-	}
-
-	/**
-	 * 세션별 Auto Accept 오버라이드 설정
-	 */
-	setSessionAutoAccept(enabled: boolean): void {
-		this._sessionAutoAcceptOverride = enabled;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session auto-accept override:', enabled ? 'ON' : 'OFF');
-	}
-
-	/**
-	 * Auto Accept 활성화 여부 (세션 오버라이드 > 로컬 설정)
-	 */
-	isAutoAcceptEnabled(): boolean {
-		return this._sessionAutoAcceptOverride !== undefined
-			? this._sessionAutoAcceptOverride
-			: (this._localConfig.autoAccept ?? false);
-	}
-
-	/**
-	 * 마지막 세션 이어서 시작 (--continue)
-	 */
-	async continueLastSession(): Promise<void> {
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
-		this._continueMode = true;
-		// 다음 sendMessage 호출 시 --continue 플래그 사용됨
-	}
-
-	// ========== Queue ==========
-
-	getQueuedMessages(): IClaudeQueuedMessage[] {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this._queueService.getQueuedMessages(sessionId);
-	}
-
-	removeFromQueue(id: string): void {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		this._queueService.removeFromQueue(id, sessionId);
-	}
-
-	clearQueue(): void {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		this._queueService.clearQueue(sessionId);
-	}
-
-	/**
-	 * 큐 최대 크기 반환
-	 */
-	getMaxQueueSize(): number {
-		return this._queueService.getMaxQueueSize();
-	}
-
-	/**
-	 * 큐에 대기 중인 메시지 수정
-	 */
-	updateQueuedMessage(id: string, newContent: string): boolean {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this._queueService.updateQueuedMessage(id, newContent, sessionId);
-	}
-
-	/**
-	 * 큐 순서 변경
-	 */
-	reorderQueue(fromIndex: number, toIndex: number): boolean {
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this._queueService.reorderQueue(fromIndex, toIndex, sessionId);
-	}
-
-	// ========== Status ==========
-
-	/**
-	 * 연결 관리자 가져오기
-	 */
-	get connection(): ClaudeConnection {
-		return this._connection;
-	}
-
-	/**
-	 * Claude 상태 정보 가져오기
-	 */
-	getStatusInfo(): IClaudeStatusInfo {
-		const execMethod = 'cli'; // Only CLI method supported now
-		const scriptPath = undefined; // Script functionality removed
-		// Multi-Session 연결 상태 사용 (실제 CLI 통신 상태 반영)
-		const connInfo = this._multiConnection.getInfo();
-
-		// Ultrathink 현재 값 계산: session override > local config > instance setting
-		const effectiveUltrathink = this._sessionUltrathinkOverride !== undefined
-			? this._sessionUltrathinkOverride
-			: (this._localConfig.ultrathink ?? this._ultrathink);
-
-		return {
-			connectionStatus: connInfo.status,
-			model: this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4',
-			ultrathink: effectiveUltrathink,
-			executionMethod: execMethod,
-			scriptPath,
-			lastConnected: connInfo.lastConnected,
-			version: connInfo.version
-		};
-	}
-
-	/**
-	 * 연결 테스트 (Multi-Session에 위임)
-	 */
-	async checkConnection(): Promise<boolean> {
-		return this._multiConnection.connect();
-	}
-
-	/**
-	 * Ultrathink 토글
-	 */
-	async toggleUltrathink(): Promise<void> {
-		this._ultrathink = !this._ultrathink;
-		// 세션 오버라이드도 함께 토글
-		this._sessionUltrathinkOverride = this._ultrathink;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink:', this._ultrathink ? 'ON' : 'OFF');
-		this._uiService.fireStatusInfoChange(this.getStatusInfo());
-	}
-
-	/**
-	 * Ultrathink 활성화 여부
-	 */
-	isUltrathinkEnabled(): boolean {
-		return this._sessionUltrathinkOverride !== undefined
-			? this._sessionUltrathinkOverride
-			: (this._localConfig.ultrathink ?? this._ultrathink);
-	}
-
-	// ========== File Snapshot / Diff ==========
-
-	/**
-	 * 명령 완료 시 호출 - 변경된 파일 정보 수집
-	 */
-	private async _handleCommandComplete(): Promise<void> {
-		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
-		await this._fileService.captureAllPendingModifications();
-
-		const changesSummary = this._fileService.getFileChangesSummary();
-
-		// 디버깅: 스냅샷 상태 출력
-		for (const change of changesSummary.changes) {
-			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] - ${change.filePath}: ${change.changeType}, +${change.linesAdded}/-${change.linesRemoved}`);
-		}
-
-		// 현재 메시지에 파일 변경사항 추가
-		if (changesSummary.changes.length > 0 && this._currentMessageId && this._sessionService.hasCurrentSession()) {
-			const messages = this._sessionService.getMessages();
-			const currentMessage = messages.find(m => m.id === this._currentMessageId);
-			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${this._currentMessageId}, found: ${!!currentMessage}`);
-
-			if (currentMessage) {
-				const updatedMessage: IClaudeMessage = {
-					...currentMessage,
-					fileChanges: changesSummary
-				};
-				this._sessionService.updateMessage(updatedMessage);
-				this._messageService.fireMessageUpdate(updatedMessage);
-				this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Message updated with ${changesSummary.changes.length} file changes`);
-			}
-		} else {
-			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Skipping - changes: ${changesSummary.changes.length}, msgId: ${this._currentMessageId}, hasSession: ${this._sessionService.hasCurrentSession()}`);
-		}
-	}
-
-	/**
-	 * 변경된 파일 목록 가져오기
-	 */
-	getChangedFiles(): IClaudeFileChange[] {
-		return this._fileService.getChangedFiles();
-	}
-
-	/**
-	 * 변경사항 요약 가져오기
-	 */
-	getFileChangesSummary(): IClaudeFileChangesSummary {
-		return this._fileService.getFileChangesSummary();
-	}
-
-	/**
-	 * 특정 파일의 Diff 표시
-	 */
-	async showFileDiff(fileChange: IClaudeFileChange): Promise<void> {
-		await this._fileService.showFileDiff(fileChange);
-	}
-
-	/**
-	 * 파일 변경사항 되돌리기
-	 */
-	async revertFile(fileChange: IClaudeFileChange): Promise<boolean> {
-		return this._fileService.revertFile(fileChange);
-	}
-
-	/**
-	 * 모든 파일 변경사항 되돌리기
-	 */
-	async revertAllFiles(): Promise<number> {
-		return this._fileService.revertAllFiles();
-	}
-
-	/**
-	 * 파일 변경사항 수락 (스냅샷 제거)
-	 */
-	acceptFile(fileChange: IClaudeFileChange): void {
-		this._fileService.acceptFile(fileChange);
-	}
-
-	/**
-	 * 모든 파일 변경사항 수락
-	 */
-	acceptAllFiles(): void {
-		this._fileService.acceptAllFiles();
-	}
-
-	/**
-	 * 선택된 파일들 되돌리기
-	 */
-	async revertSelectedFiles(fileChanges: IClaudeFileChange[]): Promise<number> {
-		const filePaths = fileChanges.map(fc => fc.filePath);
-		return this._fileService.revertFiles(filePaths);
-	}
-
-	/**
-	 * 선택된 파일들 수락
-	 */
-	acceptSelectedFiles(fileChanges: IClaudeFileChange[]): void {
-		const filePaths = fileChanges.map(fc => fc.filePath);
-		this._fileService.acceptFiles(filePaths);
-	}
-
-	// ========== Session Changes History ==========
-
-	/**
-	 * 세션 전체 변경사항 히스토리 가져오기
-	 */
-	getSessionChangesHistory(): IClaudeSessionChangesHistory {
-		const session = this._sessionService.getCurrentSession();
-		if (!session) {
-			return {
-				sessionId: '',
-				totalFilesChanged: 0,
-				totalLinesAdded: 0,
-				totalLinesRemoved: 0,
-				entries: [],
-				filesSummary: []
-			};
-		}
-
-		const entries: IClaudeChangesHistoryEntry[] = [];
-		const filesMap = new Map<string, IClaudeFileChangeSummaryItem>();
-		let totalLinesAdded = 0;
-		let totalLinesRemoved = 0;
-
-		// 메시지를 시간순으로 순회
-		const messages = session.messages;
-		for (let i = 0; i < messages.length; i++) {
-			const msg = messages[i];
-
-			// assistant 메시지에서 fileChanges 추출
-			if (msg.role === 'assistant' && msg.fileChanges && msg.fileChanges.changes.length > 0) {
-				// 이전 user 메시지에서 프롬프트 가져오기
-				let prompt = '';
-				for (let j = i - 1; j >= 0; j--) {
-					if (messages[j].role === 'user') {
-						prompt = messages[j].content;
-						// 프롬프트 요약 (100자)
-						if (prompt.length > 100) {
-							prompt = prompt.substring(0, 100) + '...';
-						}
-						break;
-					}
-				}
-
-				entries.push({
-					messageId: msg.id,
-					timestamp: msg.timestamp,
-					prompt,
-					changes: msg.fileChanges.changes
-				});
-
-				// 파일별 통계 업데이트
-				for (const change of msg.fileChanges.changes) {
-					const existing = filesMap.get(change.filePath);
-					if (existing) {
-						filesMap.set(change.filePath, {
-							filePath: change.filePath,
-							fileName: change.fileName,
-							changeCount: existing.changeCount + 1,
-							finalState: change.changeType,
-							totalLinesAdded: existing.totalLinesAdded + change.linesAdded,
-							totalLinesRemoved: existing.totalLinesRemoved + change.linesRemoved,
-							lastModified: msg.timestamp
-						});
-					} else {
-						filesMap.set(change.filePath, {
-							filePath: change.filePath,
-							fileName: change.fileName,
-							changeCount: 1,
-							finalState: change.changeType,
-							totalLinesAdded: change.linesAdded,
-							totalLinesRemoved: change.linesRemoved,
-							lastModified: msg.timestamp
-						});
-					}
-
-					totalLinesAdded += change.linesAdded;
-					totalLinesRemoved += change.linesRemoved;
-				}
-			}
-		}
-
-		// 파일 요약을 배열로 변환 (수정 횟수 내림차순)
-		const filesSummary = Array.from(filesMap.values())
-			.sort((a, b) => b.changeCount - a.changeCount);
-
-		return {
-			sessionId: session.id,
-			totalFilesChanged: filesMap.size,
-			totalLinesAdded,
-			totalLinesRemoved,
-			entries,
-			filesSummary
-		};
-	}
-
-	// ========== Multi-Session Support Methods ==========
-
-	/**
-	 * 멀티 연결 관리자 가져오기
-	 */
-	getMultiConnection(): ClaudeMultiConnection {
-		return this._multiConnection;
-	}
-
-	/**
-	 * 특정 세션에 프롬프트 전송 (멀티 세션용)
-	 */
-	async sendMessageToSession(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		const sessionState = this.getOrCreateSessionState(sessionId);
-
-		// 세션이 busy 상태면 큐에 추가
-		if (sessionState.state !== 'idle' || sessionState.isWaitingForUser) {
-			return this.addToSessionQueue(sessionId, content, options);
-		}
-
-		return this.sendMessageToSessionInternal(sessionId, content, options);
-	}
-
-	/**
-	 * 특정 세션의 큐에 메시지 추가
-	 */
-	private async addToSessionQueue(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		const sessionState = this.getOrCreateSessionState(sessionId);
-
-		if (sessionState.messageQueue.length >= ClaudeService.MAX_QUEUE_SIZE) {
-			throw new Error(`Message queue is full (max ${ClaudeService.MAX_QUEUE_SIZE} messages)`);
-		}
-
-		const queuedMessage: IClaudeQueuedMessage = {
-			id: generateUuid(),
-			content,
-			context: options?.context,
-			timestamp: Date.now()
-		};
-
-		sessionState.messageQueue.push(queuedMessage);
-		this.saveSessionQueue(sessionId);
-		this._messageService.fireQueueChange(sessionState.messageQueue);
-
-		this.logService.debug(ClaudeService.LOG_CATEGORY, `Added message to session queue: ${sessionId}, queue size: ${sessionState.messageQueue.length}`);
-
-		// 사용자 메시지 반환
-		const userMessage: IClaudeMessage = {
-			id: queuedMessage.id,
-			role: 'user',
-			content,
-			timestamp: queuedMessage.timestamp
-		};
-
-		return userMessage;
-	}
-
-	/**
-	 * 세션 데이터 이벤트 핸들러
-	 */
-	private _handleSessionData(sessionId: string, event: IClaudeCLIStreamEvent): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState) return;
-
-		// 연결 확인
-		this._multiConnection.confirmConnected();
-
-		// 텍스트 추출 및 축적
-		const text = this.extractTextFromEvent(event);
-		if (text) {
-			sessionState.accumulatedContent += text;
-			this.updateSessionMessage(sessionId);
-		}
-
-		// system 이벤트에서 CLI 세션 ID 추출
-		if (event.type === 'system' && event.content) {
-			const sessionIdMatch = event.content.match(/Session:\s*([a-f0-9-]+)/i);
-			if (sessionIdMatch) {
-				sessionState.cliSessionId = sessionIdMatch[1];
-				this.logService.debug(ClaudeService.LOG_CATEGORY, `CLI session ID for ${sessionId}: ${sessionState.cliSessionId}`);
-			}
-		}
-	}
-
-	/**
-	 * 세션 완료 이벤트 핸들러
-	 */
-	private _handleSessionComplete(sessionId: string): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState) return;
-
-		this.logService.debug(ClaudeService.LOG_CATEGORY, `Session completed: ${sessionId}`);
-
-		// 최종 메시지 업데이트
-		this.updateSessionMessage(sessionId, false);
-
-		// 상태 리셋
-		sessionState.state = 'idle';
-		sessionState.currentMessageId = undefined;
-		this._uiService.fireStateChange(sessionState.state);
-
-		// 큐 처리
-		this.processSessionQueue(sessionId);
-	}
-
-	/**
-	 * 세션 에러 이벤트 핸들러
-	 */
-	private _handleSessionError(sessionId: string, error: string): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState) return;
-
-		this.logService.error(ClaudeService.LOG_CATEGORY, `Session error: ${sessionId}`, error);
-
-		sessionState.state = 'idle';
-		this._uiService.fireStateChange(sessionState.state);
-	}
-
-	/**
-	 * 세션 메시지 업데이트
-	 */
-	private updateSessionMessage(sessionId: string, isStreaming: boolean = true): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState || !sessionState.currentMessageId) return;
-
-		const message: IClaudeMessage = {
-			id: sessionState.currentMessageId,
-			role: 'assistant',
-			content: sessionState.accumulatedContent,
-			timestamp: Date.now(),
-			isStreaming,
-			workEndTime: isStreaming ? undefined : Date.now()
-		};
-
-		const session = this._sessionService.getSessionById(sessionId);
-		if (session) {
-			this._sessionService.updateMessage(message, session);
-		}
-		this._messageService.fireMessageUpdate(message);
-	}
-
-	/**
-	 * 이벤트에서 텍스트 추출
-	 */
-	private extractTextFromEvent(event: IClaudeCLIStreamEvent): string {
-		if (event.type === 'content_block_delta' && event.delta?.text) {
-			return event.delta.text;
-		}
-		if (event.type === 'text' && event.content) {
-			return event.content;
-		}
-		return '';
-	}
-
-	/**
-	 * 세션 컨텐츠 축적 (백그라운드 세션 포함)
-	 * 모든 세션의 CLI 응답을 세션 상태에 저장
-	 * 주의: messageId는 sendMessageInternal에서 이미 생성되어 있음
-	 */
-	private accumulateSessionContent(sessionId: string, event: IClaudeCLIStreamEvent): void {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState) {
-			return;
-		}
-
-		// assistant 이벤트: 텍스트 컨텐츠 추출
-		if (event.type === 'assistant') {
-			// 텍스트 컨텐츠 추출 및 축적 (message가 객체인 경우만)
-			if (event.message && typeof event.message !== 'string') {
-				const messageContent = event.message.content;
-				if (messageContent && Array.isArray(messageContent)) {
-					for (const block of messageContent) {
-						if (block.type === 'text' && block.text) {
-							if (sessionState.accumulatedContent) {
-								sessionState.accumulatedContent += '\n' + block.text;
-							} else {
-								sessionState.accumulatedContent = block.text;
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// 스트리밍 텍스트 이벤트
-		const text = this.extractTextFromEvent(event);
-		if (text) {
-			if (sessionState.accumulatedContent) {
-				sessionState.accumulatedContent += text;
-			} else {
-				sessionState.accumulatedContent = text;
-			}
-		}
-
-		// result 이벤트: 최종 결과
-		if (event.type === 'result' && event.result) {
-			// result가 문자열이면 최종 컨텐츠로 사용
-			if (typeof event.result === 'string' && event.result.trim()) {
-				sessionState.accumulatedContent = event.result;
-			}
-		}
-	}
-
-	/**
-	 * 세션 큐 처리
-	 */
-	private async processSessionQueue(sessionId: string): Promise<void> {
-		const sessionState = this._sessionStates.get(sessionId);
-		if (!sessionState || sessionState.isProcessingQueue || sessionState.messageQueue.length === 0) {
-			return;
-		}
-
-		sessionState.isProcessingQueue = true;
-
-		try {
-			const nextMessage = sessionState.messageQueue.shift();
-			if (nextMessage) {
-				this.saveSessionQueue(sessionId);
-				this._messageService.fireQueueChange(sessionState.messageQueue);
-				await this.sendMessageToSessionInternal(sessionId, nextMessage.content, {
-					context: nextMessage.context
-				});
-			}
-		} finally {
-			sessionState.isProcessingQueue = false;
-		}
-	}
-
-	/**
-	 * 세션 큐 저장 (오버로드 지원)
-	 */
-	private saveSessionQueue(sessionId: string, queue?: IClaudeQueuedMessage[]): void {
-		const queueToSave = queue || this._sessionStates.get(sessionId)?.messageQueue;
-		if (!queueToSave) return;
-
-		try {
-			const key = `claude.sessionQueue.${sessionId}`;
-			this.storageService.store(key, JSON.stringify(queueToSave), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-		} catch (e) {
-			this.logService.error(ClaudeService.LOG_CATEGORY, 'Failed to save session queue:', e);
-		}
-	}
-
-	/**
-	 * 특정 세션의 큐 가져오기
-	 */
-	getSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
-		const sessionState = this._sessionStates.get(sessionId);
-		return sessionState?.messageQueue || [];
-	}
-
-	/**
-	 * 특정 세션의 상태 가져오기
-	 */
-	getSessionState(sessionId: string): ClaudeServiceState {
-		const sessionState = this._sessionStates.get(sessionId);
-		return sessionState?.state || 'idle';
-	}
-
-	/**
-	 * 특정 세션이 실행 중인지 확인
-	 */
-	isSessionRunning(sessionId: string): boolean {
-		const sessionState = this._sessionStates.get(sessionId);
-		return sessionState?.state !== 'idle';
-	}
-
-	/**
-	 * 특정 세션의 요청 취소
-	 */
-	cancelSessionRequest(sessionId: string): void {
-		this._multiConnection.cancelRequest(sessionId);
-		const sessionState = this._sessionStates.get(sessionId);
-		if (sessionState) {
-			sessionState.state = 'idle';
-			this._uiService.fireStateChange(sessionState.state);
-		}
-	}
-
-	/**
-	 * 특정 세션에 사용자 입력 전송
-	 */
-	sendUserInputToSession(sessionId: string, input: string): void {
-		this._multiConnection.sendUserInput(sessionId, input);
-	}
-
-	/**
-	 * 파일 시스템 이벤트 구독 설정
-	 */
-	private setupFileSystemWatcher(): void {
-		// 파일 변경 이벤트 구독
-		// 파일 변경 배칭 최적화 (대량 변경 시 성능 향상)
-		this._register(this._platformFileService.onDidFilesChange((event: FileChangesEvent) => {
-			// 변경된 파일들 수집
-			const changedFiles = [
-				...event.rawAdded,
-				...event.rawUpdated,
-				...event.rawDeleted
-			];
-
-			if (changedFiles.length === 0) {
-				return;
-			}
-
-			this.logService.debug(ClaudeService.LOG_CATEGORY, '🔍 File change detected:', {
-				count: changedFiles.length,
-				first3: changedFiles.slice(0, 3).map(f => f.toString())
-			});
-
-			// 대량 변경 시 배칭 처리로 UI 블로킹 방지
-			if (changedFiles.length > 10) {
-				this._batchProcessFileChanges(changedFiles);
-			} else {
-				this._processFileChangesSync(changedFiles);
-			}
-		}));
-
-		this.logService.info(ClaudeService.LOG_CATEGORY, '👁️ File system watcher setup completed');
-	}
-
-	/**
-	 * 소량 파일 변경 시 동기 처리
-	 */
-	private _processFileChangesSync(changedFiles: URI[]): void {
-		this.logService.info(ClaudeService.LOG_CATEGORY, `📝 Sync processing ${changedFiles.length} file changes`);
-
-		for (const fileUri of changedFiles) {
-			this._fileService.removeSnapshot(fileUri.toString());
-			this.logService.debug(ClaudeService.LOG_CATEGORY, `🗑️ Removed snapshot for: ${fileUri.toString()}`);
-		}
-	}
-
-	/**
-	 * 대량 파일 변경 시 배칭 비동기 처리 (UI 블로킹 방지)
-	 */
-	private async _batchProcessFileChanges(changedFiles: URI[]): Promise<void> {
-		this.logService.info(ClaudeService.LOG_CATEGORY, `📝 Batch processing ${changedFiles.length} file changes`);
-
-		const BATCH_SIZE = 20; // 20개씩 배칭 처리
-		const BATCH_DELAY = 10; // 10ms 딜레이 (UI 응답성 유지)
-
-		for (let i = 0; i < changedFiles.length; i += BATCH_SIZE) {
-			const batch = changedFiles.slice(i, i + BATCH_SIZE);
-
-			// 배칭 처리
-			for (const fileUri of batch) {
-				this._fileService.removeSnapshot(fileUri.toString());
-			}
-
-			this.logService.debug(ClaudeService.LOG_CATEGORY,
-				`🗑️ Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(changedFiles.length / BATCH_SIZE)}`);
-
-			// 다음 배치 전 짧은 대기 (UI 응답성 보장)
-			if (i + BATCH_SIZE < changedFiles.length) {
-				await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
-			}
-		}
-
-		this.logService.info(ClaudeService.LOG_CATEGORY, `✅ Batch processing completed for ${changedFiles.length} files`);
-	}
-
-	// ========== 코드 중복 제거 헬퍼 메서드들 ==========
-
-	/**
-	 * 새 메시지 시작 시 상태를 초기화하는 헬퍼 메서드
-	 * Legacy와 세션별 상태 모두 동기화
-	 */
-	private initializeNewMessageState(messageId: string): void {
-		// Legacy 상태 초기화
-		this._currentMessageId = messageId;
-		this._accumulatedContent = '';
-		this._currentToolAction = undefined;
-
-		// 세션 상태 초기화 (세션 서비스 메서드 사용)
-		this._sessionService.setCurrentMessageId(messageId);
-		this._sessionService.setAccumulatedContent('');
-		this._sessionService.clearToolActions();
-	}
-
-	// ========== Context Provider Implementation ==========
-
-	/**
-	 * CLIEventHandler를 위한 컨텍스트 프로바이더 생성
-	 * 47개 델리게이트를 대체하는 통합 컨텍스트 제공
-	 */
-	private createContextProvider(): ICLIEventHandlerContext {
-		return {
-			session: this._sessionService.getCurrentSession() || undefined,
-			getConnection: () => this._connection,
-
-			// Tool actions
-			handleToolAction: (toolAction) => {
-				this._uiService.setToolAction(toolAction);
-			},
-
-			// File operations
-			saveFile: async (filePath, content) => {
-				const uri = URI.file(filePath);
-				await this._platformFileService.writeFile(uri, VSBuffer.fromString(content));
-			},
-
-			addMessage: (message) => {
-				this._messageService.addMessage(message);
-			},
-
-			// Status updates
-			updateStatus: (statusInfo) => {
-				this._uiService.updateStatusInfo(statusInfo);
-			},
-
-			// Rate limiting
-			checkRateLimit: () => {
-				return !this._rateLimitService.getRateLimitStatus().waiting;
-			},
-
-			// Event subscriptions (델리게이트 대체)
-			onStateChange: (callback) => {
-				return this._uiService.onDidChangeState(callback);
-			},
-
-			onStatusChange: (callback) => {
-				return this._uiService.onDidChangeStatusInfo(callback);
-			},
-
-			onToolActionChange: (callback) => {
-				return this._uiService.onDidChangeToolAction(callback);
-			},
-
-			onMessageReceived: (callback) => {
-				return this._messageService.onDidReceiveMessage(callback);
-			},
-
-			onSessionChange: (callback) => {
-				return this._sessionService.onDidChangeSession(callback);
-			},
-
-			onConnectionChange: (callback) => {
-				return this._connection.onDidChangeStatus(callback);
-			},
-
-			// Core service access
-			getSessionService: () => this._sessionService,
-			getMessageService: () => this._messageService,
-			getFileService: () => this._fileService,
-			getUIService: () => this._uiService,
-			getRateLimitService: () => this._rateLimitService
 		};
 	}
 }

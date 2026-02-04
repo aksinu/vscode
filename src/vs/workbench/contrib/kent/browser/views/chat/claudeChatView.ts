@@ -6,7 +6,6 @@
 import { $, append, addDisposableListener, EventType } from '../../../../../../base/browser/dom.js';
 import { Codicon } from '../../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../../base/common/themables.js';
-import { DisposableStore } from '../../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../../base/common/uri.js';
 import { VSBuffer } from '../../../../../../base/common/buffer.js';
 import { ICodeEditor } from '../../../../../../editor/browser/editorBrowser.js';
@@ -23,8 +22,8 @@ import { IOpenerService } from '../../../../../../platform/opener/common/opener.
 import { IThemeService } from '../../../../../../platform/theme/common/themeService.js';
 import { IViewPaneOptions, ViewPane } from '../../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../../common/views.js';
-import { IClaudeService, IClaudeFileChangeSummaryItem } from '../../../common/services/core/claude.js';
-import { IClaudeMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels } from '../../../common/types/claudeTypes.js';
+import { IClaudeService } from '../../../common/services/core/claude.js';
+import { IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels } from '../../../common/types/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
@@ -41,7 +40,7 @@ import { ClaudeSettingsPanel } from '../settings/claudeSettingsPanel.js';
 import { SessionSettingsPanel, ISessionSettings } from '../settings/claudeSessionSettingsPanel.js';
 import { SessionTabs } from '../session/claudeSessionTabs.js';
 import { ChangesHistoryPanel } from '../ui/claudeChangesHistoryPanel.js';
-import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
+import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
 import { ITerminalService } from '../../../../terminal/browser/terminal.js';
 import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
@@ -49,6 +48,13 @@ import { IQuickInputService } from '../../../../../../platform/quickinput/common
 import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
 import { ISCMService } from '../../../../scm/common/scm.js';
 import { ClaudePermissionMode } from '../../../common/config/claudeLocalConfig.js';
+import {
+	GitCommitManager,
+	QueueUIManager,
+	ClipboardManager,
+	MessageListManager,
+	ViewConnectionManager
+} from './managers/index.js';
 
 export class ClaudeChatViewPane extends ViewPane {
 
@@ -85,7 +91,13 @@ export class ClaudeChatViewPane extends ViewPane {
 	private changesHistoryPanel!: ChangesHistoryPanel;
 
 	private messageRenderer!: ClaudeMessageRenderer;
-	private messageDisposables = new Map<string, DisposableStore>();
+
+	// Managers (모듈화된 로직)
+	private gitCommitManager!: GitCommitManager;
+	private queueUIManager!: QueueUIManager;
+	private clipboardManager!: ClipboardManager;
+	private messageListManager!: MessageListManager;
+	private viewConnectionManager!: ViewConnectionManager;
 
 	private readonly panelFocusedKey = CONTEXT_CLAUDE_PANEL_FOCUSED.bindTo(this.contextKeyService);
 	private readonly inputFocusedKey = CONTEXT_CLAUDE_INPUT_FOCUSED.bindTo(this.contextKeyService);
@@ -134,8 +146,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.quickInputService,
 			this.notificationService,
 			{
-				clearMessages: () => this.clearMessages(),
-				appendMessage: (message) => this.appendMessage(message),
+				clearMessages: () => this.messageListManager?.clearMessages(),
+				appendMessage: (message) => this.messageListManager?.appendMessage(message),
 				updateWelcomeVisibility: () => this.updateWelcomeVisibility()
 			}
 		);
@@ -176,12 +188,12 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 서비스 이벤트 구독
 		this._register(this.claudeService.onDidReceiveMessage(message => {
-			this.appendMessage(message);
+			this.messageListManager?.appendMessage(message);
 			this.updateWelcomeVisibility();
 		}));
 
 		this._register(this.claudeService.onDidUpdateMessage(message => {
-			this.updateMessage(message);
+			this.messageListManager?.updateMessage(message);
 		}));
 
 		this._register(this.claudeService.onDidChangeState((state: string) => {
@@ -194,7 +206,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 			// 에러 상태 시 연결 오버레이 표시 및 입력 비활성화
 			if (state === 'error') {
-				this.handleConnectionLost();
+				this.viewConnectionManager?.handleConnectionLost();
 			}
 
 			// idle 상태로 변경 시 추가 확인
@@ -211,11 +223,11 @@ export class ClaudeChatViewPane extends ViewPane {
 		}));
 
 		this._register(this.claudeService.onDidChangeSession((session: any) => {
-			this.clearMessages();
+			this.messageListManager?.clearMessages();
 			// 세션의 메시지들 렌더링
 			if (session) {
 				for (const message of session.messages) {
-					this.appendMessage(message);
+					this.messageListManager?.appendMessage(message);
 				}
 			}
 			this.updateWelcomeVisibility();
@@ -224,7 +236,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		}));
 
 		this._register(this.claudeService.onDidChangeQueue((queue: IClaudeQueuedMessage[]) => {
-			this.updateQueueUI(queue);
+			this.queueUIManager?.updateQueueUI(queue);
 		}));
 
 	}
@@ -236,8 +248,18 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 연결 오버레이 (가장 먼저 생성 - z-index가 높아서 위에 표시됨)
 		this.connectionOverlay = this._register(new ConnectionOverlay(this.container, {
-			onRetry: () => this.initializeConnection()
+			onRetry: () => this.viewConnectionManager?.initializeConnection()
 		}));
+
+		// ViewConnectionManager 생성
+		this.viewConnectionManager = new ViewConnectionManager(
+			this.connectionOverlay,
+			this.claudeService,
+			this.notificationService,
+			{
+				setInputEnabled: (enabled) => this.setInputEnabled(enabled)
+			}
+		);
 
 		// 드롭 오버레이
 		this.dropOverlay = append(this.container, $('.claude-drop-overlay'));
@@ -257,6 +279,13 @@ export class ClaudeChatViewPane extends ViewPane {
 		const loadingText = append(this.loadingElement, $('span'));
 		loadingText.textContent = localize('claudeThinking', "Claude is thinking...");
 
+		// MessageListManager 생성
+		this.messageListManager = new MessageListManager(
+			this.messagesContainer,
+			this.loadingElement,
+			this.messageRenderer
+		);
+
 		// 기존 메시지 렌더링
 		const messages = this.claudeService.getMessages();
 		const session = this.claudeService.getCurrentSession();
@@ -265,14 +294,25 @@ export class ClaudeChatViewPane extends ViewPane {
 		for (let i = 0; i < messages.length; i++) {
 			// 이전 세션과 현재 세션 구분선
 			if (previousMessageCount > 0 && i === previousMessageCount) {
-				this.appendSessionDivider();
+				this.messageListManager.appendSessionDivider();
 			}
-			this.appendMessage(messages[i]);
+			this.messageListManager.appendMessage(messages[i]);
 		}
 
 		// 큐 표시 영역 (입력창 위)
 		this.queueContainer = append(this.container, $('.claude-queue-container'));
 		this.queueContainer.style.display = 'none';
+
+		// QueueUIManager 생성
+		this.queueUIManager = new QueueUIManager(
+			this.queueContainer,
+			this.claudeService,
+			this.quickInputService,
+			this.notificationService,
+			{
+				registerDisposable: (d) => this._register(d)
+			}
+		);
 
 		// 로컬 설정 매니저
 		this.localSettingsManager = new LocalSettingsManager(
@@ -287,13 +327,22 @@ export class ClaudeChatViewPane extends ViewPane {
 		);
 
 		// 세션 설정 패널 초기화
+		// GitCommitManager 생성
+		this.gitCommitManager = new GitCommitManager(
+			this.claudeService,
+			this.scmService,
+			this.terminalService,
+			this.workspaceContextService,
+			this.notificationService
+		);
+
 		this.sessionSettingsPanel = this._register(new SessionSettingsPanel({
 			getCurrentSettings: () => this.sessionSettings,
 			onSave: (settings) => this.applySessionSettings(settings),
 			onContinue: () => this.continueLastSession(),
 			getAvailableModels: () => this.getAvailableModels(),
-			onCommit: () => this.handleCommitChanges(),
-			hasChangesToCommit: () => this.hasChangesToCommit()
+			onCommit: () => this.gitCommitManager.handleCommitChanges(),
+			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit()
 		}));
 
 		// 상태 바 (입력창 위)
@@ -335,7 +384,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 초기 연결 시도 (UI 비활성화 상태로 시작)
 		this.setInputEnabled(false);
-		this.initializeConnection();
+		this.viewConnectionManager.initializeConnection();
 
 		// 드래그/드롭 이벤트 설정
 		this.setupDragAndDrop();
@@ -346,7 +395,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 초기 큐 상태 로드 (현재 세션의 큐)
 		const initialQueue = this.claudeService.getQueuedMessages?.() ?? [];
 		if (initialQueue.length > 0) {
-			this.updateQueueUI(initialQueue);
+			this.queueUIManager.updateQueueUI(initialQueue);
 		}
 
 		// 포커스 이벤트
@@ -446,7 +495,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
 			this.claudeService.clearHistory();
-			this.clearMessages();
+			this.messageListManager?.clearMessages();
 			this.updateWelcomeVisibility();
 			this.sessionTabs?.render();
 		}));
@@ -524,183 +573,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private updateLoadingState(loading: boolean): void {
 		this.loadingElement.style.display = loading ? 'flex' : 'none';
 		if (loading) {
-			this.scrollToBottom();
-		}
-	}
-
-	private updateQueueUI(queue: IClaudeQueuedMessage[]): void {
-		// 기존 내용 초기화
-		while (this.queueContainer.firstChild) {
-			this.queueContainer.removeChild(this.queueContainer.firstChild);
-		}
-
-		if (queue.length === 0) {
-			this.queueContainer.style.display = 'none';
-			return;
-		}
-
-		this.queueContainer.style.display = 'block';
-
-		// 헤더
-		const header = append(this.queueContainer, $('.claude-queue-header'));
-		const headerIcon = append(header, $('.codicon.codicon-loading.claude-queue-spinner'));
-		headerIcon.setAttribute('aria-hidden', 'true');
-		const headerText = append(header, $('span.claude-queue-title'));
-		headerText.textContent = localize('pendingMessages', "{0} message(s) pending", queue.length);
-
-		// 전체 취소 버튼
-		const clearButton = append(header, $('button.claude-queue-clear'));
-		clearButton.title = localize('clearQueue', "Clear all pending");
-		append(clearButton, $('.codicon.codicon-close-all'));
-
-		this._register(addDisposableListener(clearButton, EventType.CLICK, () => {
-			this.claudeService.clearQueue();
-		}));
-
-		// 상태 메시지
-		const statusMessage = append(this.queueContainer, $('.claude-queue-status'));
-		statusMessage.textContent = localize('waitingForPrevious', "Waiting for current request to complete...");
-
-		// 큐 아이템들
-		const list = append(this.queueContainer, $('.claude-queue-list'));
-
-		// 드래그 앤 드롭 상태
-		let draggedIndex: number | null = null;
-
-		queue.forEach((item, index) => {
-			const itemElement = append(list, $('.claude-queue-item'));
-			itemElement.dataset.index = String(index);
-
-			// 드래그 앤 드롭 활성화
-			itemElement.draggable = true;
-
-			// 드래그 핸들
-			const dragHandle = append(itemElement, $('.claude-queue-item-drag'));
-			dragHandle.title = localize('dragToReorder', "Drag to reorder");
-			append(dragHandle, $('.codicon.codicon-gripper'));
-
-			// 순서 번호
-			const orderBadge = append(itemElement, $('.claude-queue-item-order'));
-			orderBadge.textContent = `#${index + 1}`;
-
-			// 대기 아이콘
-			const waitIcon = append(itemElement, $('.codicon.codicon-clock.claude-queue-item-icon'));
-			waitIcon.setAttribute('aria-hidden', 'true');
-
-			// 메시지 내용 (요약) - 클릭하여 편집
-			const content = append(itemElement, $('.claude-queue-item-content'));
-			const preview = item.content.length > 60 ? item.content.substring(0, 60) + '...' : item.content;
-			content.textContent = preview;
-			content.title = localize('clickToEdit', "Click to edit: {0}", item.content);
-
-			// 컨텍스트 미리보기 (첨부파일이 있으면 표시)
-			if (item.context?.attachments && item.context.attachments.length > 0) {
-				const contextBadge = append(itemElement, $('.claude-queue-item-context'));
-				contextBadge.title = localize('attachments', "{0} attachment(s)", item.context.attachments.length);
-				append(contextBadge, $('.codicon.codicon-attach'));
-				const countSpan = append(contextBadge, $('span'));
-				countSpan.textContent = String(item.context.attachments.length);
-			}
-
-			// 편집 버튼
-			const editButton = append(itemElement, $('button.claude-queue-item-edit'));
-			editButton.title = localize('editMessage', "Edit message");
-			append(editButton, $('.codicon.codicon-edit'));
-
-			// 개별 삭제 버튼
-			const removeButton = append(itemElement, $('button.claude-queue-item-remove'));
-			removeButton.title = localize('removeFromQueue', "Remove from queue");
-			append(removeButton, $('.codicon.codicon-close'));
-
-			// 편집 클릭 이벤트
-			this._register(addDisposableListener(editButton, EventType.CLICK, (e) => {
-				e.stopPropagation();
-				this.showQueueItemEditDialog(item);
-			}));
-
-			// 내용 클릭 이벤트 (편집)
-			this._register(addDisposableListener(content, EventType.CLICK, (e) => {
-				e.stopPropagation();
-				this.showQueueItemEditDialog(item);
-			}));
-
-			// 삭제 클릭 이벤트
-			this._register(addDisposableListener(removeButton, EventType.CLICK, (e) => {
-				e.stopPropagation();
-				this.claudeService.removeFromQueue(item.id);
-			}));
-
-			// 드래그 시작
-			this._register(addDisposableListener(itemElement, EventType.DRAG_START, (e: DragEvent) => {
-				draggedIndex = index;
-				itemElement.classList.add('dragging');
-				if (e.dataTransfer) {
-					e.dataTransfer.effectAllowed = 'move';
-					e.dataTransfer.setData('text/plain', String(index));
-				}
-			}));
-
-			// 드래그 종료
-			this._register(addDisposableListener(itemElement, EventType.DRAG_END, () => {
-				draggedIndex = null;
-				itemElement.classList.remove('dragging');
-				// 모든 드롭 인디케이터 제거
-				list.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
-			}));
-
-			// 드래그 오버
-			this._register(addDisposableListener(itemElement, EventType.DRAG_OVER, (e: DragEvent) => {
-				e.preventDefault();
-				if (e.dataTransfer) {
-					e.dataTransfer.dropEffect = 'move';
-				}
-				if (draggedIndex !== null && draggedIndex !== index) {
-					itemElement.classList.add('drop-target');
-				}
-			}));
-
-			// 드래그 리브
-			this._register(addDisposableListener(itemElement, EventType.DRAG_LEAVE, () => {
-				itemElement.classList.remove('drop-target');
-			}));
-
-			// 드롭
-			this._register(addDisposableListener(itemElement, EventType.DROP, (e: DragEvent) => {
-				e.preventDefault();
-				itemElement.classList.remove('drop-target');
-
-				const fromIndexStr = e.dataTransfer?.getData('text/plain');
-				if (fromIndexStr !== undefined) {
-					const fromIndex = parseInt(fromIndexStr, 10);
-					if (!isNaN(fromIndex) && fromIndex !== index) {
-						this.claudeService.reorderQueue?.(fromIndex, index);
-					}
-				}
-			}));
-		});
-	}
-
-	/**
-	 * 큐 아이템 편집 다이얼로그 표시
-	 */
-	private async showQueueItemEditDialog(item: IClaudeQueuedMessage): Promise<void> {
-		const result = await this.quickInputService.input({
-			title: localize('editQueuedMessage', "Edit Queued Message"),
-			value: item.content,
-			prompt: localize('editPrompt', "Modify the message content"),
-			validateInput: async (value) => {
-				if (!value.trim()) {
-					return localize('emptyMessage', "Message cannot be empty");
-				}
-				return null;
-			}
-		});
-
-		if (result !== undefined && result.trim() !== item.content) {
-			const success = this.claudeService.updateQueuedMessage?.(item.id, result.trim());
-			if (success) {
-				this.notificationService.info(localize('messageUpdated', "Message updated"));
-			}
+			this.messageListManager?.scrollToBottom();
 		}
 	}
 
@@ -719,6 +592,12 @@ export class ClaudeChatViewPane extends ViewPane {
 				registerDisposable: (d) => this._register(d)
 			}
 		));
+
+		// ClipboardManager 생성
+		this.clipboardManager = new ClipboardManager(
+			this.attachmentManager,
+			this.editorService
+		);
 
 		// OpenFilesBar 초기화
 		this.openFilesBar = new OpenFilesBar(
@@ -758,7 +637,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				onSubmit: () => this.submitInput(),
 				onFocusChange: (focused) => this.inputFocusedKey.set(focused),
 				onContentChange: () => this.autocompleteManager.check(),
-				onPaste: (e) => this.handlePaste(e),
+				onPaste: (e) => this.clipboardManager.handlePaste(e),
 				onKeyDown: (keyCode) => this.autocompleteManager.handleKeyDown(keyCode),
 				registerDisposable: (d) => this._register(d)
 			}
@@ -867,209 +746,10 @@ export class ClaudeChatViewPane extends ViewPane {
 				return;
 			}
 
-			this.scrollToBottom();
+			this.messageListManager?.scrollToBottom();
 		} catch (error) {
 			// 에러는 서비스에서 처리됨
 		}
-	}
-
-	private appendMessage(message: IClaudeMessage): void {
-		// 이미 DOM에 있으면 중복 추가 방지
-		const existing = this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`);
-		if (existing) {
-			return;
-		}
-
-		const messageContainer = $('.claude-message-wrapper');
-		messageContainer.dataset.messageId = message.id;
-
-		// 스트리밍 상태에 따라 클래스 토글
-		if (message.isStreaming) {
-			messageContainer.classList.add('streaming');
-		}
-
-		const disposables = this.messageRenderer.renderMessage(message, messageContainer);
-		this.messageDisposables.set(message.id, disposables);
-
-		// 로딩 인디케이터 앞에 삽입
-		this.messagesContainer.insertBefore(messageContainer, this.loadingElement);
-		this.scrollToBottom();
-	}
-
-	private appendSessionDivider(): void {
-		const divider = $('.claude-session-divider');
-
-		append(divider, $('.claude-session-divider-line'));
-		const text = append(divider, $('.claude-session-divider-text'));
-		text.textContent = localize('previousSession', "Previous Session");
-		append(divider, $('.claude-session-divider-line'));
-
-		// 로딩 인디케이터 앞에 삽입
-		this.messagesContainer.insertBefore(divider, this.loadingElement);
-	}
-
-	private updateMessage(message: IClaudeMessage): void {
-		// 기존 메시지 컨테이너 찾기
-		const existingContainer = this.messagesContainer.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement;
-		if (!existingContainer) {
-			// 기존 컨테이너가 없으면 새로 추가 (타이밍 이슈 대응)
-			this.appendMessage(message);
-			return;
-		}
-
-		// 스트리밍 상태에 따라 클래스 토글 (애니메이션 제어)
-		existingContainer.classList.toggle('streaming', !!message.isStreaming);
-
-		// 기존 disposables 정리
-		const oldDisposables = this.messageDisposables.get(message.id);
-		if (oldDisposables) {
-			oldDisposables.dispose();
-		}
-
-		// 컨테이너 내용 초기화
-		while (existingContainer.firstChild) {
-			existingContainer.removeChild(existingContainer.firstChild);
-		}
-
-		// 새로운 내용 렌더링
-		const disposables = this.messageRenderer.renderMessage(message, existingContainer);
-		this.messageDisposables.set(message.id, disposables);
-
-		// 스트리밍 중이거나 파일 변경사항이 있으면 스크롤
-		if (message.isStreaming || message.fileChanges) {
-			this.scrollToBottom();
-		}
-	}
-
-	private clearMessages(): void {
-		// 기존 메시지 dispose
-		for (const disposables of this.messageDisposables.values()) {
-			disposables.dispose();
-		}
-		this.messageDisposables.clear();
-
-		// DOM 초기화 (로딩 인디케이터 유지)
-		const children = Array.from(this.messagesContainer.children);
-		for (const child of children) {
-			if (child !== this.loadingElement) {
-				child.remove();
-			}
-		}
-	}
-
-	private scrollToBottom(): void {
-		requestAnimationFrame(() => {
-			this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-		});
-	}
-
-	// ========== 클립보드 붙여넣기 ==========
-
-	private async handlePaste(e: ClipboardEvent): Promise<void> {
-		const clipboardData = e.clipboardData;
-		if (!clipboardData) {
-			return;
-		}
-
-		// 1. 이미지 파일 체크 (동기적으로 먼저 확인)
-		let imageFile: File | null = null;
-
-		// DataTransferItemList에서 이미지 찾기
-		for (const item of clipboardData.items) {
-			if (item.type.startsWith('image/')) {
-				imageFile = item.getAsFile();
-				break;
-			}
-		}
-
-		// FileList에서 이미지 찾기 (일부 브라우저)
-		if (!imageFile) {
-			for (const file of clipboardData.files) {
-				if (file.type.startsWith('image/')) {
-					imageFile = file;
-					break;
-				}
-			}
-		}
-
-		// 이미지가 있으면 즉시 기본 동작 차단 (텍스트 삽입 방지)
-		if (imageFile) {
-			e.preventDefault();
-			e.stopPropagation();
-			// 비동기 작업은 이벤트 차단 후 수행
-			await this.attachmentManager.addImage(imageFile);
-			return;
-		}
-
-		// 2. VS Code 에디터에서 복사한 코드인지 확인 (코드 참조 기능)
-		const vsCodeData = clipboardData.getData('vscode-editor-data');
-		if (vsCodeData) {
-			try {
-				const metadata = JSON.parse(vsCodeData);
-				const plainText = clipboardData.getData('text/plain');
-
-				// 코드 참조로 변환할 수 있는지 확인
-				if (this.tryAddCodeReference(metadata, plainText)) {
-					e.preventDefault();
-					e.stopPropagation();
-					return;
-				}
-			} catch {
-				// 파싱 실패 시 기본 텍스트 붙여넣기
-			}
-		}
-
-		// 3. 일반 텍스트는 기본 동작 유지
-	}
-
-	/**
-	 * VS Code 에디터 메타데이터에서 코드 참조 생성 시도
-	 * @returns 코드 참조로 변환 성공 여부
-	 */
-	private tryAddCodeReference(metadata: unknown, content: string): boolean {
-		// VS Code 클립보드 메타데이터 구조 확인
-		if (!metadata || typeof metadata !== 'object') {
-			return false;
-		}
-
-		const meta = metadata as Record<string, unknown>;
-
-		// mode (언어 ID)가 있어야 에디터에서 복사한 것
-		if (!meta.mode || typeof meta.mode !== 'string') {
-			return false;
-		}
-
-		// 현재 활성 에디터에서 선택 영역 정보 가져오기
-		const activeEditor = this.editorService.activeTextEditorControl;
-		if (!activeEditor || !('getModel' in activeEditor) || !('getSelection' in activeEditor)) {
-			return false;
-		}
-
-		const model = (activeEditor as { getModel: () => { uri?: URI } | null }).getModel();
-		const selection = (activeEditor as { getSelection: () => { startLineNumber: number; endLineNumber: number } | null }).getSelection();
-
-		if (!model?.uri || !selection) {
-			return false;
-		}
-
-		// 파일 경로와 라인 범위 추출
-		const filePath = model.uri.fsPath;
-		const fileName = filePath.split(/[/\\]/).pop() || filePath;
-		const startLine = selection.startLineNumber;
-		const endLine = selection.endLineNumber;
-
-		// 코드 참조로 첨부
-		this.attachmentManager.addCodeReference?.({
-			type: 'code-reference',
-			filePath,
-			fileName,
-			startLine,
-			endLine,
-			content,
-			languageId: meta.mode as string
-		});
-
-		return true;
 	}
 
 	// ========== 드래그/드롭 ==========
@@ -1150,7 +830,8 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	override dispose(): void {
-		this.clearMessages();
+		this.messageListManager?.dispose();
+		this.queueUIManager?.dispose();
 		super.dispose();
 	}
 
@@ -1193,100 +874,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 	}
 
-	/**
-	 * Claude CLI 연결 초기화
-	 * 최대 3회 자동 재시도, 실패 시 수동 재시도 버튼 표시
-	 */
-	private async initializeConnection(): Promise<void> {
-		const maxRetries = this.connectionOverlay.maxRetries;
-
-		// 연결 시도
-		this.connectionOverlay.setConnecting();
-
-		for (let attempt = 1; attempt <= maxRetries; attempt++) {
-			// 재시도 상태 표시 (첫 시도 제외)
-			if (attempt > 1) {
-				this.connectionOverlay.setRetrying(attempt);
-				// 재시도 전 잠시 대기
-				await new Promise(resolve => setTimeout(resolve, 1000));
-			}
-
-			try {
-				const connected = await this.claudeService.checkConnection?.() ?? false;
-
-				if (connected) {
-					// 연결 성공
-					this.connectionOverlay.setConnected();
-					this.setInputEnabled(true);
-					return;
-				}
-			} catch (error) {
-				// 에러 발생 - 계속 재시도
-			}
-
-			// 마지막 시도가 아니면 계속
-			if (attempt < maxRetries) {
-				continue;
-			}
-		}
-
-		// 모든 재시도 실패 - 수동 재시도 버튼 표시
-		this.connectionOverlay.setFailed(
-			localize('connectionFailedDetail', "Could not connect to Claude CLI.\nMake sure Claude CLI is installed and you are logged in.\nRun 'claude login' in terminal.")
-		);
-	}
-
-	/**
-	 * 연결 끊김 처리
-	 * CLI 세션이 비정상 종료되었을 때 호출
-	 */
-	private handleConnectionLost(): void {
-		// 입력 비활성화
-		this.setInputEnabled(false);
-
-		// 연결 상태 정보 가져오기
-		const errorMessage = (this.claudeService as any).connection?.error
-			|| (this.claudeService as any)._multiConnection?.error
-			|| '';
-
-		// 에러 유형에 따른 메시지 결정
-		let notificationMessage: string;
-		let detailMessage: string;
-
-		if (errorMessage.includes('rate') || errorMessage.includes('429') || errorMessage.includes('quota')) {
-			// Rate limit 에러 (이 경우는 rate limit 매니저가 처리하지만 fallback)
-			notificationMessage = localize('rateLimitError', "API rate limit exceeded.");
-			detailMessage = localize('rateLimitDetail', "Please wait a moment before retrying.");
-		} else if (errorMessage.includes('auth') || errorMessage.includes('login') || errorMessage.includes('401')) {
-			// 인증 에러
-			notificationMessage = localize('authError', "Authentication failed.");
-			detailMessage = localize('authDetail', "Please run 'claude login' in terminal.");
-		} else if (errorMessage.includes('exit') && errorMessage.includes('1')) {
-			// CLI exit code 1
-			notificationMessage = localize('cliExitError', "Claude CLI session terminated unexpectedly.");
-			detailMessage = localize('cliExitDetail', "The CLI process exited with an error.");
-		} else {
-			// 일반 에러
-			notificationMessage = localize('connectionLost', "Claude CLI session terminated unexpectedly.");
-			detailMessage = errorMessage || localize('unknownError', "Unknown error occurred.");
-		}
-
-		// 연결 오버레이 표시
-		this.connectionOverlay.setFailed(detailMessage);
-
-		// 알림 표시 (액션 버튼 포함)
-		this.notificationService.prompt(
-			Severity.Warning,
-			notificationMessage,
-			[
-				{
-					label: localize('reconnect', "Reconnect"),
-					run: () => this.initializeConnection()
-				}
-			]
-		);
-	}
-
 	// ========== 세션 관리 ==========
 
 	/**
@@ -1302,7 +889,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			// 연결 끊긴 상태면 재연결 시도
 			this.setInputEnabled(false);
 			this.connectionOverlay.setConnecting();
-			await this.initializeConnection();
+			await this.viewConnectionManager.initializeConnection();
 		} else if (statusInfo?.connectionStatus === 'connected') {
 			// 연결된 상태면 입력 활성화
 			this.setInputEnabled(true);
@@ -1323,7 +910,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			// 연결 끊긴 상태면 재연결 시도
 			this.setInputEnabled(false);
 			this.connectionOverlay.setConnecting();
-			await this.initializeConnection();
+			await this.viewConnectionManager.initializeConnection();
 		} else if (statusInfo?.connectionStatus === 'connected') {
 			// 연결된 상태면 입력 활성화
 			this.setInputEnabled(true);
@@ -1475,207 +1062,4 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 	}
 
-	/**
-	 * 커밋할 변경사항이 있는지 확인
-	 */
-	private hasChangesToCommit(): boolean {
-		// 1. Git 저장소가 있는지 확인
-		if (this.scmService.repositoryCount === 0) {
-			return false;
-		}
-
-		// 2. 현재 세션의 파일 변경 목록 확인
-		const changesHistory = this.claudeService.getSessionChangesHistory?.();
-		return (changesHistory?.totalFilesChanged ?? 0) > 0;
-	}
-
-	/**
-	 * 변경사항 커밋 처리
-	 */
-	private async handleCommitChanges(): Promise<void> {
-		try {
-			// 변경된 파일 목록 가져오기
-			const changesHistory = this.claudeService.getSessionChangesHistory?.();
-			if (!changesHistory || changesHistory.filesSummary.length === 0) {
-				this.notificationService.warn(localize('noChangesToCommit', "No changes to commit"));
-				return;
-			}
-
-			// 커밋 메시지 생성
-			const commitMessage = await this.generateCommitMessage(changesHistory.filesSummary);
-
-			// Git 커밋 실행
-			await this.executeGitCommit(changesHistory.filesSummary, commitMessage);
-
-			this.notificationService.info(
-				localize('changesCommitted', "Successfully committed {0} files", changesHistory.filesSummary.length)
-			);
-		} catch (error) {
-			this.notificationService.error(
-				localize('commitFailed', "Failed to commit changes: {0}", String(error))
-			);
-		}
-	}
-
-	/**
-	 * 커밋 메시지 자동 생성 (토큰 절약을 위해 간단하게)
-	 */
-	private async generateCommitMessage(fileChanges: IClaudeFileChangeSummaryItem[]): Promise<string> {
-		const fileCount = fileChanges.length;
-
-		// 파일 분석
-		const extensions = new Set<string>();
-		const directories = new Set<string>();
-		const fileNames = fileChanges.map(f => {
-			const filePath = f.filePath || '';
-			const fileName = filePath.split('/').pop() || filePath;
-			const ext = fileName.split('.').pop();
-			if (ext) extensions.add(ext.toLowerCase());
-
-			const dir = filePath.split('/').slice(-2, -1)[0];
-			if (dir) directories.add(dir);
-
-			return fileName;
-		});
-
-		// 파일 타입에 따른 액션 결정
-		let action = 'Update';
-		if (extensions.has('md') && extensions.size === 1) {
-			action = 'Update documentation';
-		} else if (extensions.has('ts') || extensions.has('js')) {
-			action = 'Implement';
-		} else if (extensions.has('css') && extensions.size === 1) {
-			action = 'Style';
-		} else if (extensions.has('json') && extensions.size === 1) {
-			action = 'Configure';
-		}
-
-		// 디렉토리 기반 범위 결정
-		let scope = '';
-		if (directories.has('browser')) {
-			scope = ' UI components';
-		} else if (directories.has('service')) {
-			scope = ' services';
-		} else if (directories.has('common')) {
-			scope = ' core functionality';
-		}
-
-		// 메시지 구성
-		const mainFiles = fileNames.slice(0, 2).join(', ');
-
-		if (fileCount === 1) {
-			return `${action}${scope}: ${mainFiles}`;
-		} else if (fileCount <= 3) {
-			return `${action}${scope}: ${mainFiles}${fileCount > 2 ? ` and ${fileCount - 2} more` : ''}`;
-		} else {
-			return `${action}${scope}: ${mainFiles} and ${fileCount - 2} other files`;
-		}
-	}
-
-	/**
-	 * Git 커밋 실행
-	 */
-	private async executeGitCommit(fileChanges: IClaudeFileChangeSummaryItem[], commitMessage: string): Promise<void> {
-		try {
-			// 1. 모든 파일 변경사항 accept
-			await this.claudeService.acceptAllFiles?.();
-
-			// 2. Git add . (모든 변경사항 스테이지)
-			const addResult = await this.executeGitCommand('git add .');
-			if (!addResult.success) {
-				throw new Error(`Git add failed: ${addResult.error}`);
-			}
-
-			// 3. Git commit
-			const commitResult = await this.executeGitCommand(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`);
-			if (!commitResult.success) {
-				throw new Error(`Git commit failed: ${commitResult.error}`);
-			}
-
-			console.log(`[Commit] Successfully committed ${fileChanges.length} files`);
-			console.log(`[Commit] Message: "${commitMessage}"`);
-			console.log(`[Commit] Files:`, fileChanges.map(f => f.filePath));
-
-		} catch (error) {
-			console.error('[Commit] Failed to commit:', error);
-			throw error;
-		}
-	}
-
-	/**
-	 * Git 명령어 실행 - VS Code SCM API 활용
-	 */
-	private async executeGitCommand(command: string): Promise<{ success: boolean; output?: string; error?: string }> {
-		try {
-			const workspaceFolder = this.workspaceContextService.getWorkspace()?.folders?.[0];
-
-			if (!workspaceFolder) {
-				return { success: false, error: 'No workspace folder found' };
-			}
-
-			// SCM 서비스를 통해 Git 리포지토리 확인
-			const repositories = Array.from(this.scmService.repositories);
-			const gitRepo = repositories.find(repo => repo.provider.rootUri?.toString() === workspaceFolder.uri.toString());
-
-			if (!gitRepo) {
-				// Git repository가 없으면 터미널 통해 실행
-				return await this.executeGitCommandViaTerminal(command, workspaceFolder.uri.fsPath);
-			}
-
-			// Git add의 경우 SCM API 사용
-			if (command === 'git add .') {
-				// 모든 변경사항을 스테이지에 추가
-				const provider = gitRepo.provider as any;
-				if (provider.add) {
-					await provider.add([workspaceFolder.uri.fsPath]);
-					return { success: true, output: 'Files staged successfully' };
-				}
-			}
-
-			// Git commit의 경우 SCM API 사용
-			if (command.startsWith('git commit -m')) {
-				const message = command.match(/git commit -m "(.*)"/)?.[1] || 'Auto-commit from Claude';
-				const provider = gitRepo.provider as any;
-				if (provider.commit) {
-					await provider.commit(message);
-					return { success: true, output: 'Commit successful' };
-				}
-			}
-
-			// 기타 명령은 터미널로 폴백
-			return await this.executeGitCommandViaTerminal(command, workspaceFolder.uri.fsPath);
-
-		} catch (error) {
-			console.error('[Git] Error executing command:', error);
-			return { success: false, error: String(error) };
-		}
-	}
-
-	/**
-	 * 터미널을 통한 Git 명령 실행 (폴백)
-	 */
-	private async executeGitCommandViaTerminal(command: string, workingDirectory: string): Promise<{ success: boolean; output?: string; error?: string }> {
-		try {
-			const terminal = await this.terminalService.createTerminal({
-				config: {
-					name: 'Claude Git',
-					hideFromUser: true
-				},
-				cwd: workingDirectory
-			});
-
-			terminal.sendText(command, true);
-
-			// 명령 실행 완료를 기다림
-			return new Promise<{ success: boolean; output?: string; error?: string }>((resolve) => {
-				setTimeout(() => {
-					terminal.dispose();
-					resolve({ success: true, output: 'Command executed via terminal' });
-				}, 2000);
-			});
-
-		} catch (error) {
-			return { success: false, error: String(error) };
-		}
-	}
 }

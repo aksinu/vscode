@@ -40,16 +40,16 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 	// ========== 메시지 관리 ==========
 	readonly message: IMessageContext = {
 		getCurrentMessageId: () => this.claudeService._sessionService.getCurrentMessageId() ?? this.claudeService._currentMessageId,
-		setCurrentMessageId: (id) => {
+		setCurrentMessageId: (id: string | undefined) => {
 			this.claudeService._sessionService.setCurrentMessageId(id);
 			this.claudeService._currentMessageId = id;
 		},
 		getAccumulatedContent: () => this.claudeService._sessionService.getAccumulatedContent() ?? this.claudeService._accumulatedContent,
-		setAccumulatedContent: (content) => {
+		setAccumulatedContent: (content: string) => {
 			this.claudeService._sessionService.setAccumulatedContent(content);
 			this.claudeService._accumulatedContent = content;
 		},
-		appendContent: (text) => {
+		appendContent: (text: string) => {
 			this.claudeService._sessionService.appendToAccumulatedContent(text);
 			if (this.claudeService._accumulatedContent) {
 				this.claudeService._accumulatedContent += '\n' + text;

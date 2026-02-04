@@ -105,7 +105,7 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 		level: ClaudeLogLevel.DEBUG,
 		toFile: true,
 		toConsole: true,
-		maxLogFiles: 7,  // 7일간 보관
+		maxLogFiles: 20,  // 최근 20개 세션 보관 (IDE 시작마다 새 파일)
 		maxLogFileSize: 10 * 1024 * 1024,  // 10MB
 		cleanupOnStartup: true
 	};
@@ -113,7 +113,7 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 	private _logBuffer: string[] = [];
 	private _flushTimer: ReturnType<typeof setTimeout> | undefined;
 	private _currentLogFile: URI | undefined;
-	private _currentLogDate: string | undefined;
+	private _sessionStartTimestamp: string; // IDE 시작 시간 (파일명용)
 	private _cleanupCompleted: boolean = false;
 
 	private static readonly FLUSH_INTERVAL = 1000; // 1초마다 플러시
@@ -124,7 +124,18 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService
 	) {
 		super();
+		// IDE 시작 시간 기록 (파일명에 사용)
+		const now = new Date();
+		this._sessionStartTimestamp = this.formatTimestampForFilename(now);
 		this.startFlushTimer();
+	}
+
+	/**
+	 * 파일명용 타임스탬프 포맷 (YYYY-MM-DD-HHmmss)
+	 */
+	private formatTimestampForFilename(date: Date): string {
+		const pad = (n: number) => n.toString().padStart(2, '0');
+		return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 	}
 
 	get config(): IClaudeLogConfig {
@@ -285,32 +296,31 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 			return undefined;
 		}
 
-		const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+		// 이미 파일이 있으면 재사용 (같은 IDE 세션 내에서)
+		if (this._currentLogFile) {
+			return this._currentLogFile;
+		}
 
-		// 날짜가 바뀌면 새 파일
-		if (this._currentLogDate !== today || !this._currentLogFile) {
-			this._currentLogDate = today;
+		// IDE 시작 시간을 기준으로 파일명 생성: claude-2026-02-04-083045.log
+		const logPath = this._config.logPath || '.vscode/claude-logs';
+		const logDir = URI.joinPath(workspaceFolder.uri, logPath);
+		const logFile = URI.joinPath(logDir, `claude-${this._sessionStartTimestamp}.log`);
 
-			const logPath = this._config.logPath || '.vscode/claude-logs';
-			const logDir = URI.joinPath(workspaceFolder.uri, logPath);
-			const logFile = URI.joinPath(logDir, `claude-${today}.log`);
+		// 로그 디렉토리 생성
+		try {
+			await this.fileService.createFolder(logDir);
+		} catch {
+			// 이미 존재하면 무시
+		}
 
-			// 로그 디렉토리 생성
-			try {
-				await this.fileService.createFolder(logDir);
-			} catch {
-				// 이미 존재하면 무시
-			}
+		this._currentLogFile = logFile;
 
-			this._currentLogFile = logFile;
-
-			// 새 로그 파일 생성 시 자동 정리 실행
-			if (!this._cleanupCompleted) {
-				// 비동기로 실행 (로그 생성을 블록하지 않음)
-				this.cleanupOldLogs().catch(() => {
-					// 정리 실패는 무시 (이미 로그에 기록됨)
-				});
-			}
+		// 새 로그 파일 생성 시 자동 정리 실행
+		if (!this._cleanupCompleted) {
+			// 비동기로 실행 (로그 생성을 블록하지 않음)
+			this.cleanupOldLogs().catch(() => {
+				// 정리 실패는 무시 (이미 로그에 기록됨)
+			});
 		}
 
 		return this._currentLogFile;
@@ -360,8 +370,8 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 				return;
 			}
 
-			// 날짜순으로 정렬 (오래된 것부터)
-			logFiles.sort((a, b) => a.date.localeCompare(b.date));
+			// 타임스탬프순으로 정렬 (오래된 것부터)
+			logFiles.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
 			// 보관할 파일 수를 제외하고 삭제
 			const keepCount = this._config.maxLogFiles || 7;
@@ -383,10 +393,10 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 		}
 	}
 
-	private async getLogFiles(logDir: URI): Promise<{ uri: URI; name: string; date: string; size: number }[]> {
+	private async getLogFiles(logDir: URI): Promise<{ uri: URI; name: string; timestamp: string; size: number }[]> {
 		try {
 			const dirContents = await this.fileService.resolve(logDir);
-			const logFiles: { uri: URI; name: string; date: string; size: number }[] = [];
+			const logFiles: { uri: URI; name: string; timestamp: string; size: number }[] = [];
 
 			if (dirContents.children) {
 				for (const child of dirContents.children) {
@@ -394,13 +404,37 @@ export class ClaudeLogService extends Disposable implements IClaudeLogService {
 						continue;
 					}
 
-					// 파일명에서 날짜 추출: claude-2026-02-02.log -> 2026-02-02
-					const match = child.name.match(/claude-(\d{4}-\d{2}-\d{2})\.log$/);
-					if (match) {
+					// 새 형식: claude-2026-02-04-083045.log -> 2026-02-04-083045
+					const newMatch = child.name.match(/claude-(\d{4}-\d{2}-\d{2}-\d{6})\.log$/);
+					if (newMatch) {
 						logFiles.push({
 							uri: child.resource,
 							name: child.name,
-							date: match[1],
+							timestamp: newMatch[1],
+							size: child.size || 0
+						});
+						continue;
+					}
+
+					// 구 형식: claude-2026-02-02.log -> 2026-02-02-000000 (정렬용)
+					const oldMatch = child.name.match(/claude-(\d{4}-\d{2}-\d{2})\.log$/);
+					if (oldMatch) {
+						logFiles.push({
+							uri: child.resource,
+							name: child.name,
+							timestamp: oldMatch[1] + '-000000',
+							size: child.size || 0
+						});
+						continue;
+					}
+
+					// .old.log 파일도 정리 대상
+					const oldBackup = child.name.match(/claude-(\d{4}-\d{2}-\d{2})\.old\.log$/);
+					if (oldBackup) {
+						logFiles.push({
+							uri: child.resource,
+							name: child.name,
+							timestamp: oldBackup[1] + '-000001', // .old는 원본 바로 뒤
 							size: child.size || 0
 						});
 					}
