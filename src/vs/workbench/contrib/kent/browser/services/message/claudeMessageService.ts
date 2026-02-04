@@ -42,6 +42,11 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 	private getCurrentSessionDelegate?: () => IClaudeSession | undefined;
 	private hasCurrentSessionDelegate?: () => boolean;
 
+	// Queue management delegates
+	private isStreamingDelegate?: (sessionId?: string) => boolean;
+	private addToQueueDelegate?: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => IClaudeMessage;
+	private processQueueDelegate?: (sessionId?: string) => Promise<void>;
+
 	constructor(
 		@IClaudeLogService private readonly logService: IClaudeLogService
 	) {
@@ -174,10 +179,20 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 	// ========== Message Processing ==========
 
 	async sendMessage(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): Promise<IClaudeMessage> {
-		if (this.sendMessageDelegate) {
-			return await this.sendMessageDelegate(content, options, sessionId);
+		if (!this.sendMessageDelegate) {
+			throw new Error('Send message delegate not set');
 		}
-		throw new Error('Send message delegate not set');
+
+		// Check if currently streaming - if so, add to queue instead
+		if (this.isStreamingDelegate && this.isStreamingDelegate(sessionId)) {
+			if (this.addToQueueDelegate) {
+				this.logService.info('ClaudeMessageService', `Adding message to queue - currently streaming${sessionId ? ` (session: ${sessionId})` : ''}`);
+				return this.addToQueueDelegate(content, options, sessionId);
+			}
+		}
+
+		// Not streaming, send directly
+		return await this.sendMessageDelegate(content, options, sessionId);
 	}
 
 	async sendMessageToSession(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
@@ -213,6 +228,18 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 		};
 
 		this.updateMessage(message);
+
+		// 스트리밍이 완료되면 큐에서 다음 메시지 처리
+		if (!isStreaming && this.processQueueDelegate) {
+			// 비동기로 큐 처리 (UI 블로킹 방지)
+			setTimeout(async () => {
+				try {
+					await this.processQueueDelegate!(sessionId);
+				} catch (error) {
+					console.error('[ClaudeMessageService] Error processing queue after streaming completed:', error);
+				}
+			}, 100); // 100ms 후 처리 (UI 업데이트 완료 후)
+		}
 	}
 
 	fireMessageReceive(message: IClaudeMessage): void {
@@ -249,5 +276,15 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 		this.createAssistantMessageDelegate = createAssistantMessageDelegate;
 		this.getCurrentSessionDelegate = getCurrentSessionDelegate;
 		this.hasCurrentSessionDelegate = hasCurrentSessionDelegate;
+	}
+
+	setQueueDelegates(
+		isStreamingDelegate: (sessionId?: string) => boolean,
+		addToQueueDelegate: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => IClaudeMessage,
+		processQueueDelegate: (sessionId?: string) => Promise<void>
+	): void {
+		this.isStreamingDelegate = isStreamingDelegate;
+		this.addToQueueDelegate = addToQueueDelegate;
+		this.processQueueDelegate = processQueueDelegate;
 	}
 }

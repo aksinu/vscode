@@ -1,43 +1,87 @@
-# SPEC_001: Chat Architecture Analysis
+# SPEC_001: Claude Chat Architecture
 
-> **VS Code Chat 모듈 구조 분석 결과**
+> **Claude 모듈 최종 아키텍처 (Phase 6 완료)**
 
 ---
 
 ## Overview
 
-VS Code의 기존 Chat 모듈(`src/vs/workbench/contrib/chat/`)을 분석하여 Claude 통합 구현 방향을 결정하기 위한 문서.
+Claude 모듈의 최종 아키텍처 구조. Phase 6 리팩토링을 통해 19개 모듈로 분리되어 단일 책임 원칙을 준수하는 클린 아키텍처를 달성했습니다.
 
 ---
 
-## 1. 폴더 구조
+## 1. Final Architecture
+
+### 폴더 구조 (Phase 6 완료)
 
 ```
-src/vs/workbench/contrib/chat/
-├── browser/                          # UI 구현
-│   ├── chat.contribution.ts          # 메인 등록 (1,423줄)
-│   ├── chat.ts                       # 위젯 서비스 인터페이스
-│   ├── widget/
-│   │   ├── chatWidget.ts             # 메인 위젯 컨테이너
-│   │   ├── chatListWidget.ts         # 가상 리스트 렌더러
-│   │   ├── input/
-│   │   │   └── chatInputPart.ts      # 입력 UI (128KB)
-│   │   └── chatContentParts/         # 메시지 렌더러들 (25+ 종류)
-│   ├── widgetHosts/
-│   │   └── editor/chatEditor.ts      # 에디터 통합
-│   └── attachments/
-│       └── chatAttachmentModel.ts    # 첨부 컨텍스트 모델
-├── common/                           # 플랫폼 독립 코드
-│   ├── chatService/
-│   │   ├── chatService.ts            # 서비스 인터페이스 (1,291줄)
-│   │   └── chatServiceImpl.ts        # 구현체
-│   ├── model/
-│   │   └── chatModel.ts              # 데이터 모델
-│   ├── participants/
-│   │   └── chatAgents.ts             # 에이전트 시스템
-│   └── attachments/
-│       └── chatVariables.ts          # 변수 해석 시스템
-└── test/
+src/vs/workbench/contrib/kent/
+├── browser/
+│   ├── kent.contribution.ts          # 진입점 (서비스/뷰/액션 등록)
+│   │
+│   ├── services/                     # 5개 핵심 서비스 + 5개 매니저
+│   │   ├── core/
+│   │   │   ├── claudeService.ts          # 942줄 (위임만)
+│   │   │   └── managers/                 # 5개 매니저 패턴
+│   │   │       ├── configManager.ts         # 로컬 설정 관리
+│   │   │       ├── historyManager.ts        # 세션 히스토리
+│   │   │       ├── fileWatcherManager.ts    # 파일 시스템 감시
+│   │   │       ├── multiSessionManager.ts   # 멀티 세션 상태
+│   │   │       └── chatManager.ts           # 메시지 전송 로직
+│   │   │
+│   │   ├── queue/claudeQueueService.ts       # 메시지 큐 관리
+│   │   ├── session/claudeSessionService.ts   # 세션 상태 관리
+│   │   ├── message/claudeMessageService.ts   # 메시지 CRUD
+│   │   ├── file/claudeFileService.ts         # 파일 스냅샷
+│   │   └── ratelimit/claudeRateLimitService.ts
+│   │
+│   ├── views/                        # 14개 UI 컴포넌트 + 5개 매니저
+│   │   ├── chat/
+│   │   │   ├── claudeChatView.ts         # 1065줄 (조합/위임)
+│   │   │   ├── managers/                 # 5개 매니저 패턴
+│   │   │   │   ├── gitCommitManager.ts       # Git 커밋 기능
+│   │   │   │   ├── queueUIManager.ts         # 큐 UI 렌더링
+│   │   │   │   ├── clipboardManager.ts       # 붙여넣기 처리
+│   │   │   │   ├── messageListManager.ts     # 메시지 DOM 관리
+│   │   │   │   └── viewConnectionManager.ts  # 연결 관리
+│   │   │   │
+│   │   │   ├── claudeMessageRenderer.ts  # Markdown/코드 블록 렌더링
+│   │   │   ├── claudeInputEditor.ts      # 입력 에디터
+│   │   │   ├── claudeAttachmentManager.ts # 첨부파일 관리
+│   │   │   └── claudeContextBuilder.ts   # 컨텍스트 빌더
+│   │   │
+│   │   ├── ui/                           # UI 관련
+│   │   │   ├── claudeStatusBar.ts
+│   │   │   ├── claudeConnectionOverlay.ts
+│   │   │   ├── claudeModalDialog.ts
+│   │   │   └── claudeOpenFilesBar.ts
+│   │   │
+│   │   ├── session/                      # 세션 관련
+│   │   │   ├── claudeSessionPicker.ts
+│   │   │   └── claudeSessionTabs.ts
+│   │   │
+│   │   └── settings/                     # 설정 관련
+│   │       ├── claudeSettingsPanel.ts
+│   │       ├── claudeLocalSettings.ts
+│   │       └── claudeSessionSettingsPanel.ts
+│   │
+│   └── media/claude.css              # 통합 스타일시트
+│
+├── common/                           # 인터페이스 & 타입
+│   ├── claude.ts                     # IClaudeService 인터페이스
+│   ├── claudeCLI.ts                  # CLI IPC 인터페이스
+│   ├── claudeTypes.ts                # 모든 타입 정의
+│   └── types/                        # 서비스별 인터페이스
+│       ├── claudeMessageService.ts
+│       ├── claudeQueueService.ts
+│       ├── claudeSessionService.ts
+│       ├── claudeFileService.ts
+│       └── claudeRateLimitService.ts
+│
+└── electron-main/                    # Main Process
+    ├── claudeCLIService.ts           # Legacy 단일 CLI
+    ├── claudeCLIInstance.ts          # 단일 프로세스 래퍼
+    └── claudeCLIProcessManager.ts    # 멀티 프로세스 관리
 ```
 
 ---

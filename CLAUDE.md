@@ -181,6 +181,56 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ---
 
+## 📋 Documentation Management Rules
+
+### Status.md - 핵심 상태만 유지
+```
+🎯 목적: AI 에이전트가 빠르게 현재 상태 파악
+📏 규모: 100줄 내외로 간소화 (상세 이력 X)
+📝 내용:
+  - 현재 Phase/진행상황
+  - 최신 아키텍처 개요
+  - 핵심 이슈 3개 이하
+  - 다음 우선순위 작업
+```
+
+### Specs/ - 핵심 명세만 보관
+```
+📁 유지: 핵심 아키텍처 SPEC만 (3개 이하)
+🗑️ 제거: 완료된 기능의 상세 설계서
+🔄 업데이트: 구현 완료 시 "완료 상태"로 전환
+📋 내용: 현재 아키텍처 + 미해결 이슈
+```
+
+### Backlog.md - 미래 지향적 관리
+```
+🚀 중심: 차세대 기능 (완료 기능 제거)
+📊 우선순위: P0(Critical) → P3(Low) 명확히
+💡 복잡도: 구현 방향 및 예상 복잡도 명시
+🔄 정리: 분기별 백로그 리뷰 및 정리
+```
+
+### RefactoringPlan.md - Phase별 관리
+```
+📈 진행형: Phase 진행 중일 때만 계획서
+✅ 완료형: Phase 완료 시 보고서로 전환
+📊 메트릭: 최종 모듈 수, 순환 참조 제거 등
+🎯 판단: 추가 리팩토링 필요성 평가
+```
+
+### 문서 정리 주기
+```
+📅 매 Phase 완료 시:
+  - Status.md 간소화
+  - 완료 SPEC 아카이브 또는 현행화
+  - Backlog 우선순위 재조정
+  - RefactoringPlan 완료 보고서 전환
+
+💡 무거운 문서 = AI 컨텍스트 낭비
+```
+
+---
+
 ## Reference Modules
 
 기존 VS Code에서 참고할 모듈들:

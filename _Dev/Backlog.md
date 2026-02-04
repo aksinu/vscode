@@ -1,6 +1,6 @@
 # Feature Backlog
 
-> **Claude 기능 백로그** (Phase 5 이후)
+> **Claude 향후 기능 백로그** (Phase 6 완료 후)
 
 ---
 
@@ -8,24 +8,36 @@
 
 | # | Feature | Priority | Status | Complexity | Notes |
 |---|---------|----------|--------|------------|-------|
-| 1 | 에디터 컨텍스트 메뉴 확장 | P1 | Pending | Medium | 기본은 구현됨, 확장 필요 |
-| 2 | Agent 모드 (자율 실행) | P1 | Pending | High | Edit 모드 다음 단계 |
-| 3 | 벡터 검색 (@codebase) | P2 | Pending | High | 프로젝트 전체 검색 |
-| 4 | Accept/Reject 배치 UI | P2 | Enhancement | Medium | 현재 개별 Revert만 지원 |
+| 1 | **세션 지속성 이슈 해결** | **P0** | **Pending** | Medium | IDE 재시작 시 파일 변경 UI 문제 |
+| 2 | 에디터 컨텍스트 메뉴 확장 | P1 | Pending | Medium | 우클릭 서브메뉴 추가 |
+| 3 | 벡터 검색 (@codebase) | P2 | Research | High | 프로젝트 전체 벡터 검색 |
+| 4 | Agent 모드 | P2 | Design | High | 자율적 파일 생성/수정 |
 
 ---
 
 ## Feature Details
 
-### 1. 에디터 컨텍스트 메뉴 확장
+### 1. 🔥 세션 지속성 이슈 해결 (P0)
+
+**문제 상황**:
+- Claude가 파일을 수정하면 채팅에 변경사항 UI 표시 (정상)
+- IDE 재시작 후에도 이전 세션의 변경사항 UI가 남아있음 (문제)
+- 오래된 Apply/Revert 버튼이 동작하지 않음
+
+**해결 방향**:
+- IDE 재시작 감지 → 이전 세션 파일 변경 UI 비활성화
+- 세션 ID 기반 유효성 검사
+- 현재 세션에서만 유효한 변경사항만 활성화
+
+---
+
+### 2. 에디터 컨텍스트 메뉴 확장
 
 **현재 상태**: ✅ 기본 구현됨
 - ✅ `AskClaudeAboutSelection` (Ctrl+Shift+A)
 - ✅ Explorer 파일/폴더 우클릭 메뉴
 
 **목표**: 더 풍부한 컨텍스트 메뉴 제공
-
-**목표**: 코드 선택 후 우클릭으로 Claude에 질문/요청
 
 **사용 시나리오**:
 - 코드 선택 → 우클릭 → "Explain this code" → 설명 요청

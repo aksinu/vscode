@@ -156,6 +156,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			_fileService,
 			_uiService,
 			logService,
+			this._queueService,
 			this._configManager,
 			this._multiSessionManager,
 			this._multiConnection
@@ -254,6 +255,58 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			},
 			() => this._sessionService.getCurrentSession(),
 			() => this._sessionService.hasCurrentSession()
+		);
+
+		// ClaudeMessageService 큐 델리게이트 설정
+		this._messageService.setQueueDelegates(
+			(sessionId?: string) => {
+				// Check if currently streaming
+				if (sessionId) {
+					const sessionState = this._multiSessionManager.getSessionState(sessionId);
+					return sessionState === 'streaming';
+				} else {
+					// Legacy single session
+					return this.getState() === 'streaming';
+				}
+			},
+			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
+				// Add to appropriate queue and return a user message placeholder
+				if (sessionId) {
+					const queuedMessage = this._multiSessionManager.addToSessionQueue(sessionId, content, options, ClaudeService.MAX_QUEUE_SIZE);
+					if (queuedMessage) {
+						// Return a user message placeholder for immediate UI display
+						return {
+							id: queuedMessage.id,
+							role: 'user' as const,
+							content,
+							timestamp: queuedMessage.timestamp,
+							context: options?.context,
+							isQueued: true
+						};
+					}
+				} else {
+					const queuedMessage = this._queueService.addToQueue(content, options);
+					// Return a user message placeholder for immediate UI display
+					return {
+						id: queuedMessage.id,
+						role: 'user' as const,
+						content,
+						timestamp: queuedMessage.timestamp,
+						context: options?.context,
+						isQueued: true
+					};
+				}
+
+				// Fallback: create a temporary user message
+				return {
+					id: generateUuid(),
+					role: 'user' as const,
+					content,
+					timestamp: Date.now(),
+					context: options?.context,
+					isQueued: true
+				};
+			}
 		);
 
 		// ClaudeUIService 델리게이트 설정

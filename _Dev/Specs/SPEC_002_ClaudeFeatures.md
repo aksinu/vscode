@@ -1,52 +1,50 @@
-# SPEC_002: Claude Chat Features
+# SPEC_002: Claude Features Status
 
-> **Claude 채팅창 기능 명세 (Cursor 참고)**
+> **Claude 기능 구현 상태 (Phase 6 완료)**
 
 ---
 
 ## Overview
 
-Cursor 에디터의 AI 기능을 참고하여 Claude 통합 채팅창의 기능 목록을 정의.
+Claude 모듈의 구현된 기능 목록과 향후 확장 계획.
 
 ---
 
-## 1. 채팅 모드
+## 1. ✅ 완료된 핵심 기능
 
-### 기본 모드 구성
+### Chat & Messaging
+- **Claude 채팅 통합** - VS Code Panel 내 실시간 채팅
+- **멀티 세션 지원** - 세션별 독립 상태 관리 (최대 5개 CLI 프로세스)
+- **메시지 큐** - 대기열 관리, 편집/재정렬, 드래그앤드롭
+- **스트리밍 응답** - 실시간 토큰 스트리밍
+- **Rate Limit 처리** - 자동 재시도, 카운트다운 UI
 
-| 모드 | 설명 | 구현 우선순위 |
-|------|------|--------------|
-| **Ask** | 질문/답변, 사용자가 Apply 선택 | P0 (Phase 1) |
-| **Edit** | 코드 편집 제안, Diff 표시 | P1 (Phase 2) |
-| **Agent** | 자율 실행, 파일 생성/수정, 터미널 | P2 (Phase 3) |
+### File Integration
+- **파일 첨부** - 드래그드롭, 열린 파일 버튼, 클립보드
+- **파일 변경 추적** - 수정 전/후 스냅샷, Diff 뷰, Revert 기능
+- **코드 블록 처리** - Copy/Insert/Apply 버튼, 언어 감지
+- **이미지 붙여넣기** - 클립보드에서 직접 첨부
 
-### 모드 전환
-- 채팅창 하단 토글 버튼
-- 키보드 단축키: `Ctrl+.` / `Cmd+.`
+### Context & Automation
+- **컨텍스트 메뉴** - Explorer/Editor 우클릭 → "Add to Claude"
+- **에디터 선택 연동** - "Ask Claude About Selection" (Ctrl+Shift+A)
+- **Auto Accept 모드** - 세션별 설정 가능
+- **로컬 설정** - 모델, Extended Thinking, 권한 모드
+
+### Advanced Features
+- **Git 통합** - 커밋 메시지 생성, SCM 패널 연동
+- **세션 히스토리** - 파일 변경 히스토리, Timeline 뷰
+- **CLI 옵션 지원** - 모든 Claude CLI 옵션 UI로 설정 가능
+- **모델 별칭** - 짧은 별칭 지원 (opus, sonnet, haiku)
 
 ---
 
-## 2. 컨텍스트 시스템 (@ 멘션)
+## 2. 🔄 현재 이슈 (사용자 피드백)
 
-### 기본 멘션
-
-| 멘션 | 설명 | 우선순위 |
-|------|------|---------|
-| `@file` | 특정 파일 참조 | P0 |
-| `@folder` | 폴더 구조 참조 | P1 |
-| `@selection` | 현재 선택 영역 | P0 |
-| `@currentFile` | 현재 열린 파일 | P0 |
-
-### 확장 멘션
-
-| 멘션 | 설명 | 우선순위 | Claude CLI 지원 |
-|------|------|---------|----------------|
-| `@codebase` | 프로젝트 전체 벡터 검색 | P2 | ❌ VS Code 확장 |
-| `@git` | Git 변경사항/커밋 | P1 | ✅ Bash 도구로 가능 |
-| `@terminal` | 터미널 출력 | P2 | ❌ VS Code 확장 |
-| `@problems` | 현재 진단(에러/경고) | P1 | ❌ VS Code 확장 |
-| `@docs` | 외부 문서 참조 | P3 | ✅ WebFetch 도구 |
-| `@web` | 웹 검색 결과 | P3 | ✅ WebSearch 도구 |
+### 세션 지속성 문제
+- **문제**: IDE 재시작 시 이전 세션 파일 변경 UI가 유효하지 않음
+- **상태**: 분석 중
+- **우선순위**: P0 (사용자 경험 저해)
 
 ### 자동 컨텍스트
 - `chat.implicitContext.enabled`: 현재 에디터 자동 첨부

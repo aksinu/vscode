@@ -32,6 +32,7 @@ import { StatusBarManager } from '../ui/claudeStatusBar.js';
 import { AttachmentManager } from './claudeAttachmentManager.js';
 import { LocalSettingsManager } from '../settings/claudeLocalSettings.js';
 import { InputEditorManager } from './claudeInputEditor.js';
+import { SessionInputManager } from './sessionInputManager.js';
 import { CodeApplyManager } from '../ui/claudeCodeApply.js';
 import { SessionPickerUI } from '../session/claudeSessionPicker.js';
 import { OpenFilesBar } from '../ui/claudeOpenFilesBar.js';
@@ -80,6 +81,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	private attachmentManager!: AttachmentManager;
 	private localSettingsManager!: LocalSettingsManager;
 	private inputEditorManager!: InputEditorManager;
+	private sessionInputManager!: SessionInputManager;
 	private codeApplyManager!: CodeApplyManager;
 	private sessionPicker!: SessionPickerUI;
 	private openFilesBar!: OpenFilesBar;
@@ -225,7 +227,15 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.sessionTabs?.render();
 		}));
 
-		this._register(this.claudeService.onDidChangeSession((session: any) => {
+		this._register(this.claudeService.onDidChangeSession(async (session: any) => {
+			// SessionInputManager에 새 세션 알림 (중복 호출 방지를 위해 조건부)
+			if (session?.id && this.sessionInputManager) {
+				const currentSessionId = this.sessionInputManager.getCurrentSessionId();
+				if (currentSessionId !== session.id) {
+					await this.sessionInputManager.switchToSession(session.id);
+				}
+			}
+
 			this.messageListManager?.clearMessages();
 			// 세션의 메시지들 렌더링
 			if (session) {
@@ -546,6 +556,12 @@ export class ClaudeChatViewPane extends ViewPane {
 			onRevertFile: (change) => this.claudeService.revertFile?.(change),
 			onClose: () => this.changesHistoryPanel.hide()
 		}));
+
+		// 초기 세션 설정 (SessionInputManager와 동기화)
+		const currentSession = this.claudeService.getCurrentSession();
+		if (currentSession?.id && this.sessionInputManager) {
+			this.sessionInputManager.switchToSession(currentSession.id);
+		}
 	}
 
 	private renderWelcome(): void {
@@ -652,6 +668,22 @@ export class ClaudeChatViewPane extends ViewPane {
 				onContentChange: () => this.autocompleteManager.check(),
 				onPaste: (e) => this.clipboardManager.handlePaste(e),
 				onKeyDown: (keyCode) => this.autocompleteManager.handleKeyDown(keyCode),
+				onSessionStateChanged: (sessionId, hasContent) => this.onSessionInputStateChanged(sessionId, hasContent),
+				registerDisposable: (d) => this._register(d)
+			}
+		));
+
+		// SessionInputManager 초기화 (InputEditorManager와 AttachmentManager 조합)
+		this.sessionInputManager = this._register(new SessionInputManager(
+			this.inputEditorManager,
+			this.attachmentManager,
+			{
+				onSubmit: () => this.submitInput(),
+				onFocusChange: (focused) => this.inputFocusedKey.set(focused),
+				onContentChange: () => this.autocompleteManager.check(),
+				onPaste: (e) => this.clipboardManager.handlePaste(e),
+				onKeyDown: (keyCode) => this.autocompleteManager.handleKeyDown(keyCode),
+				onSessionStateChanged: (sessionId, hasContent) => this.onSessionInputStateChanged(sessionId, hasContent),
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -667,7 +699,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				onAttachFile: (uri) => this.attachmentManager.addFile(uri),
 				onAttachWorkspace: () => this.attachWorkspaceContext(),
-				onCommandSelected: (prompt) => this.inputEditorManager.setCommandPrompt(prompt),
+				onCommandSelected: (prompt) => this.sessionInputManager.setCommandPrompt(prompt),
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -724,26 +756,23 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	private async submitInput(): Promise<void> {
-		const content = this.inputEditorManager.getValue().trim();
+		const content = this.sessionInputManager.getValue().trim();
 		if (!content) {
 			return;
 		}
 
 		// 입력 초기화 (요청 진행 중이면 큐에 추가됨)
-		this.inputEditorManager.setValue('');
+		this.sessionInputManager.clearCurrentSessionState();
 
 		// 컨텍스트: 수동 첨부파일만 포함 (자동 컨텍스트 비활성화)
 		let context: { attachments?: IClaudeAttachment[] } | undefined;
 
 		// 첨부파일이 있을 때만 컨텍스트 생성
-		if (this.attachmentManager.count > 0) {
+		if (this.sessionInputManager.attachments.count > 0) {
 			context = {
-				attachments: [...this.attachmentManager.attachments]
+				attachments: [...this.sessionInputManager.attachments.attachments]
 			};
 		}
-
-		// 첨부파일 초기화
-		this.attachmentManager.clear();
 
 		try {
 			const result = await this.claudeService.sendMessage(content, { context });
@@ -755,7 +784,7 @@ export class ClaudeChatViewPane extends ViewPane {
 					localize('queueFull', "Queue is full (max {0} messages). Please wait for current request to complete.", maxSize)
 				);
 				// 입력창에 내용 복원
-				this.inputEditorManager.setValue(content);
+				this.sessionInputManager.setValue(content);
 				return;
 			}
 
@@ -827,7 +856,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 	override focus(): void {
 		super.focus();
-		this.inputEditorManager?.focus();
+		this.sessionInputManager?.focus();
 	}
 
 	protected override layoutBody(height: number, width: number): void {
@@ -838,7 +867,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 에디터 레이아웃은 DOM 렌더링 후 계산
 		requestAnimationFrame(() => {
-			this.inputEditorManager?.layout();
+			this.sessionInputManager?.layout();
 		});
 	}
 
@@ -893,7 +922,14 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * 새 세션 생성
 	 */
 	private async createNewSession(): Promise<void> {
-		this.claudeService.startNewSession();
+		// 새 세션으로 전환 (현재 세션 상태 자동 저장됨)
+		const newSession = this.claudeService.startNewSession();
+
+		// SessionInputManager에 새 세션 알림
+		if (newSession?.id) {
+			await this.sessionInputManager.switchToSession(newSession.id);
+		}
+
 		this.sessionTabs?.render();
 
 		// 연결 상태 확인 및 UI 갱신
@@ -914,6 +950,10 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * 세션 전환
 	 */
 	private async switchToSession(sessionId: string): Promise<void> {
+		// SessionInputManager에서 세션 전환 (현재 세션 상태 저장 후 새 세션 상태 복원)
+		await this.sessionInputManager.switchToSession(sessionId);
+
+		// Claude 서비스에서 세션 전환
 		this.claudeService.switchSession?.(sessionId);
 		this.sessionTabs?.render();
 
@@ -935,6 +975,10 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * 세션 삭제
 	 */
 	private deleteSession(sessionId: string): void {
+		// SessionInputManager에서 세션 상태 정리
+		this.sessionInputManager.removeSession(sessionId);
+
+		// Claude 서비스에서 세션 삭제
 		this.claudeService.deleteSession?.(sessionId);
 		this.sessionTabs?.render();
 	}
@@ -963,7 +1007,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 
 		// 입력창에 포커스
-		this.inputEditorManager?.focus();
+		this.sessionInputManager?.focus();
 	}
 
 	/**
@@ -972,15 +1016,15 @@ export class ClaudeChatViewPane extends ViewPane {
 	 * @param fileName 파일 이름
 	 */
 	public setInputWithContext(selectedText: string, fileName: string): void {
-		if (!this.inputEditorManager) {
+		if (!this.sessionInputManager) {
 			return;
 		}
 
 		// 프롬프트 생성: 선택 영역에 대해 질문할 수 있도록
 		const prompt = `\`${fileName}\`의 다음 코드에 대해:\n\n\`\`\`\n${selectedText}\n\`\`\`\n\n`;
 
-		this.inputEditorManager.setValue(prompt);
-		this.inputEditorManager.focus();
+		this.sessionInputManager.setValue(prompt);
+		this.sessionInputManager.focus();
 
 		// 커서를 끝으로 이동
 		const editor = this.inputEditor;
@@ -1073,6 +1117,16 @@ export class ClaudeChatViewPane extends ViewPane {
 				localize('failedToUpdatePermissionMode', "Failed to update permission mode: {0}", String(error))
 			);
 		}
+	}
+
+	/**
+	 * 세션 입력 상태 변경 콜백
+	 * 세션 탭에 미완성 내용 표시 등을 위해 사용
+	 */
+	private onSessionInputStateChanged(sessionId: string, hasContent: boolean): void {
+		// 세션 탭에 "•" 표시 등의 UI 업데이트
+		// 현재는 빈 구현, 추후 세션 탭 UI 개선 시 활용
+		console.log(`[ClaudeChatView] Session ${sessionId} input state changed: hasContent=${hasContent}`);
 	}
 
 }

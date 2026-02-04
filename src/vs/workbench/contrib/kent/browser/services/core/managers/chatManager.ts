@@ -13,6 +13,7 @@ import { IClaudeFileService } from '../../../../common/types/claudeFileService.j
 import { IClaudeUIService } from '../../../../common/types/claudeUIService.js';
 import { IClaudeMessage, IClaudeSendRequestOptions, resolveModelName } from '../../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../../common/claudeLogService.js';
+import { IClaudeQueueService } from '../../../../common/types/claudeQueueService.js';
 import { ClaudeContextBuilder } from '../claudeContextBuilder.js';
 import { ClaudeMultiConnection } from '../claudeConnection.js';
 import { ConfigManager } from './configManager.js';
@@ -45,6 +46,7 @@ export class ChatManager extends Disposable {
 		private readonly _fileService: IClaudeFileService,
 		private readonly _uiService: IClaudeUIService,
 		private readonly _logService: IClaudeLogService,
+		private readonly _queueService: IClaudeQueueService,
 		private readonly _configManager: ConfigManager,
 		private readonly _multiSessionManager: MultiSessionManager,
 		private readonly _multiConnection: ClaudeMultiConnection
@@ -180,6 +182,10 @@ export class ChatManager extends Disposable {
 				isStreaming: false,
 				workEndTime: Date.now()
 			};
+
+			// 스트리밍 완료 후 큐에 대기중인 메시지 처리
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Streaming completed, processing queue...');
+			this._queueService.processQueue(sessionId);
 
 			return finalMessage;
 		} catch (error) {
