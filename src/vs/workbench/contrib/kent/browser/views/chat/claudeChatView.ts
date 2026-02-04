@@ -99,6 +99,9 @@ export class ClaudeChatViewPane extends ViewPane {
 	private messageListManager!: MessageListManager;
 	private viewConnectionManager!: ViewConnectionManager;
 
+	// 이전 세션 메시지 ID 추적 (읽기 전용 처리용)
+	private _previousSessionMessageIds: Set<string> = new Set();
+
 	private readonly panelFocusedKey = CONTEXT_CLAUDE_PANEL_FOCUSED.bindTo(this.contextKeyService);
 	private readonly inputFocusedKey = CONTEXT_CLAUDE_INPUT_FOCUSED.bindTo(this.contextKeyService);
 	private readonly requestInProgressKey = CONTEXT_CLAUDE_REQUEST_IN_PROGRESS.bindTo(this.contextKeyService);
@@ -279,18 +282,28 @@ export class ClaudeChatViewPane extends ViewPane {
 		const loadingText = append(this.loadingElement, $('span'));
 		loadingText.textContent = localize('claudeThinking', "Claude is thinking...");
 
-		// MessageListManager 생성
-		this.messageListManager = new MessageListManager(
-			this.messagesContainer,
-			this.loadingElement,
-			this.messageRenderer
-		);
-
-		// 기존 메시지 렌더링
+		// 기존 메시지 정보 수집 (MessageListManager 생성 전에 필요)
 		const messages = this.claudeService.getMessages();
 		const session = this.claudeService.getCurrentSession();
 		const previousMessageCount = session?.previousMessageCount || 0;
 
+		// 이전 세션 메시지 ID 수집
+		this._previousSessionMessageIds.clear();
+		for (let i = 0; i < previousMessageCount; i++) {
+			if (messages[i]) {
+				this._previousSessionMessageIds.add(messages[i].id);
+			}
+		}
+
+		// MessageListManager 생성 - isMessageReadOnly 콜백 전달
+		this.messageListManager = new MessageListManager(
+			this.messagesContainer,
+			this.loadingElement,
+			this.messageRenderer,
+			(messageId) => this._previousSessionMessageIds.has(messageId)
+		);
+
+		// 기존 메시지 렌더링
 		for (let i = 0; i < messages.length; i++) {
 			// 이전 세션과 현재 세션 구분선
 			if (previousMessageCount > 0 && i === previousMessageCount) {

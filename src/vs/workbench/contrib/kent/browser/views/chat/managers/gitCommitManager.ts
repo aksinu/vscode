@@ -57,7 +57,7 @@ export class GitCommitManager {
 			await this.executeGitCommit(changesHistory.filesSummary, commitMessage);
 
 			this.notificationService.info(
-				localize('changesCommitted', "Successfully committed {0} files", changesHistory.filesSummary.length)
+				localize('changesCommitted', "Committed: {0}", commitMessage)
 			);
 		} catch (error) {
 			this.notificationService.error(
@@ -75,7 +75,7 @@ export class GitCommitManager {
 		// 파일 분석
 		const extensions = new Set<string>();
 		const directories = new Set<string>();
-		const fileNames = fileChanges.map(f => {
+		fileChanges.forEach(f => {
 			const filePath = f.filePath || '';
 			const fileName = filePath.split('/').pop() || filePath;
 			const ext = fileName.split('.').pop();
@@ -83,8 +83,6 @@ export class GitCommitManager {
 
 			const dir = filePath.split('/').slice(-2, -1)[0];
 			if (dir) directories.add(dir);
-
-			return fileName;
 		});
 
 		// 파일 타입에 따른 액션 결정
@@ -101,23 +99,23 @@ export class GitCommitManager {
 
 		// 디렉토리 기반 범위 결정
 		let scope = '';
-		if (directories.has('browser')) {
+		if (directories.has('chat') || directories.has('views')) {
+			scope = ' chat UI';
+		} else if (directories.has('browser')) {
 			scope = ' UI components';
-		} else if (directories.has('service')) {
+		} else if (directories.has('services') || directories.has('service')) {
 			scope = ' services';
+		} else if (directories.has('managers')) {
+			scope = ' managers';
 		} else if (directories.has('common')) {
 			scope = ' core functionality';
 		}
 
-		// 메시지 구성
-		const mainFiles = fileNames.slice(0, 2).join(', ');
-
+		// 메시지 구성 (파일 경로 없이 작업 요약만)
 		if (fileCount === 1) {
-			return `${action}${scope}: ${mainFiles}`;
-		} else if (fileCount <= 3) {
-			return `${action}${scope}: ${mainFiles}${fileCount > 2 ? ` and ${fileCount - 2} more` : ''}`;
+			return `${action}${scope}`;
 		} else {
-			return `${action}${scope}: ${mainFiles} and ${fileCount - 2} other files`;
+			return `${action}${scope} (${fileCount} files)`;
 		}
 	}
 

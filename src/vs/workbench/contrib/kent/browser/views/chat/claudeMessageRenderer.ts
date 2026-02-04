@@ -175,8 +175,9 @@ export class ClaudeMessageRenderer extends Disposable {
 		});
 	}
 
-	renderMessage(message: IClaudeMessage, container: HTMLElement): DisposableStore {
+	renderMessage(message: IClaudeMessage, container: HTMLElement, options?: { readOnly?: boolean }): DisposableStore {
 		const disposables = new DisposableStore();
+		const readOnly = options?.readOnly ?? false;
 
 		clearNode(container);
 
@@ -248,19 +249,19 @@ export class ClaudeMessageRenderer extends Disposable {
 			this.renderAskUserRequest(message.askUserRequest, messageElement, disposables);
 		}
 
-		// 컨텍스트 표시 (사용자 메시지에 첨부된 경우)
-		if (message.context && message.role === 'user') {
+		// 컨텍스트 및 첨부파일 표시 (사용자 메시지)
+		if (message.role === 'user' && (message.context || (message.attachments && message.attachments.length > 0))) {
 			this.renderContext(message, messageElement);
 		}
 
-		// 토큰 사용량 표시 (assistant 메시지, 스트리밍 완료 후)
-		if (message.role === 'assistant' && !message.isStreaming && message.usage) {
-			this.renderUsageInfo(message.usage, messageElement);
+		// 토큰 사용량 및 작업 시간 표시 (assistant 메시지, 스트리밍 완료 후)
+		if (message.role === 'assistant' && !message.isStreaming && (message.usage || message.workStartTime)) {
+			this.renderUsageInfo(message.usage, messageElement, message);
 		}
 
 		// 파일 변경사항 표시 (assistant 메시지, 스트리밍 완료 후)
 		if (message.role === 'assistant' && !message.isStreaming && message.fileChanges && message.fileChanges.changes.length > 0) {
-			this.renderFileChanges(message.fileChanges, messageElement, disposables);
+			this.renderFileChanges(message.fileChanges, messageElement, disposables, readOnly);
 		}
 
 		return disposables;
@@ -389,25 +390,74 @@ export class ClaudeMessageRenderer extends Disposable {
 
 	private renderContext(message: IClaudeMessage, container: HTMLElement): void {
 		const context = message.context;
-		if (!context) {
+		const attachments = message.attachments;
+
+		// context도 attachments도 없으면 리턴
+		if (!context && (!attachments || attachments.length === 0)) {
 			return;
 		}
 
 		const contextElement = append(container, $('.claude-message-context'));
 
-		if (context.filePath) {
-			const fileTag = append(contextElement, $('.claude-context-tag'));
-			append(fileTag, $('.codicon.codicon-file'));
-			const fileName = append(fileTag, $('span'));
-			fileName.textContent = context.filePath.fsPath.split(/[/\\]/).pop() || 'file';
+		// 기존 context 표시
+		if (context) {
+			if (context.filePath) {
+				const fileTag = append(contextElement, $('.claude-context-tag'));
+				append(fileTag, $('.codicon.codicon-file'));
+				const fileName = append(fileTag, $('span'));
+				fileName.textContent = context.filePath.fsPath.split(/[/\\]/).pop() || 'file';
+			}
+
+			if (context.selection) {
+				const selectionTag = append(contextElement, $('.claude-context-tag'));
+				append(selectionTag, $('.codicon.codicon-selection'));
+				const selectionText = append(selectionTag, $('span'));
+				const lines = context.selection.split('\n').length;
+				selectionText.textContent = `${lines} line${lines > 1 ? 's' : ''} selected`;
+			}
 		}
 
-		if (context.selection) {
-			const selectionTag = append(contextElement, $('.claude-context-tag'));
-			append(selectionTag, $('.codicon.codicon-selection'));
-			const selectionText = append(selectionTag, $('span'));
-			const lines = context.selection.split('\n').length;
-			selectionText.textContent = `${lines} line${lines > 1 ? 's' : ''} selected`;
+		// 첨부파일 표시
+		if (attachments && attachments.length > 0) {
+			for (const attachment of attachments) {
+				const tag = append(contextElement, $('.claude-context-tag'));
+
+				// 타입별 아이콘
+				let iconClass = 'codicon-file';
+				switch (attachment.type) {
+					case 'file':
+						iconClass = 'codicon-file';
+						break;
+					case 'folder':
+						iconClass = 'codicon-folder';
+						break;
+					case 'selection':
+						iconClass = 'codicon-selection';
+						break;
+					case 'diagnostics':
+						iconClass = 'codicon-warning';
+						break;
+					case 'workspace':
+						iconClass = 'codicon-folder-library';
+						break;
+					case 'image':
+						iconClass = 'codicon-file-media';
+						break;
+					case 'code-reference':
+						iconClass = 'codicon-code';
+						tag.classList.add('code-reference');
+						break;
+				}
+
+				append(tag, $(`.codicon.${iconClass}`));
+				const nameSpan = append(tag, $('span'));
+				nameSpan.textContent = attachment.name;
+
+				// 툴팁에 전체 경로 표시
+				if (attachment.uri) {
+					tag.title = attachment.uri.fsPath;
+				}
+			}
 		}
 	}
 
@@ -769,54 +819,82 @@ export class ClaudeMessageRenderer extends Disposable {
 		}
 	}
 
-	private renderUsageInfo(usage: IClaudeUsageInfo, container: HTMLElement): void {
+	private renderUsageInfo(usage: IClaudeUsageInfo | undefined, container: HTMLElement, message?: IClaudeMessage): void {
 		const usageElement = append(container, $('.claude-message-usage'));
 
-		// 토큰 정보
-		const tokensElement = append(usageElement, $('.claude-usage-tokens'));
+		// 작업 시간 (맨 앞에 표시)
+		if (message?.workStartTime) {
+			const workTimeElement = append(usageElement, $('.claude-usage-worktime'));
+			const endTime = message.workEndTime || Date.now();
+			const durationMs = endTime - message.workStartTime;
 
-		// 입력 토큰
-		const inputTokens = append(tokensElement, $('.claude-usage-item'));
-		inputTokens.title = localize('inputTokens', "Input tokens");
-		append(inputTokens, $('.codicon.codicon-arrow-right'));
-		const inputValue = append(inputTokens, $('span'));
-		inputValue.textContent = this.formatNumber(usage.inputTokens);
+			let timeText: string;
+			if (durationMs < 1000) {
+				timeText = '<1s';
+			} else {
+				const seconds = Math.floor(durationMs / 1000);
+				const minutes = Math.floor(seconds / 60);
+				if (minutes > 0) {
+					const remainingSeconds = seconds % 60;
+					timeText = `${minutes}m ${remainingSeconds}s`;
+				} else {
+					timeText = `${seconds}s`;
+				}
+			}
 
-		// 출력 토큰
-		const outputTokens = append(tokensElement, $('.claude-usage-item'));
-		outputTokens.title = localize('outputTokens', "Output tokens");
-		append(outputTokens, $('.codicon.codicon-arrow-left'));
-		const outputValue = append(outputTokens, $('span'));
-		outputValue.textContent = this.formatNumber(usage.outputTokens);
-
-		// 캐시 토큰 (있으면)
-		if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
-			const cacheTokens = append(tokensElement, $('.claude-usage-item.cache'));
-			cacheTokens.title = localize('cacheTokens', "Cache read tokens");
-			append(cacheTokens, $('.codicon.codicon-database'));
-			const cacheValue = append(cacheTokens, $('span'));
-			cacheValue.textContent = this.formatNumber(usage.cacheReadTokens);
+			append(workTimeElement, $('.codicon.codicon-clock'));
+			const timeValue = append(workTimeElement, $('span'));
+			timeValue.textContent = timeText;
+			workTimeElement.title = localize('workDuration', "Work duration");
 		}
 
-		// 서브에이전트 정보 (있으면)
-		if (usage.subagents && usage.subagents.length > 0) {
-			const subagentItem = append(tokensElement, $('.claude-usage-item.subagent'));
-			// 각 에이전트 타입과 설명을 줄바꿈으로 구분하여 툴팁에 표시
-			const tooltipLines = usage.subagents.map((s, i) => {
-				const desc = s.description ? `: ${s.description}` : '';
-				return `${i + 1}. ${s.type}${desc}`;
-			});
-			subagentItem.title = `Subagents used:\n${tooltipLines.join('\n')}`;
-			append(subagentItem, $('.codicon.codicon-server-process'));
-			const subagentValue = append(subagentItem, $('span'));
-			subagentValue.textContent = `${usage.subagents.length}`;
-		}
+		// 토큰 정보 (usage가 있을 때만)
+		if (usage) {
+			const tokensElement = append(usageElement, $('.claude-usage-tokens'));
 
-		// 비용 (있으면)
-		if (usage.totalCostUsd !== undefined && usage.totalCostUsd > 0) {
-			const costElement = append(usageElement, $('.claude-usage-cost'));
-			costElement.title = localize('totalCost', "Estimated cost");
-			costElement.textContent = `$${usage.totalCostUsd.toFixed(4)}`;
+			// 입력 토큰
+			const inputTokens = append(tokensElement, $('.claude-usage-item'));
+			inputTokens.title = localize('inputTokens', "Input tokens");
+			append(inputTokens, $('.codicon.codicon-arrow-right'));
+			const inputValue = append(inputTokens, $('span'));
+			inputValue.textContent = this.formatNumber(usage.inputTokens);
+
+			// 출력 토큰
+			const outputTokens = append(tokensElement, $('.claude-usage-item'));
+			outputTokens.title = localize('outputTokens', "Output tokens");
+			append(outputTokens, $('.codicon.codicon-arrow-left'));
+			const outputValue = append(outputTokens, $('span'));
+			outputValue.textContent = this.formatNumber(usage.outputTokens);
+
+			// 캐시 토큰 (있으면)
+			if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
+				const cacheTokens = append(tokensElement, $('.claude-usage-item.cache'));
+				cacheTokens.title = localize('cacheTokens', "Cache read tokens");
+				append(cacheTokens, $('.codicon.codicon-database'));
+				const cacheValue = append(cacheTokens, $('span'));
+				cacheValue.textContent = this.formatNumber(usage.cacheReadTokens);
+			}
+
+			// 서브에이전트 정보 (있으면)
+			if (usage.subagents && usage.subagents.length > 0) {
+				const subagentItem = append(tokensElement, $('.claude-usage-item.subagent'));
+				// 각 에이전트 타입과 설명을 줄바꿈으로 구분하여 툴팁에 표시
+				const tooltipLines = usage.subagents.map((s, i) => {
+					const desc = s.description ? `: ${s.description}` : '';
+					return `${i + 1}. ${s.type}${desc}`;
+				});
+				subagentItem.title = `Subagents used:\n${tooltipLines.join('\n')}`;
+				append(subagentItem, $('.codicon.codicon-server-process'));
+				const subagentValue = append(subagentItem, $('span'));
+				subagentValue.textContent = `${usage.subagents.length}`;
+			}
+
+			// 비용 (있으면)
+			if (usage.totalCostUsd !== undefined && usage.totalCostUsd > 0) {
+				const costElement = append(usageElement, $('.claude-usage-cost'));
+				costElement.title = localize('totalCost', "Estimated cost");
+				costElement.textContent = `$${usage.totalCostUsd.toFixed(4)}`;
+			}
 		}
 	}
 
@@ -829,8 +907,13 @@ export class ClaudeMessageRenderer extends Disposable {
 		return num.toString();
 	}
 
-	private renderFileChanges(fileChanges: IClaudeFileChangesSummary, container: HTMLElement, disposables: DisposableStore): void {
+	private renderFileChanges(fileChanges: IClaudeFileChangesSummary, container: HTMLElement, disposables: DisposableStore, readOnly: boolean = false): void {
 		const changesContainer = append(container, $('.claude-file-changes'));
+
+		// 읽기 전용 상태일 경우 클래스 추가
+		if (readOnly) {
+			changesContainer.classList.add('read-only');
+		}
 
 		// 선택된 파일 추적
 		const selectedFiles = new Set<IClaudeFileChange>();
@@ -870,11 +953,17 @@ export class ClaudeMessageRenderer extends Disposable {
 			removedSpan.textContent = `-${fileChanges.totalLinesRemoved}`;
 		}
 
-		// 배치 액션 바 (Accept All / Reject All)
-		const batchActionsBar = append(changesContainer, $('.claude-file-changes-batch-actions'));
+		// 읽기 전용 배너 (이전 세션 변경사항)
+		if (readOnly) {
+			const readOnlyBanner = append(changesContainer, $('.claude-file-changes-readonly-banner'));
+			readOnlyBanner.textContent = localize('previousSessionChanges', "Changes from a previous session (read-only)");
+		}
 
-		// Accept All 버튼
-		if (this.options.onAcceptAllFiles) {
+		// 배치 액션 바 (Accept All / Reject All) - 읽기 전용일 때는 생성하지 않음
+		const batchActionsBar = readOnly ? null : append(changesContainer, $('.claude-file-changes-batch-actions'));
+
+		// Accept All 버튼 - 읽기 전용이 아닐 때만
+		if (!readOnly && batchActionsBar && this.options.onAcceptAllFiles) {
 			const acceptAllButton = append(batchActionsBar, $('button.claude-batch-btn.accept'));
 			append(acceptAllButton, $('.codicon.codicon-check-all'));
 			const acceptAllText = append(acceptAllButton, $('span'));
@@ -891,8 +980,8 @@ export class ClaudeMessageRenderer extends Disposable {
 			disposables.add({ dispose: () => acceptAllButton.removeEventListener('click', acceptAllHandler) });
 		}
 
-		// Reject All 버튼
-		if (this.options.onRevertAllFiles && fileChanges.changes.length > 0) {
+		// Reject All 버튼 - 읽기 전용이 아닐 때만
+		if (!readOnly && batchActionsBar && this.options.onRevertAllFiles && fileChanges.changes.length > 0) {
 			const rejectAllButton = append(batchActionsBar, $('button.claude-batch-btn.reject'));
 			append(rejectAllButton, $('.codicon.codicon-discard'));
 			const rejectAllText = append(rejectAllButton, $('span'));
@@ -913,112 +1002,121 @@ export class ClaudeMessageRenderer extends Disposable {
 			disposables.add({ dispose: () => rejectAllButton.removeEventListener('click', rejectAllHandler) });
 		}
 
-		// 선택 액션 바 (처음에는 숨김)
-		const selectionActionsBar = append(changesContainer, $('.claude-file-changes-selection-actions'));
-		selectionActionsBar.style.display = 'none';
+		// 선택 액션 바 (처음에는 숨김) - 읽기 전용이 아닐 때만
+		let selectionActionsBar: HTMLElement | null = null;
+		let selectionCount: HTMLElement | null = null;
 
-		const selectionCount = append(selectionActionsBar, $('.selection-count'));
+		if (!readOnly) {
+			selectionActionsBar = append(changesContainer, $('.claude-file-changes-selection-actions'));
+			selectionActionsBar.style.display = 'none';
 
-		// Accept Selected 버튼
-		const acceptSelectedButton = append(selectionActionsBar, $('button.claude-selection-btn.accept')) as HTMLButtonElement;
-		append(acceptSelectedButton, $('.codicon.codicon-check'));
-		const acceptSelectedText = append(acceptSelectedButton, $('span'));
-		acceptSelectedText.textContent = localize('acceptSelected', "Accept");
+			selectionCount = append(selectionActionsBar, $('.selection-count'));
+		}
 
-		const acceptSelectedHandler = (e: MouseEvent) => {
-			e.stopPropagation();
-			if (selectedFiles.size > 0) {
-				this.options.onAcceptSelectedFiles?.(Array.from(selectedFiles));
-				// 선택된 항목 UI에서 제거
-				for (const change of selectedFiles) {
-					const item = fileList.querySelector(`[data-file-path="${CSS.escape(change.filePath)}"]`);
-					item?.classList.add('accepted');
-				}
-				this.notificationService.info(localize('selectedAccepted', "{0} file(s) accepted", selectedFiles.size));
-				selectedFiles.clear();
-				updateSelectionUI();
+		// 파일 목록 (먼저 생성 - 클로저에서 참조해야 함)
+		const fileList = append(changesContainer, $('.claude-file-changes-list'));
+
+		// 선택 UI 업데이트 함수 - 읽기 전용이 아닐 때만 사용
+		const updateSelectionUI = !readOnly ? () => {
+			const count = selectedFiles.size;
+			if (count > 0) {
+				selectionActionsBar!.style.display = 'flex';
+				batchActionsBar!.style.display = 'none';
+				selectionCount!.textContent = localize('selectedCount', "{0} selected", count);
+			} else {
+				selectionActionsBar!.style.display = 'none';
+				batchActionsBar!.style.display = 'flex';
 			}
-		};
-		acceptSelectedButton.addEventListener('click', acceptSelectedHandler);
-		disposables.add({ dispose: () => acceptSelectedButton.removeEventListener('click', acceptSelectedHandler) });
+		} : () => {};
 
-		// Reject Selected 버튼
-		const rejectSelectedButton = append(selectionActionsBar, $('button.claude-selection-btn.reject')) as HTMLButtonElement;
-		append(rejectSelectedButton, $('.codicon.codicon-discard'));
-		const rejectSelectedText = append(rejectSelectedButton, $('span'));
-		rejectSelectedText.textContent = localize('rejectSelected', "Reject");
+		// Accept Selected 버튼 - 읽기 전용이 아닐 때만
+		if (!readOnly && selectionActionsBar) {
+			const acceptSelectedButton = append(selectionActionsBar, $('button.claude-selection-btn.accept')) as HTMLButtonElement;
+			append(acceptSelectedButton, $('.codicon.codicon-check'));
+			const acceptSelectedText = append(acceptSelectedButton, $('span'));
+			acceptSelectedText.textContent = localize('acceptSelected', "Accept");
 
-		const rejectSelectedHandler = async (e: MouseEvent) => {
-			e.stopPropagation();
-			if (selectedFiles.size > 0 && this.options.onRevertSelectedFiles) {
-				const count = await this.options.onRevertSelectedFiles(Array.from(selectedFiles));
-				if (count > 0) {
-					// 선택된 항목 UI에서 reverted 표시
+			const acceptSelectedHandler = (e: MouseEvent) => {
+				e.stopPropagation();
+				if (selectedFiles.size > 0) {
+					this.options.onAcceptSelectedFiles?.(Array.from(selectedFiles));
+					// 선택된 항목 UI에서 제거
 					for (const change of selectedFiles) {
 						const item = fileList.querySelector(`[data-file-path="${CSS.escape(change.filePath)}"]`);
-						item?.classList.add('reverted');
+						item?.classList.add('accepted');
 					}
-					this.notificationService.info(localize('selectedReverted', "{0} file(s) reverted", count));
+					this.notificationService.info(localize('selectedAccepted', "{0} file(s) accepted", selectedFiles.size));
 					selectedFiles.clear();
 					updateSelectionUI();
 				}
-			}
-		};
-		rejectSelectedButton.addEventListener('click', rejectSelectedHandler);
-		disposables.add({ dispose: () => rejectSelectedButton.removeEventListener('click', rejectSelectedHandler) });
+			};
+			acceptSelectedButton.addEventListener('click', acceptSelectedHandler);
+			disposables.add({ dispose: () => acceptSelectedButton.removeEventListener('click', acceptSelectedHandler) });
 
-		// 선택 해제 버튼
-		const clearSelectionButton = append(selectionActionsBar, $('button.claude-selection-btn.clear'));
-		append(clearSelectionButton, $('.codicon.codicon-close'));
+			// Reject Selected 버튼
+			const rejectSelectedButton = append(selectionActionsBar, $('button.claude-selection-btn.reject')) as HTMLButtonElement;
+			append(rejectSelectedButton, $('.codicon.codicon-discard'));
+			const rejectSelectedText = append(rejectSelectedButton, $('span'));
+			rejectSelectedText.textContent = localize('rejectSelected', "Reject");
 
-		const clearSelectionHandler = (e: MouseEvent) => {
-			e.stopPropagation();
-			selectedFiles.clear();
-			fileList.querySelectorAll('.claude-file-checkbox input').forEach((cb: Element) => {
-				(cb as HTMLInputElement).checked = false;
-			});
-			updateSelectionUI();
-		};
-		clearSelectionButton.addEventListener('click', clearSelectionHandler);
-		disposables.add({ dispose: () => clearSelectionButton.removeEventListener('click', clearSelectionHandler) });
+			const rejectSelectedHandler = async (e: MouseEvent) => {
+				e.stopPropagation();
+				if (selectedFiles.size > 0 && this.options.onRevertSelectedFiles) {
+					const count = await this.options.onRevertSelectedFiles(Array.from(selectedFiles));
+					if (count > 0) {
+						// 선택된 항목 UI에서 reverted 표시
+						for (const change of selectedFiles) {
+							const item = fileList.querySelector(`[data-file-path="${CSS.escape(change.filePath)}"]`);
+							item?.classList.add('reverted');
+						}
+						this.notificationService.info(localize('selectedReverted', "{0} file(s) reverted", count));
+						selectedFiles.clear();
+						updateSelectionUI();
+					}
+				}
+			};
+			rejectSelectedButton.addEventListener('click', rejectSelectedHandler);
+			disposables.add({ dispose: () => rejectSelectedButton.removeEventListener('click', rejectSelectedHandler) });
 
-		// 선택 UI 업데이트 함수
-		const updateSelectionUI = () => {
-			const count = selectedFiles.size;
-			if (count > 0) {
-				selectionActionsBar.style.display = 'flex';
-				batchActionsBar.style.display = 'none';
-				selectionCount.textContent = localize('selectedCount', "{0} selected", count);
-			} else {
-				selectionActionsBar.style.display = 'none';
-				batchActionsBar.style.display = 'flex';
-			}
-		};
+			// 선택 해제 버튼
+			const clearSelectionButton = append(selectionActionsBar, $('button.claude-selection-btn.clear'));
+			append(clearSelectionButton, $('.codicon.codicon-close'));
 
-		// 파일 목록
-		const fileList = append(changesContainer, $('.claude-file-changes-list'));
+			const clearSelectionHandler = (e: MouseEvent) => {
+				e.stopPropagation();
+				selectedFiles.clear();
+				fileList.querySelectorAll('.claude-file-checkbox input').forEach((cb: Element) => {
+					(cb as HTMLInputElement).checked = false;
+				});
+				updateSelectionUI();
+			};
+			clearSelectionButton.addEventListener('click', clearSelectionHandler);
+			disposables.add({ dispose: () => clearSelectionButton.removeEventListener('click', clearSelectionHandler) });
+		}
 
 		for (const change of fileChanges.changes) {
 			const fileItem = append(fileList, $('.claude-file-changes-item'));
 			fileItem.dataset.filePath = change.filePath;
 
-			// 체크박스
-			const checkboxContainer = append(fileItem, $('.claude-file-checkbox'));
-			const checkbox = append(checkboxContainer, $('input')) as HTMLInputElement;
-			checkbox.type = 'checkbox';
-			checkbox.title = localize('selectFile', "Select file");
+			// 체크박스 - 읽기 전용이 아닐 때만 표시
+			if (!readOnly) {
+				const checkboxContainer = append(fileItem, $('.claude-file-checkbox'));
+				const checkbox = append(checkboxContainer, $('input')) as HTMLInputElement;
+				checkbox.type = 'checkbox';
+				checkbox.title = localize('selectFile', "Select file");
 
-			const checkboxHandler = (e: Event) => {
-				e.stopPropagation();
-				if (checkbox.checked) {
-					selectedFiles.add(change);
-				} else {
-					selectedFiles.delete(change);
-				}
-				updateSelectionUI();
-			};
-			checkbox.addEventListener('change', checkboxHandler);
-			disposables.add({ dispose: () => checkbox.removeEventListener('change', checkboxHandler) });
+				const checkboxHandler = (e: Event) => {
+					e.stopPropagation();
+					if (checkbox.checked) {
+						selectedFiles.add(change);
+					} else {
+						selectedFiles.delete(change);
+					}
+					updateSelectionUI();
+				};
+				checkbox.addEventListener('change', checkboxHandler);
+				disposables.add({ dispose: () => checkbox.removeEventListener('change', checkboxHandler) });
+			}
 
 			// 상태 아이콘
 			const statusIcon = append(fileItem, $('.claude-file-status-icon'));
@@ -1067,8 +1165,8 @@ export class ClaudeMessageRenderer extends Disposable {
 				disposables.add({ dispose: () => diffButton.removeEventListener('click', diffHandler) });
 			}
 
-			// Accept 버튼
-			if (this.options.onAcceptFile) {
+			// Accept 버튼 - 읽기 전용이 아닐 때만
+			if (!readOnly && this.options.onAcceptFile) {
 				const acceptButton = append(buttons, $('button.claude-file-button.accept')) as HTMLButtonElement;
 				acceptButton.title = localize('acceptFile', "Accept changes");
 				append(acceptButton, $('.codicon.codicon-check'));
@@ -1083,8 +1181,8 @@ export class ClaudeMessageRenderer extends Disposable {
 				disposables.add({ dispose: () => acceptButton.removeEventListener('click', acceptHandler) });
 			}
 
-			// Revert 버튼
-			if (this.options.onRevertFile && !change.reverted) {
+			// Revert 버튼 - 읽기 전용이 아닐 때만
+			if (!readOnly && this.options.onRevertFile && !change.reverted) {
 				const revertButton = append(buttons, $('button.claude-file-button.revert')) as HTMLButtonElement;
 				revertButton.title = localize('revertFile', "Revert changes");
 				append(revertButton, $('.codicon.codicon-discard'));

@@ -276,6 +276,22 @@
 	color: var(--vscode-terminal-ansiCyan);
 }
 
+.claude-usage-worktime {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--vscode-charts-blue);
+	font-weight: 500;
+	padding-right: 8px;
+	border-right: 1px solid var(--vscode-widget-border);
+	margin-right: 8px;
+}
+
+.claude-usage-worktime .codicon {
+	font-size: 11px;
+	opacity: 0.8;
+}
+
 .claude-usage-cost {
 	margin-left: auto;
 	font-weight: 500;
@@ -2839,4 +2855,33 @@
 	color: var(--vscode-testing-iconPassed);
 	margin-left: auto;
 	padding-right: 8px;
+}
+
+/* ========== Read-Only File Changes (Previous Session) ========== */
+
+/* 이전 세션 파일 변경 - 읽기 전용 배너 */
+.claude-file-changes-readonly-banner {
+	padding: 8px 12px;
+	background: var(--vscode-inputValidation-infoBackground);
+	border-bottom: 1px solid var(--vscode-inputValidation-infoBorder);
+	font-size: 11px;
+	color: var(--vscode-inputValidation-infoForeground, var(--vscode-descriptionForeground));
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.claude-file-changes-readonly-banner::before {
+	content: '';
+	font-family: codicon;
+	content: '\eb99'; /* codicon-info */
+}
+
+/* 읽기 전용 상태 - 추가 시각적 표시 */
+.claude-file-changes.read-only {
+	opacity: 0.85;
+}
+
+.claude-file-changes.read-only .claude-file-changes-header {
+	background-color: var(--vscode-inputValidation-infoBackground);
 }

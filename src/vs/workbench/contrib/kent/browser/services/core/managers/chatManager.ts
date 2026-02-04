@@ -337,9 +337,11 @@ export class ChatManager extends Disposable {
 				if (currentSession) {
 					const message = currentSession.messages.find(m => m.id === sessionState.currentMessageId);
 					if (message && message.isStreaming) {
+						// 취소 시 도구 상태도 정리하여 "진행 중" 표시 제거
 						const updatedMessage: IClaudeMessage = {
 							...message,
 							isStreaming: false,
+							currentToolAction: undefined,
 							workEndTime: Date.now()
 						};
 						if (this._sessionService.updateMessage(updatedMessage)) {
@@ -349,9 +351,11 @@ export class ChatManager extends Disposable {
 				}
 			}
 
+			// 세션 상태 정리 (도구 액션 포함)
 			sessionState.state = 'idle';
 			sessionState.currentMessageId = undefined;
 			sessionState.accumulatedContent = '';
+			this._sessionService.clearToolActions();
 		}
 
 		// Legacy 상태 초기화

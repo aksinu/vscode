@@ -20,7 +20,8 @@ export class MessageListManager {
 	constructor(
 		private readonly messagesContainer: HTMLElement,
 		private readonly loadingElement: HTMLElement,
-		private readonly messageRenderer: ClaudeMessageRenderer
+		private readonly messageRenderer: ClaudeMessageRenderer,
+		private readonly isMessageReadOnly?: (messageId: string) => boolean
 	) {}
 
 	/**
@@ -35,17 +36,31 @@ export class MessageListManager {
 
 		const messageContainer = $('.claude-message-wrapper');
 		messageContainer.dataset.messageId = message.id;
+		messageContainer.dataset.timestamp = String(message.timestamp);
 
 		// 스트리밍 상태에 따라 클래스 토글
 		if (message.isStreaming) {
 			messageContainer.classList.add('streaming');
 		}
 
-		const disposables = this.messageRenderer.renderMessage(message, messageContainer);
+		// 읽기 전용 상태 확인
+		const readOnly = this.isMessageReadOnly?.(message.id) ?? false;
+		const disposables = this.messageRenderer.renderMessage(message, messageContainer, { readOnly });
 		this.messageDisposables.set(message.id, disposables);
 
-		// 로딩 인디케이터 앞에 삽입
-		this.messagesContainer.insertBefore(messageContainer, this.loadingElement);
+		// 타임스탬프 기준으로 올바른 위치에 삽입 (취소 후 순서 꼬임 방지)
+		let insertBefore: Element | null = this.loadingElement;
+		const existingMessages = this.messagesContainer.querySelectorAll('.claude-message-wrapper');
+
+		for (const existingMsg of existingMessages) {
+			const existingTimestamp = parseInt((existingMsg as HTMLElement).dataset.timestamp || '0', 10);
+			if (message.timestamp < existingTimestamp) {
+				insertBefore = existingMsg;
+				break;
+			}
+		}
+
+		this.messagesContainer.insertBefore(messageContainer, insertBefore);
 		this.scrollToBottom();
 	}
 
@@ -90,8 +105,11 @@ export class MessageListManager {
 			existingContainer.removeChild(existingContainer.firstChild);
 		}
 
+		// 읽기 전용 상태 확인
+		const readOnly = this.isMessageReadOnly?.(message.id) ?? false;
+
 		// 새로운 내용 렌더링
-		const disposables = this.messageRenderer.renderMessage(message, existingContainer);
+		const disposables = this.messageRenderer.renderMessage(message, existingContainer, { readOnly });
 		this.messageDisposables.set(message.id, disposables);
 
 		// 스트리밍 중이거나 파일 변경사항이 있으면 스크롤
