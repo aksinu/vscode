@@ -331,17 +331,169 @@ export class AssistantMessageRenderer {
 			changesContainer.classList.add('read-only');
 		}
 
+		// 접이식 헤더
+		const header = append(changesContainer, $('.claude-file-changes-header'));
+
+		// 토글 아이콘 (chevron-right → chevron-down)
+		const toggleIcon = append(header, $('.codicon.codicon-chevron-right'));
+
 		// 변경사항 요약
-		const summary = append(changesContainer, $('.claude-file-changes-summary'));
+		const summary = append(header, $('.claude-file-changes-summary'));
 		append(summary, $('.codicon.codicon-files'));
 		const totalFiles = fileChanges.filesCreated + fileChanges.filesModified + fileChanges.filesDeleted;
-		append(summary, $('span')).textContent = `${totalFiles} files changed`;
-		const addedSpan = append(summary, $('span.added'));
+		append(summary, $('span')).textContent = localize('filesChanged', "{0} file(s) changed", totalFiles);
+
+		// 라인 변경 정보
+		const linesInfo = append(summary, $('.claude-file-changes-lines'));
+		const addedSpan = append(linesInfo, $('span.added'));
 		addedSpan.textContent = `+${fileChanges.totalLinesAdded}`;
-		const removedSpan = append(summary, $('span.removed'));
+		const removedSpan = append(linesInfo, $('span.removed'));
 		removedSpan.textContent = `-${fileChanges.totalLinesRemoved}`;
 
-		// TODO: 파일 목록, Accept/Reject 버튼들 구현
+		// Revert All 버튼 (readOnly가 아닐 때만)
+		if (!readOnly && this._options.onRevertAllFiles) {
+			const revertAllBtn = append(header, $('button.claude-file-changes-revert-all'));
+			append(revertAllBtn, $('.codicon.codicon-discard'));
+			revertAllBtn.appendChild(document.createTextNode(localize('revertAll', "Revert All")));
+
+			const revertAllHandler = async (e: Event) => {
+				e.stopPropagation(); // 헤더 클릭 이벤트 전파 방지
+				if (this._options.onRevertAllFiles) {
+					const revertedCount = await this._options.onRevertAllFiles();
+					if (revertedCount > 0) {
+						// 모든 항목에 reverted 클래스 추가
+						const items = fileList.querySelectorAll('.claude-file-changes-item');
+						items.forEach(item => item.classList.add('reverted'));
+					}
+				}
+			};
+			revertAllBtn.addEventListener('click', revertAllHandler);
+			disposables.add({ dispose: () => revertAllBtn.removeEventListener('click', revertAllHandler) });
+		}
+
+		// 파일 목록 (기본 숨김)
+		const fileList = append(changesContainer, $('.claude-file-changes-list'));
+		fileList.style.display = 'none';
+
+		// 각 파일 항목 렌더링
+		for (const change of fileChanges.changes) {
+			this.renderFileChangeItem(change, fileList, disposables, readOnly);
+		}
+
+		// 헤더 클릭으로 목록 펼치기/접기
+		const toggleHandler = () => {
+			const isHidden = fileList.style.display === 'none';
+			fileList.style.display = isHidden ? 'flex' : 'none';
+			toggleIcon.classList.toggle('codicon-chevron-right', !isHidden);
+			toggleIcon.classList.toggle('codicon-chevron-down', isHidden);
+		};
+		header.addEventListener('click', toggleHandler);
+		disposables.add({ dispose: () => header.removeEventListener('click', toggleHandler) });
+	}
+
+	/**
+	 * 개별 파일 변경 항목 렌더링
+	 */
+	private renderFileChangeItem(
+		change: IClaudeFileChange,
+		container: HTMLElement,
+		disposables: DisposableStore,
+		readOnly: boolean
+	): void {
+		const item = append(container, $('.claude-file-changes-item'));
+
+		// reverted 상태 처리
+		if (change.reverted) {
+			item.classList.add('reverted');
+		}
+
+		// 상태 아이콘 (created/modified/deleted)
+		const statusIcon = append(item, $('.claude-file-status-icon'));
+		statusIcon.classList.add('codicon');
+		statusIcon.classList.add(change.changeType);
+		switch (change.changeType) {
+			case 'created':
+				statusIcon.classList.add('codicon-new-file');
+				statusIcon.title = localize('fileCreated', "Created");
+				break;
+			case 'modified':
+				statusIcon.classList.add('codicon-edit');
+				statusIcon.title = localize('fileModified', "Modified");
+				break;
+			case 'deleted':
+				statusIcon.classList.add('codicon-trash');
+				statusIcon.title = localize('fileDeleted', "Deleted");
+				break;
+		}
+
+		// 파일 이름
+		const fileName = append(item, $('.claude-file-name'));
+		fileName.textContent = change.fileName;
+		fileName.title = change.filePath;
+
+		// 라인 변경 (+N / -N)
+		const lineChanges = append(item, $('.claude-file-line-changes'));
+		if (change.linesAdded > 0) {
+			const added = append(lineChanges, $('span.added'));
+			added.textContent = `+${change.linesAdded}`;
+		}
+		if (change.linesRemoved > 0) {
+			const removed = append(lineChanges, $('span.removed'));
+			removed.textContent = `-${change.linesRemoved}`;
+		}
+
+		// 액션 버튼들 (호버 시 표시, readOnly가 아닐 때만)
+		if (!readOnly) {
+			const buttons = append(item, $('.claude-file-buttons'));
+
+			// Accept 버튼
+			if (this._options.onAcceptFile) {
+				const acceptBtn = append(buttons, $('button.claude-file-button.accept'));
+				acceptBtn.title = localize('acceptFile', "Accept this change");
+				append(acceptBtn, $('.codicon.codicon-check'));
+
+				const acceptHandler = (e: Event) => {
+					e.stopPropagation();
+					if (this._options.onAcceptFile) {
+						this._options.onAcceptFile(change);
+						item.classList.add('accepted');
+					}
+				};
+				acceptBtn.addEventListener('click', acceptHandler);
+				disposables.add({ dispose: () => acceptBtn.removeEventListener('click', acceptHandler) });
+			}
+
+			// Revert 버튼
+			if (this._options.onRevertFile) {
+				const revertBtn = append(buttons, $('button.claude-file-button.revert'));
+				revertBtn.title = localize('revertFile', "Revert this change");
+				append(revertBtn, $('.codicon.codicon-discard'));
+
+				const revertHandler = async (e: Event) => {
+					e.stopPropagation();
+					if (this._options.onRevertFile) {
+						const success = await this._options.onRevertFile(change);
+						if (success) {
+							item.classList.add('reverted');
+							change.reverted = true;
+						}
+					}
+				};
+				revertBtn.addEventListener('click', revertHandler);
+				disposables.add({ dispose: () => revertBtn.removeEventListener('click', revertHandler) });
+			}
+		}
+
+		// 항목 클릭 시 Diff 뷰어 열기
+		if (this._options.onShowFileDiff) {
+			const itemClickHandler = () => {
+				if (this._options.onShowFileDiff) {
+					this._options.onShowFileDiff(change);
+				}
+			};
+			item.addEventListener('click', itemClickHandler);
+			disposables.add({ dispose: () => item.removeEventListener('click', itemClickHandler) });
+		}
 	}
 
 	/**
