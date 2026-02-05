@@ -16,8 +16,23 @@ import {
 	IClaudeAskUserRequest,
 	IClaudeUsageInfo,
 	IClaudeFileChangesSummary,
+	IClaudeFileChange,
 	ChatSessionState
 } from '../../../../common/types/claudeTypes.js';
+
+/**
+ * AssistantMessageRenderer 옵션 인터페이스
+ * 파일 변경사항 관련 콜백들을 포함
+ */
+export interface IAssistantMessageRendererOptions {
+	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
+	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
+	readonly onAcceptFile?: (fileChange: IClaudeFileChange) => void;
+	readonly onRevertAllFiles?: () => Promise<number>;
+	readonly onAcceptAllFiles?: () => void;
+	readonly onRevertSelectedFiles?: (fileChanges: IClaudeFileChange[]) => Promise<number>;
+	readonly onAcceptSelectedFiles?: (fileChanges: IClaudeFileChange[]) => void;
+}
 
 /**
  * 클로드 말풍선 렌더러
@@ -26,6 +41,12 @@ import {
  * - 시스템메시지 (취소, 오류 등)
  */
 export class AssistantMessageRenderer {
+
+	private readonly _options: IAssistantMessageRendererOptions;
+
+	constructor(options?: IAssistantMessageRendererOptions) {
+		this._options = options || {};
+	}
 
 	/**
 	 * 클로드 메시지 렌더링 (상태 기반 동적 렌더링)

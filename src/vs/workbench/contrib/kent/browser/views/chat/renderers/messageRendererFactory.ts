@@ -11,18 +11,19 @@ import {
 	ChatSessionState
 } from '../../../../common/types/claudeTypes.js';
 import { UserMessageRenderer } from './userMessageRenderer.js';
-import { AssistantMessageRenderer } from './assistantMessageRenderer.js';
+import { AssistantMessageRenderer, IAssistantMessageRendererOptions } from './assistantMessageRenderer.js';
+import { IClaudeFileChange } from '../../../../common/types/claudeTypes.js';
 
 export interface IMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string) => void;
 	readonly onRespondToAskUser?: (responses: string[]) => void;
-	readonly onShowFileDiff?: (fileChange: any) => void;
-	readonly onRevertFile?: (fileChange: any) => Promise<boolean>;
+	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
+	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
 	readonly onRevertAllFiles?: () => Promise<number>;
-	readonly onAcceptFile?: (fileChange: any) => void;
+	readonly onAcceptFile?: (fileChange: IClaudeFileChange) => void;
 	readonly onAcceptAllFiles?: () => void;
-	readonly onRevertSelectedFiles?: (fileChanges: any[]) => Promise<number>;
-	readonly onAcceptSelectedFiles?: (fileChanges: any[]) => void;
+	readonly onRevertSelectedFiles?: (fileChanges: IClaudeFileChange[]) => Promise<number>;
+	readonly onAcceptSelectedFiles?: (fileChanges: IClaudeFileChange[]) => void;
 }
 
 /**
@@ -34,10 +35,20 @@ export class MessageRendererFactory {
 	private readonly userRenderer: UserMessageRenderer;
 	private readonly assistantRenderer: AssistantMessageRenderer;
 
-	constructor(_options: IMessageRendererOptions) {
+	constructor(options: IMessageRendererOptions) {
 		this.userRenderer = new UserMessageRenderer();
-		this.assistantRenderer = new AssistantMessageRenderer();
-		// TODO: Pass options to renderers when needed
+
+		// AssistantMessageRenderer에 파일 변경 관련 옵션 전달
+		const assistantOptions: IAssistantMessageRendererOptions = {
+			onShowFileDiff: options.onShowFileDiff,
+			onRevertFile: options.onRevertFile,
+			onAcceptFile: options.onAcceptFile,
+			onRevertAllFiles: options.onRevertAllFiles,
+			onAcceptAllFiles: options.onAcceptAllFiles,
+			onRevertSelectedFiles: options.onRevertSelectedFiles,
+			onAcceptSelectedFiles: options.onAcceptSelectedFiles,
+		};
+		this.assistantRenderer = new AssistantMessageRenderer(assistantOptions);
 	}
 
 	/**
