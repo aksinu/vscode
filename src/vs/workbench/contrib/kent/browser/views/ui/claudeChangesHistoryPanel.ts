@@ -148,20 +148,21 @@ export class ChangesHistoryPanel extends Disposable {
 		const summary = append(this.contentContainer, $('.changes-history-summary'));
 
 		const stats = append(summary, $('.changes-stats'));
-		stats.innerHTML = `
-			<span class="stat-item">
-				<span class="codicon codicon-file"></span>
-				${history.totalFilesChanged} ${localize('filesChanged', "files")}
-			</span>
-			<span class="stat-item additions">
-				<span class="codicon codicon-diff-added"></span>
-				+${history.totalLinesAdded}
-			</span>
-			<span class="stat-item deletions">
-				<span class="codicon codicon-diff-removed"></span>
-				-${history.totalLinesRemoved}
-			</span>
-		`;
+
+		// Files stat
+		const filesStat = append(stats, $('span.stat-item'));
+		append(filesStat, $('.codicon.codicon-file'));
+		filesStat.appendChild(document.createTextNode(` ${history.totalFilesChanged} ${localize('filesChanged', "files")}`));
+
+		// Additions stat
+		const additionsStat = append(stats, $('span.stat-item.additions'));
+		append(additionsStat, $('.codicon.codicon-diff-added'));
+		additionsStat.appendChild(document.createTextNode(` +${history.totalLinesAdded}`));
+
+		// Deletions stat
+		const deletionsStat = append(stats, $('span.stat-item.deletions'));
+		append(deletionsStat, $('.codicon.codicon-diff-removed'));
+		deletionsStat.appendChild(document.createTextNode(` -${history.totalLinesRemoved}`));
 	}
 
 	private renderTimeline(entries: IClaudeChangesHistoryEntry[]): void {

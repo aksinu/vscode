@@ -133,17 +133,13 @@ export class AssistantMessageRenderer {
 		} else if (message.isStreaming || currentState === 'responding') {
 			// 응답 대기 중
 			const waitingElement = append(contentElement, $('.claude-waiting'));
-			waitingElement.innerHTML = `
-				<span class="codicon codicon-loading codicon-modifier-spin"></span>
-				${localize('waitingForResponse', "Thinking...")}
-			`;
+			append(waitingElement, $('.codicon.codicon-loading.codicon-modifier-spin'));
+			waitingElement.appendChild(document.createTextNode(' ' + localize('waitingForResponse', "Thinking...")));
 		} else if (currentState === 'sending') {
 			// 전송 중
 			const sendingElement = append(contentElement, $('.claude-sending'));
-			sendingElement.innerHTML = `
-				<span class="codicon codicon-loading codicon-modifier-spin"></span>
-				${localize('sendingRequest', "Sending request...")}
-			`;
+			append(sendingElement, $('.codicon.codicon-loading.codicon-modifier-spin'));
+			sendingElement.appendChild(document.createTextNode(' ' + localize('sendingRequest', "Sending request...")));
 		}
 	}
 
@@ -248,10 +244,8 @@ export class AssistantMessageRenderer {
 		// 자동 승인된 경우
 		if (askRequest.autoAccepted && askRequest.autoAcceptedOption) {
 			const autoElement = append(askContainer, $('.claude-ask-auto-accepted'));
-			autoElement.innerHTML = `
-				<span class="codicon codicon-check"></span>
-				${localize('autoSelected', "[Auto] Selected: \"{0}\"", askRequest.autoAcceptedOption)}
-			`;
+			append(autoElement, $('.codicon.codicon-check'));
+			autoElement.appendChild(document.createTextNode(' ' + localize('autoSelected', "[Auto] Selected: \"{0}\"", askRequest.autoAcceptedOption)));
 			return;
 		}
 
@@ -291,10 +285,8 @@ export class AssistantMessageRenderer {
 		if (message.workStartTime) {
 			const workTimeElement = append(usageElement, $('.claude-usage-worktime'));
 			const duration = this.calculateWorkDuration(message);
-			workTimeElement.innerHTML = `
-				<span class="codicon codicon-clock"></span>
-				<span>${duration}</span>
-			`;
+			append(workTimeElement, $('.codicon.codicon-clock'));
+			append(workTimeElement, $('span')).textContent = duration;
 		}
 
 		// 토큰 정보
@@ -320,12 +312,13 @@ export class AssistantMessageRenderer {
 
 		// 변경사항 요약
 		const summary = append(changesContainer, $('.claude-file-changes-summary'));
-		summary.innerHTML = `
-			<span class="codicon codicon-files"></span>
-			<span>${fileChanges.filesCreated + fileChanges.filesModified + fileChanges.filesDeleted} files changed</span>
-			<span class="added">+${fileChanges.totalLinesAdded}</span>
-			<span class="removed">-${fileChanges.totalLinesRemoved}</span>
-		`;
+		append(summary, $('.codicon.codicon-files'));
+		const totalFiles = fileChanges.filesCreated + fileChanges.filesModified + fileChanges.filesDeleted;
+		append(summary, $('span')).textContent = `${totalFiles} files changed`;
+		const addedSpan = append(summary, $('span.added'));
+		addedSpan.textContent = `+${fileChanges.totalLinesAdded}`;
+		const removedSpan = append(summary, $('span.removed'));
+		removedSpan.textContent = `-${fileChanges.totalLinesRemoved}`;
 
 		// TODO: 파일 목록, Accept/Reject 버튼들 구현
 	}
@@ -337,16 +330,12 @@ export class AssistantMessageRenderer {
 		const systemContainer = append(container, $('.claude-assistant-system'));
 
 		if (message.isCanceled) {
-			systemContainer.innerHTML = `
-				<span class="codicon codicon-close claude-system-icon"></span>
-				<span class="claude-system-text">${localize('responseCanceled', "Response was canceled by user")}</span>
-			`;
+			append(systemContainer, $('.codicon.codicon-close.claude-system-icon'));
+			append(systemContainer, $('span.claude-system-text')).textContent = localize('responseCanceled', "Response was canceled by user");
 		} else if (message.systemMessage) {
 			const iconClass = this.getSystemMessageIcon(message.systemMessage.type);
-			systemContainer.innerHTML = `
-				<span class="codicon ${iconClass} claude-system-icon"></span>
-				<span class="claude-system-text">${message.systemMessage.message}</span>
-			`;
+			append(systemContainer, $(`.codicon.${iconClass}.claude-system-icon`));
+			append(systemContainer, $('span.claude-system-text')).textContent = message.systemMessage.message;
 		}
 	}
 
@@ -379,9 +368,16 @@ export class AssistantMessageRenderer {
 	private updateTimeDisplay(timeElement: HTMLElement, message: IAssistantMessage, disposables: DisposableStore): void {
 		const baseTime = this.formatTime(message.timestamp);
 
+		const updateTimeContent = (workTime: string) => {
+			clearNode(timeElement);
+			timeElement.appendChild(document.createTextNode(baseTime + ' '));
+			const workTimeSpan = append(timeElement, $('.work-time'));
+			workTimeSpan.textContent = '• ' + workTime;
+		};
+
 		if (message.workStartTime) {
 			const workTime = this.calculateWorkDuration(message);
-			timeElement.innerHTML = `${baseTime} <span class="work-time">• ${workTime}</span>`;
+			updateTimeContent(workTime);
 
 			// 실시간 업데이트 (스트리밍 중일 때)
 			if (message.isStreaming) {
@@ -391,7 +387,7 @@ export class AssistantMessageRenderer {
 						return;
 					}
 					const currentWorkTime = this.calculateWorkDuration(message);
-					timeElement.innerHTML = `${baseTime} <span class="work-time">• ${currentWorkTime}</span>`;
+					updateTimeContent(currentWorkTime);
 				}, 1000);
 
 				disposables.add({ dispose: () => clearInterval(updateInterval) });
@@ -430,25 +426,24 @@ export class AssistantMessageRenderer {
 	private renderTokenInfo(usage: IClaudeUsageInfo, container: HTMLElement): void {
 		const tokensElement = append(container, $('.claude-usage-tokens'));
 
-		// 입력/출력 토큰
-		tokensElement.innerHTML = `
-			<span class="token-item" title="${localize('inputTokens', 'Input tokens')}">
-				<span class="codicon codicon-arrow-right"></span>
-				<span>${this.formatNumber(usage.inputTokens)}</span>
-			</span>
-			<span class="token-item" title="${localize('outputTokens', 'Output tokens')}">
-				<span class="codicon codicon-arrow-left"></span>
-				<span>${this.formatNumber(usage.outputTokens)}</span>
-			</span>
-		`;
+		// 입력 토큰
+		const inputItem = append(tokensElement, $('.token-item'));
+		inputItem.title = localize('inputTokens', 'Input tokens');
+		append(inputItem, $('.codicon.codicon-arrow-right'));
+		append(inputItem, $('span')).textContent = this.formatNumber(usage.inputTokens);
+
+		// 출력 토큰
+		const outputItem = append(tokensElement, $('.token-item'));
+		outputItem.title = localize('outputTokens', 'Output tokens');
+		append(outputItem, $('.codicon.codicon-arrow-left'));
+		append(outputItem, $('span')).textContent = this.formatNumber(usage.outputTokens);
 
 		// 캐시 토큰
 		if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
 			const cacheElement = append(tokensElement, $('.token-item.cache'));
-			cacheElement.innerHTML = `
-				<span class="codicon codicon-database" title="${localize('cacheTokens', 'Cache tokens')}"></span>
-				<span>${this.formatNumber(usage.cacheReadTokens)}</span>
-			`;
+			cacheElement.title = localize('cacheTokens', 'Cache tokens');
+			append(cacheElement, $('.codicon.codicon-database'));
+			append(cacheElement, $('span')).textContent = this.formatNumber(usage.cacheReadTokens);
 		}
 	}
 
