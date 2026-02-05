@@ -57,7 +57,7 @@ class ClaudeTestRunner {
 
   async runAllTests(): Promise<void> {
     console.log('🚀 클로드 메시지큐 시스템 전체 테스트 시작');
-    console.log('=' * 80);
+    console.log('='.repeat(80));
     console.log('📅 실행 시간:', new Date().toLocaleString());
     console.log('🧪 총 테스트 스위트:', this.testSuites.length);
     console.log('');
@@ -79,7 +79,7 @@ class ClaudeTestRunner {
     const categoryTests = this.testSuites.filter(suite => suite.category === category);
 
     console.log(`🧪 ${this.getCategoryName(category)} 테스트 시작`);
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     console.log('📅 실행 시간:', new Date().toLocaleString());
     console.log('🧪 테스트 스위트:', categoryTests.length);
     console.log('');
@@ -109,7 +109,7 @@ class ClaudeTestRunner {
     }
 
     console.log(`🧪 단일 테스트 실행: ${suite.name}`);
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     console.log('📅 실행 시간:', new Date().toLocaleString());
     console.log('');
 
@@ -130,7 +130,7 @@ class ClaudeTestRunner {
   private async runTestSuite(suite: TestSuite): Promise<void> {
     console.log(`\n🧪 [${suite.category.toUpperCase()}] ${suite.name}`);
     console.log(`📝 ${suite.description}`);
-    console.log('─' * 60);
+    console.log('─'.repeat(60));
 
     const startTime = Date.now();
     let success = false;
@@ -171,12 +171,12 @@ class ClaudeTestRunner {
     const failureCount = total - successCount;
     const totalDuration = this.results.reduce((sum, result) => sum + result.duration, 0);
 
-    console.log('\n' + '=' * 80);
+    console.log('\n' + '='.repeat(80));
     console.log('📊 테스트 실행 결과 요약');
     if (category) {
       console.log(`📂 카테고리: ${this.getCategoryName(category)}`);
     }
-    console.log('─' * 80);
+    console.log('─'.repeat(80));
 
     // 전체 통계
     console.log(`\n📈 전체 통계:`);
@@ -230,7 +230,7 @@ class ClaudeTestRunner {
     }
 
     // 최종 판정
-    console.log('\n' + '=' * 80);
+    console.log('\n' + '='.repeat(80));
     if (successCount === total) {
       console.log('🎉 모든 테스트 통과! 클로드 메시지큐 시스템이 올바르게 구현되었습니다.');
       console.log('🚀 시스템이 프로덕션 환경에서 사용할 준비가 되었습니다.');
@@ -238,7 +238,7 @@ class ClaudeTestRunner {
       console.log(`⚠️  ${failureCount}개 테스트 실패. 문제를 해결한 후 다시 테스트해주세요.`);
       console.log('🔧 실패한 테스트를 개별적으로 실행하여 문제를 진단할 수 있습니다.');
     }
-    console.log('=' * 80);
+    console.log('='.repeat(80));
   }
 
   private getCategoryName(category: string): string {
@@ -267,7 +267,7 @@ class ClaudeTestRunner {
 
   listAvailableTests(): void {
     console.log('📋 사용 가능한 테스트 스위트:');
-    console.log('─' * 60);
+    console.log('─'.repeat(60));
 
     const categories = ['core', 'communication', 'integration'] as const;
 
@@ -353,7 +353,7 @@ export function listTests(): void {
  */
 export async function runSmokeTests(): Promise<void> {
   console.log('🔥 스모크 테스트 시작 (핵심 기능만)');
-  console.log('=' * 50);
+  console.log('='.repeat(50));
 
   await testRunner.runTestsByCategory('core');
 }
@@ -363,7 +363,7 @@ export async function runSmokeTests(): Promise<void> {
  */
 export async function runPerformanceTests(): Promise<void> {
   console.log('⚡ 성능 테스트 시작');
-  console.log('=' * 50);
+  console.log('='.repeat(50));
   console.log('⚠️ 성능 테스트는 아직 구현되지 않았습니다.');
   console.log('📋 향후 구현 예정:');
   console.log('   - 대용량 큐 처리 성능');
@@ -414,7 +414,7 @@ if (typeof window === 'undefined') {
     case undefined:
     case 'help':
       console.log('🧪 클로드 메시지큐 테스트 러너');
-      console.log('=' * 40);
+      console.log('='.repeat(40));
       console.log('📋 사용법:');
       console.log('  node testRunner.js <command>');
       console.log('');

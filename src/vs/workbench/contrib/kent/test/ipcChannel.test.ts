@@ -3,8 +3,7 @@
  * Claude 모듈의 Main/Renderer 프로세스 간 IPC 통신을 테스트합니다.
  */
 
-import { Event, Emitter } from '../../../../base/common/event.js';
-import { IDisposable } from '../../../../base/common/lifecycle.js';
+import { Emitter } from '../../../../base/common/event.js';
 
 // Mock 타입 정의
 interface IClaudeCLIStreamEvent {
@@ -576,13 +575,13 @@ async function testUserInputRequest() {
   const clientChannel = new TestChannel(serverChannel);
   const client = new TestClaudeCLIChannelClient(clientChannel);
 
-  let receivedInputRequest = false;
+  let _receivedInputRequest = false;
   let responseReceived = false;
 
   // 이벤트 리스너 등록
   const dataDisposable = client.onDidReceiveData(event => {
     if (event.type === 'input_request') {
-      receivedInputRequest = true;
+      _receivedInputRequest = true;
       console.log(`   📨 [입력 요청] 수신됨`);
     } else if (event.type === 'assistant') {
       responseReceived = true;
@@ -618,7 +617,7 @@ async function testUserInputRequest() {
  */
 async function runAllIPCTests() {
   console.log('🚀 클로드 IPC 채널 통신 테스트 시작');
-  console.log('=' * 60);
+  console.log('='.repeat(60));
 
   try {
     await testBasicIPCommunication();

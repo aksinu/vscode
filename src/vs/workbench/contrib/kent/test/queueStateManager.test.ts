@@ -685,7 +685,7 @@ async function testQueueChangeEvents() {
  */
 async function runAllStateTests() {
   console.log('🚀 클로드 큐 상태 관리 테스트 시작');
-  console.log('=' * 60);
+  console.log('='.repeat(60));
 
   try {
     await testAutomaticQueueProcessing();

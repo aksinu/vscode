@@ -3,8 +3,7 @@
  * Claude CLI의 스트리밍 응답을 받아서 UI에 렌더링하는 과정을 테스트합니다.
  */
 
-import { Event, Emitter } from '../../../../base/common/event.js';
-import { IDisposable } from '../../../../base/common/lifecycle.js';
+import { Emitter } from '../../../../base/common/event.js';
 
 // Mock 타입 정의
 interface IClaudeCLIStreamEvent {
@@ -85,7 +84,7 @@ class TestStreamEventProcessor {
   private _accumulatedContent = '';
   private _currentToolActions = new Map<string, IToolAction>();
   private _isComplete = false;
-  private _usage?: any;
+  // _usage field reserved for future use
 
   constructor(initialMessage: IClaudeMessage) {
     this._currentMessage = { ...initialMessage, isStreaming: true, isComplete: false };
@@ -829,7 +828,7 @@ async function testComplexStreamScenario() {
  */
 async function runAllStreamTests() {
   console.log('🚀 클로드 스트림 이벤트 처리 테스트 시작');
-  console.log('=' * 60);
+  console.log('='.repeat(60));
 
   try {
     await testBasicStreamProcessing();

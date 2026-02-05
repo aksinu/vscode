@@ -474,7 +474,7 @@ async function testConcurrency() {
  */
 async function runAllTests() {
   console.log('🚀 클로드 메시지큐 시스템 테스트 시작');
-  console.log('=' * 60);
+  console.log('='.repeat(60));
 
   try {
     await testBasicQueueOperations();
