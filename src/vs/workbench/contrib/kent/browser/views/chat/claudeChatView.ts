@@ -664,12 +664,11 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.configurationService,
 			{
 				onSubmit: () => this.submitInput(),
-				onFocusChange: (focused) => this.inputFocusedKey.set(focused),
+				onFocusChange: (focused: boolean) => this.inputFocusedKey.set(focused),
 				onContentChange: () => this.autocompleteManager.check(),
-				onPaste: (e) => this.clipboardManager.handlePaste(e),
-				onKeyDown: (keyCode) => this.autocompleteManager.handleKeyDown(keyCode),
-				onSessionStateChanged: (sessionId, hasContent) => this.onSessionInputStateChanged(sessionId, hasContent),
-				registerDisposable: (d) => this._register(d)
+				onPaste: (e: ClipboardEvent) => this.clipboardManager.handlePaste(e),
+				onKeyDown: (keyCode: number) => this.autocompleteManager.handleKeyDown(keyCode),
+				registerDisposable: (d: any) => this._register(d)
 			}
 		));
 

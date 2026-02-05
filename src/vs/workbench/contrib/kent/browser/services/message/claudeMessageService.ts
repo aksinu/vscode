@@ -279,12 +279,10 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 	}
 
 	setQueueDelegates(
-		isStreamingDelegate: (sessionId?: string) => boolean,
-		addToQueueDelegate: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => IClaudeMessage,
-		processQueueDelegate: (sessionId?: string) => Promise<void>
+		isStreamingDelegate: () => boolean,
+		addToSessionQueueDelegate: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => IClaudeMessage
 	): void {
 		this.isStreamingDelegate = isStreamingDelegate;
-		this.addToQueueDelegate = addToQueueDelegate;
-		this.processQueueDelegate = processQueueDelegate;
+		this.addToQueueDelegate = addToSessionQueueDelegate;
 	}
 }

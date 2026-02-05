@@ -77,6 +77,14 @@ export class MultiSessionManager extends Disposable {
 	}
 
 	/**
+	 * 현재 활성 세션 ID 가져오기
+	 */
+	getCurrentSessionId(): string | undefined {
+		const currentSession = this._sessionService.getCurrentSession();
+		return currentSession?.id;
+	}
+
+	/**
 	 * 세션 상태 맵 가져오기 (내부 접근용)
 	 */
 	getSessionStatesMap(): Map<string, ISessionState> {

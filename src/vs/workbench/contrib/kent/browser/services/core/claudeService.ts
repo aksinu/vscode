@@ -259,15 +259,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		// ClaudeMessageService 큐 델리게이트 설정
 		this._messageService.setQueueDelegates(
-			(sessionId?: string) => {
+			() => {
 				// Check if currently streaming
-				if (sessionId) {
-					const sessionState = this._multiSessionManager.getSessionState(sessionId);
-					return sessionState === 'streaming';
-				} else {
-					// Legacy single session
-					return this.getState() === 'streaming';
+				const currentSessionId = this._multiSessionManager.getCurrentSessionId();
+				if (currentSessionId) {
+					const sessionState = this._multiSessionManager.getSessionState(currentSessionId);
+					return sessionState ? sessionState.state === 'streaming' : false;
 				}
+				// Fallback to legacy single session
+				return this.getState() === 'streaming';
 			},
 			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
 				// Add to appropriate queue and return a user message placeholder

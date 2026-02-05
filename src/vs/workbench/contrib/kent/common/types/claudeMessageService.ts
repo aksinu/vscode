@@ -172,4 +172,12 @@ export interface IClaudeMessageService {
 		getCurrentSessionDelegate: () => IClaudeSession | undefined,
 		hasCurrentSessionDelegate: () => boolean
 	): void;
+
+	/**
+	 * 큐 관련 델리게이트 설정
+	 */
+	setQueueDelegates(
+		isStreamingDelegate: () => boolean,
+		addToSessionQueueDelegate: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => IClaudeMessage
+	): void;
 }
