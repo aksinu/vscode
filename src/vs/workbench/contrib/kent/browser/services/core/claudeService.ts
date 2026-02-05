@@ -408,6 +408,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
 					this._state = 'idle';
 					this._uiService.fireStateChange('idle');
+					// 🔧 BUG FIX: 에러 발생 시에도 completeStreaming 호출하여 큐 처리 보장
+					this._chatStateManager.completeStreaming(event.chatId);
 					this._chatStateManager.setError(event.chatId, String(error));
 					this._multiSessionManager.handleSessionError(event.chatId);
 				});
@@ -998,6 +1000,38 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Message updated with ${changesSummary.changes.length} file changes`);
 			}
 		}
+
+		// 🔧 QUEUE SAFETY: 명령 완료 시 큐 처리 보장 (추가 안전장치)
+		this._ensureQueueProcessingAfterComplete();
+	}
+
+	/**
+	 * 큐 처리 안전장치 - 명령 완료 후 큐가 처리되지 않은 경우 재시도
+	 */
+	private _ensureQueueProcessingAfterComplete(): void {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+
+		// 짧은 지연 후 큐 상태 체크 및 재처리
+		setTimeout(() => {
+			const hasQueuedMessages = sessionId
+				? this._queueService.getQueuedMessages(sessionId).length > 0
+				: this._queueService.getQueuedMessages().length > 0;
+
+			if (hasQueuedMessages) {
+				const isIdle = sessionId
+					? this._chatStateManager.getSessionState(sessionId)?.state === 'idle'
+					: this._state === 'idle';
+
+				if (isIdle) {
+					this.logService.info(ClaudeService.LOG_CATEGORY,
+						'🔧 QUEUE SAFETY: Triggering queue processing after command complete');
+					this.processQueue().catch(error => {
+						this.logService.error(ClaudeService.LOG_CATEGORY,
+							'Error in queue safety processing:', error);
+					});
+				}
+			}
+		}, 500); // 500ms 후 체크
 	}
 
 	/**

@@ -13,6 +13,7 @@
 	border: 1px solid var(--vscode-widget-border);
 	border-radius: 8px;
 	border-left: 3px solid var(--vscode-textLink-foreground);
+	user-select: text;
 }
 
 .claude-user-message-header {
@@ -41,12 +42,14 @@
 
 .claude-user-content {
 	margin-bottom: 8px;
+	user-select: text;
 }
 
 .claude-user-text {
 	line-height: 1.6;
 	white-space: pre-wrap;
 	word-break: break-word;
+	user-select: text;
 }
 
 .claude-user-attachments {
@@ -107,6 +110,7 @@
 	border: 1px solid var(--vscode-widget-border);
 	border-radius: 8px;
 	border-left: 3px solid var(--vscode-textLink-activeForeground);
+	user-select: text;
 }
 
 .claude-assistant-message.error {
@@ -148,6 +152,7 @@
 .claude-assistant-content {
 	margin-bottom: 8px;
 	line-height: 1.6;
+	user-select: text;
 }
 
 .claude-error-message {
