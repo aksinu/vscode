@@ -137,6 +137,11 @@ export interface IClaudeService {
 	isAutoAcceptEnabled?(): boolean;
 
 	/**
+	 * 현재 세션이 사용자 응답 대기 중인지 여부 (AskUser)
+	 */
+	isWaitingForUser?(): boolean;
+
+	/**
 	 * 마지막 세션 이어서 시작 (--continue)
 	 */
 	continueLastSession?(): Promise<void>;

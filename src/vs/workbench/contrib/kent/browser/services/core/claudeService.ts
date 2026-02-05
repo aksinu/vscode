@@ -32,7 +32,7 @@ import { IEditorService } from '../../../../../services/editor/common/editorServ
 import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
 
 // Manager imports
-import { ConfigManager, HistoryManager, FileWatcherManager, MultiSessionManager, ChatManager } from './managers/index.js';
+import { ConfigManager, HistoryManager, FileWatcherManager, MultiSessionManager, ChatManager, ChatStateManager } from './managers/index.js';
 
 export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
@@ -47,6 +47,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private readonly _fileWatcherManager: FileWatcherManager;
 	private readonly _multiSessionManager: MultiSessionManager;
 	private readonly _chatManager: ChatManager;
+	private readonly _chatStateManager: ChatStateManager;
 
 	// ========== Legacy 단일 상태 (하위 호환성 + ContextProvider 접근용) ==========
 	private _state: ClaudeServiceState = 'idle';
@@ -141,6 +142,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			logService
 		));
 
+		// ChatStateManager 생성 (중앙 집중식 상태 관리)
+		this._chatStateManager = this._register(new ChatStateManager(logService));
+
 		// ========== 연결 관리자 생성 ==========
 		this._connection = this._register(new ClaudeConnection(mainProcessService, this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Connection manager created');
@@ -159,11 +163,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._queueService,
 			this._configManager,
 			this._multiSessionManager,
-			this._multiConnection
+			this._multiConnection,
+			this._chatStateManager
 		));
 
 		// ========== 델리게이트 설정 ==========
 		this.setupDelegates();
+
+		// QueueService가 ChatStateManager 구독 (상태 기반 큐 처리)
+		this._register(this._queueService.subscribeToStateManager(this._chatStateManager));
 
 		// ========== 이벤트 구독 ==========
 		this.setupEventSubscriptions();
@@ -372,16 +380,20 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				this._cliEventHandler.handleComplete().then(() => {
 					this._state = 'idle';
 					this._uiService.fireStateChange('idle');
+					// ChatStateManager에도 상태 반영
+					this._chatStateManager.completeStreaming(event.chatId);
 				}).catch(error => {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
 					this._state = 'idle';
 					this._uiService.fireStateChange('idle');
+					this._chatStateManager.setError(event.chatId, String(error));
 					this._multiSessionManager.handleSessionError(event.chatId);
 				});
 			} else {
 				// 백그라운드 세션 완료 처리
 				this._multiSessionManager.handleBackgroundSessionComplete(event.chatId);
-				this.processSessionQueue(event.chatId);
+				// ChatStateManager에도 상태 반영 -> 자동 큐 처리 트리거
+				this._chatStateManager.completeStreaming(event.chatId);
 			}
 		}));
 
@@ -399,12 +411,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					this._cliEventHandler.handleError(event.error);
 					this._state = 'idle';
 					this._uiService.fireStateChange('idle');
+					// Rate limit은 별도 상태로 처리
+					this._chatStateManager.startRateLimitWait(event.chatId, 60); // 기본 60초
 				} else {
 					this._multiConnection.setError(event.error);
 					this._cliEventHandler.handleError(event.error);
 					this._state = 'error';
 					this._uiService.fireStateChange('error');
+					this._chatStateManager.setError(event.chatId, event.error);
 				}
+			} else {
+				// 백그라운드 세션 에러
+				this._chatStateManager.setError(event.chatId, event.error);
 			}
 		}));
 	}
@@ -627,7 +645,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	isSessionRunning(sessionId: string): boolean {
-		return !this._multiSessionManager.isSessionIdle(sessionId);
+		// ChatStateManager를 통해 상태 확인
+		return !this._chatStateManager.isInputEnabled(sessionId);
+	}
+
+	isWaitingForUser(): boolean {
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		if (sessionId) {
+			// ChatStateManager를 통해 상태 확인 (중앙 집중)
+			return this._chatStateManager.isWaitingForUser(sessionId);
+		}
+		// Legacy fallback
+		return this._isWaitingForUser;
 	}
 
 	// ========== Queue ==========
@@ -754,7 +783,21 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	async sendMessageToSession(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		if (!this._multiSessionManager.isSessionIdle(sessionId) || this._multiSessionManager.isSessionWaitingForUser(sessionId)) {
+		// ChatStateManager를 통해 상태 확인 (중앙 집중)
+		if (this._chatStateManager.isWaitingForUser(sessionId)) {
+			this.logService.warn(ClaudeService.LOG_CATEGORY, 'Cannot send message while waiting for user response');
+			return {
+				id: generateUuid(),
+				role: 'user',
+				content,
+				timestamp: Date.now(),
+				context: options?.context,
+				queueRejected: true // UI에서 경고 표시용
+			};
+		}
+
+		// 입력 가능 상태가 아니면 큐에 추가
+		if (!this._chatStateManager.canSendMessage(sessionId)) {
 			return this.addToSessionQueue(sessionId, content, options);
 		}
 
@@ -787,27 +830,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		};
 	}
 
-	private async processSessionQueue(sessionId: string): Promise<void> {
-		if (this._multiSessionManager.isSessionProcessingQueue(sessionId) ||
-			this._multiSessionManager.getSessionQueue(sessionId).length === 0) {
-			return;
-		}
-
-		this._multiSessionManager.setSessionProcessingQueue(sessionId, true);
-
-		try {
-			const nextMessage = this._multiSessionManager.getNextFromSessionQueue(sessionId);
-			if (nextMessage) {
-				this.saveSessionQueue(sessionId);
-				this._messageService.fireQueueChange(this._multiSessionManager.getSessionQueue(sessionId));
-				await this._chatManager.sendMessageToSessionInternal(sessionId, nextMessage.content, {
-					context: nextMessage.context
-				});
-			}
-		} finally {
-			this._multiSessionManager.setSessionProcessingQueue(sessionId, false);
-		}
-	}
+	// processSessionQueue는 ChatStateManager의 onDidBecomeIdle 이벤트로 대체됨
+	// QueueService가 자동으로 큐 처리를 시작함
 
 	getSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
 		return this._multiSessionManager.getSessionQueue(sessionId);
@@ -820,11 +844,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	cancelSessionRequest(sessionId: string): void {
 		this._multiConnection.cancelRequest(sessionId);
-		const state = this._multiSessionManager.getSessionState(sessionId);
-		if (state) {
-			state.state = 'idle';
-			this._uiService.fireStateChange(state.state);
-		}
+		// ChatStateManager를 통해 상태 전이
+		this._chatStateManager.cancelRequest(sessionId);
+		this._uiService.fireStateChange('idle');
 	}
 
 	sendUserInputToSession(sessionId: string, input: string): void {

@@ -8,3 +8,4 @@ export { HistoryManager } from './historyManager.js';
 export { FileWatcherManager } from './fileWatcherManager.js';
 export { MultiSessionManager, ISessionState } from './multiSessionManager.js';
 export { ChatManager } from './chatManager.js';
+export { ChatStateManager, ChatState, IChatStateTransition, ISessionChatState } from './chatStateManager.js';

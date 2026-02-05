@@ -32,7 +32,24 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 
 	// ========== 상태 관리 ==========
 	readonly state: IStateContext = {
-		setState: (state: ClaudeServiceState) => this.claudeService.setState(state),
+		setState: (state: ClaudeServiceState) => {
+			// ChatStateManager에도 상태 반영 (중앙 집중 상태 관리)
+			const sessionId = this.claudeService._sessionService.getCurrentSession()?.id;
+			if (sessionId && this.claudeService._chatStateManager) {
+				switch (state) {
+					case 'idle':
+						this.claudeService._chatStateManager.completeStreaming(sessionId);
+						break;
+					case 'streaming':
+						// startStreaming은 messageId가 필요해서 여기서는 호출하지 않음
+						break;
+					case 'error':
+						this.claudeService._chatStateManager.setError(sessionId, 'Unknown error');
+						break;
+				}
+			}
+			this.claudeService.setState(state);
+		},
 		getLocalConfig: () => this.claudeService._localConfig,
 		isAutoAcceptEnabled: () => this.claudeService.isAutoAcceptEnabled()
 	};
@@ -125,10 +142,26 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 			this.claudeService._currentAskUserRequest = request;
 		},
 		isWaitingForUser: () => {
+			// ChatStateManager 우선 사용 (중앙 집중 상태 관리)
+			const sessionId = this.claudeService._sessionService.getCurrentSession()?.id;
+			if (sessionId && this.claudeService._chatStateManager) {
+				return this.claudeService._chatStateManager.isWaitingForUser(sessionId);
+			}
+			// Legacy fallback
 			const sessionState = this.claudeService._sessionService.getCurrentSessionState();
 			return sessionState?.isWaitingForUser ?? this.claudeService._isWaitingForUser;
 		},
 		setWaitingForUser: (waiting) => {
+			// ChatStateManager에 상태 반영 (중앙 집중 상태 관리)
+			const sessionId = this.claudeService._sessionService.getCurrentSession()?.id;
+			if (sessionId && this.claudeService._chatStateManager) {
+				if (waiting) {
+					this.claudeService._chatStateManager.waitForUser(sessionId);
+				} else {
+					this.claudeService._chatStateManager.resumeFromUserResponse(sessionId);
+				}
+			}
+			// Legacy 상태도 동기화
 			const sessionState = this.claudeService._sessionService.getCurrentSessionState();
 			if (sessionState) {
 				sessionState.isWaitingForUser = waiting;

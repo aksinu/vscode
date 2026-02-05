@@ -18,6 +18,7 @@ import { ClaudeContextBuilder } from '../claudeContextBuilder.js';
 import { ClaudeMultiConnection } from '../claudeConnection.js';
 import { ConfigManager } from './configManager.js';
 import { MultiSessionManager } from './multiSessionManager.js';
+import { ChatStateManager } from './chatStateManager.js';
 
 /**
  * ChatManager - 메시지 전송 핵심 로직
@@ -49,7 +50,8 @@ export class ChatManager extends Disposable {
 		private readonly _queueService: IClaudeQueueService,
 		private readonly _configManager: ConfigManager,
 		private readonly _multiSessionManager: MultiSessionManager,
-		private readonly _multiConnection: ClaudeMultiConnection
+		private readonly _multiConnection: ClaudeMultiConnection,
+		private readonly _chatStateManager?: ChatStateManager
 	) {
 		super();
 		this._contextBuilder = new ClaudeContextBuilder();
@@ -141,6 +143,11 @@ export class ChatManager extends Disposable {
 
 		// CLI 호출
 		this._sessionService.setState('streaming');
+		// ChatStateManager에도 상태 반영 (중앙 집중 상태 관리)
+		const sessionId = this._sessionService.getCurrentSession()?.id;
+		if (sessionId && this._chatStateManager) {
+			this._chatStateManager.startStreaming(sessionId, messageId);
+		}
 		this._logService.debug(ChatManager.LOG_CATEGORY, 'State set to streaming, calling CLI...');
 		this._logService.debug(ChatManager.LOG_CATEGORY, 'Sending prompt to CLI:', prompt.substring(0, 100));
 

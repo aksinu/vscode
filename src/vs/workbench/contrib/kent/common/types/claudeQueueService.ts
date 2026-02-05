@@ -4,10 +4,20 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event } from '../../../../../base/common/event.js';
+import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { IClaudeQueuedMessage, IClaudeSendRequestOptions } from './claudeTypes.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 
 export const IClaudeQueueService = createDecorator<IClaudeQueueService>('claudeQueueService');
+
+/**
+ * 상태 관리자 인터페이스 (ChatStateManager 호환)
+ */
+export interface IQueueStateManager {
+	readonly onDidBecomeIdle: Event<string>;
+	isInputEnabled(sessionId: string): boolean;
+	isWaitingForUser(sessionId: string): boolean;
+}
 
 export interface IClaudeQueueService {
 	readonly _serviceBrand: undefined;
@@ -38,4 +48,10 @@ export interface IClaudeQueueService {
 		saveGlobalQueue: (queue: IClaudeQueuedMessage[]) => void,
 		processMessage: (content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => Promise<void>
 	): void;
+
+	/**
+	 * 상태 관리자 구독 설정
+	 * ChatStateManager의 idle 이벤트를 구독하여 자동으로 큐 처리
+	 */
+	subscribeToStateManager(stateManager: IQueueStateManager): IDisposable;
 }

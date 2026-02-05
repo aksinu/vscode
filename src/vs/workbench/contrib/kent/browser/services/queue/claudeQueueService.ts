@@ -4,10 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Emitter, Event } from '../../../../../../base/common/event.js';
-import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { IDisposable } from '../../../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore } from '../../../../../../base/common/lifecycle.js';
 import { IStorageService, StorageScope } from '../../../../../../platform/storage/common/storage.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
-import { IClaudeQueueService } from '../../../common/types/claudeQueueService.js';
+import { IClaudeQueueService, IQueueStateManager } from '../../../common/types/claudeQueueService.js';
 import { IClaudeQueuedMessage, IClaudeSendRequestOptions } from '../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
 
@@ -49,6 +50,11 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 		this._loadQueue();
 	}
 
+	// ========== State Manager ==========
+
+	private _stateManager: IQueueStateManager | undefined;
+	private _stateManagerSubscription: DisposableStore | undefined;
+
 	// ========== Delegate Setup ==========
 
 	setQueueDelegates(
@@ -60,6 +66,49 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 		this._saveGlobalQueue = saveGlobalQueue;
 		this._processMessage = processMessage;
 		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, 'Delegates set');
+	}
+
+	/**
+	 * 상태 관리자 구독 설정
+	 * ChatStateManager의 idle 이벤트를 구독하여 자동으로 큐 처리
+	 */
+	subscribeToStateManager(stateManager: IQueueStateManager): IDisposable {
+		// 기존 구독 정리
+		this._stateManagerSubscription?.dispose();
+		this._stateManagerSubscription = new DisposableStore();
+
+		this._stateManager = stateManager;
+
+		// idle 상태가 되면 자동으로 큐 처리 시작
+		this._stateManagerSubscription.add(
+			stateManager.onDidBecomeIdle(sessionId => {
+				this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
+					`Session became idle, checking queue: ${sessionId}`);
+
+				// WaitingForUser 상태면 큐 처리하지 않음
+				if (stateManager.isWaitingForUser(sessionId)) {
+					this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
+						`Skipping queue processing - waiting for user: ${sessionId}`);
+					return;
+				}
+
+				// 비동기로 큐 처리 시작
+				this.processQueue(sessionId).catch(error => {
+					this.logService.error(ClaudeQueueService.LOG_CATEGORY,
+						`Error processing queue for session ${sessionId}:`, error);
+				});
+			})
+		);
+
+		this.logService.info(ClaudeQueueService.LOG_CATEGORY, 'Subscribed to state manager');
+
+		return {
+			dispose: () => {
+				this._stateManagerSubscription?.dispose();
+				this._stateManagerSubscription = undefined;
+				this._stateManager = undefined;
+			}
+		};
 	}
 
 	// ========== Queue Operations ==========
@@ -209,7 +258,22 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 	async processQueue(sessionId?: string): Promise<void> {
 		const key = sessionId || '__global__';
 		if (this._processingQueues.has(key)) {
+			this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Already processing queue: ${key}`);
 			return;
+		}
+
+		// 상태 관리자가 있으면 입력 가능 상태인지 확인
+		if (sessionId && this._stateManager) {
+			if (!this._stateManager.isInputEnabled(sessionId)) {
+				this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
+					`Session not ready for input, skipping queue: ${sessionId}`);
+				return;
+			}
+			if (this._stateManager.isWaitingForUser(sessionId)) {
+				this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
+					`Waiting for user response, skipping queue: ${sessionId}`);
+				return;
+			}
 		}
 
 		const queue = sessionId ? this._sessionQueues.get(sessionId) : this._globalQueue;
@@ -218,6 +282,7 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 		}
 
 		this._processingQueues.add(key);
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Starting queue processing: ${key}`);
 
 		try {
 			const message = queue.shift();

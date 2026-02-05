@@ -774,6 +774,17 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 
 		try {
+			// Waiting for response 상태 체크 (메시지 전송 전)
+			const currentSessionId = this.claudeService.getCurrentSession()?.id;
+			if (currentSessionId && this.claudeService.isWaitingForUser?.()) {
+				this.notificationService.warn(
+					localize('waitingForResponse', "Please respond to Claude's question first before sending a new message.")
+				);
+				// 입력창에 내용 복원
+				this.sessionInputManager.setValue(content);
+				return;
+			}
+
 			const result = await this.claudeService.sendMessage(content, { context });
 
 			// 큐가 가득 찬 경우 경고
