@@ -212,6 +212,7 @@ export class ClaudeSessionService extends Disposable implements IClaudeSessionSe
 		const currentState = this.getCurrentSessionState();
 		if (currentState) {
 			currentState.toolActions.length = 0;
+			currentState.currentToolAction = undefined;  // 현재 도구 액션도 클리어
 		}
 	}
 

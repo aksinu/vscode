@@ -113,13 +113,15 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 
 	// ========== Queue Operations ==========
 
-	addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeQueuedMessage {
+	addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): { message: IClaudeQueuedMessage; added: boolean } {
 		const message: IClaudeQueuedMessage = {
 			id: generateUuid(),
 			content,
 			context: options?.context,
 			timestamp: Date.now()
 		};
+
+		let added = false;
 
 		if (sessionId) {
 			const queue = this._getOrCreateSessionQueue(sessionId);
@@ -129,6 +131,7 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 				queue.push(message);
 				this._saveSessionQueue?.(sessionId, queue);
 				this._onDidChangeQueue.fire([...queue]);
+				added = true;
 			}
 		} else {
 			if (this._globalQueue.length >= ClaudeQueueService.MAX_QUEUE_SIZE) {
@@ -137,11 +140,12 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 				this._globalQueue.push(message);
 				this._saveGlobalQueue?.(this._globalQueue);
 				this._onDidChangeQueue.fire([...this._globalQueue]);
+				added = true;
 			}
 		}
 
-		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Message added to queue: ${content.substring(0, 50)}`);
-		return message;
+		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Message ${added ? 'added to' : 'rejected from'} queue: ${content.substring(0, 50)}`);
+		return { message, added };
 	}
 
 	addToGlobalQueue(message: IClaudeQueuedMessage): void {
@@ -257,36 +261,45 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 
 	async processQueue(sessionId?: string): Promise<void> {
 		const key = sessionId || '__global__';
+		this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+			`🚀 PROCESS QUEUE - Starting queue processing for: ${key}`);
+
 		if (this._processingQueues.has(key)) {
-			this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Already processing queue: ${key}`);
+			this.logService.info(ClaudeQueueService.LOG_CATEGORY, `⏳ ALREADY PROCESSING - Queue already being processed: ${key}`);
 			return;
 		}
 
 		// 상태 관리자가 있으면 입력 가능 상태인지 확인
 		if (sessionId && this._stateManager) {
 			if (!this._stateManager.isInputEnabled(sessionId)) {
-				this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
-					`Session not ready for input, skipping queue: ${sessionId}`);
+				this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+					`🚫 NOT READY - Session not ready for input, skipping queue: ${sessionId}`);
 				return;
 			}
 			if (this._stateManager.isWaitingForUser(sessionId)) {
-				this.logService.debug(ClaudeQueueService.LOG_CATEGORY,
-					`Waiting for user response, skipping queue: ${sessionId}`);
+				this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+					`⏸️ WAITING - Waiting for user response, skipping queue: ${sessionId}`);
 				return;
 			}
 		}
 
 		const queue = sessionId ? this._sessionQueues.get(sessionId) : this._globalQueue;
 		if (!queue || queue.length === 0) {
+			this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+				`📭 EMPTY QUEUE - No messages to process for: ${key}`);
 			return;
 		}
 
 		this._processingQueues.add(key);
-		this.logService.debug(ClaudeQueueService.LOG_CATEGORY, `Starting queue processing: ${key}`);
+		this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+			`🔥 PROCESSING START - Processing queue: ${key}, messages: ${queue.length}`);
 
 		try {
 			const message = queue.shift();
 			if (message && this._processMessage) {
+				this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+					`📤 PROCESSING MESSAGE - ID: ${message.id}, content: "${message.content.substring(0, 50)}..."`);
+
 				if (sessionId) {
 					this._saveSessionQueue?.(sessionId, queue);
 				} else {
@@ -295,11 +308,18 @@ export class ClaudeQueueService extends Disposable implements IClaudeQueueServic
 				this._onDidChangeQueue.fire([...queue]);
 
 				await this._processMessage(message.content, { context: message.context }, sessionId);
+				this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+					`✅ PROCESSING COMPLETE - Message processed successfully: ${message.id}`);
+			} else {
+				this.logService.error(ClaudeQueueService.LOG_CATEGORY,
+					`❌ PROCESSING ERROR - No message or processMessage handler not set`);
 			}
 		} catch (error) {
-			this.logService.error(ClaudeQueueService.LOG_CATEGORY, 'Error processing queue:', error);
+			this.logService.error(ClaudeQueueService.LOG_CATEGORY, '💥 PROCESSING ERROR - Error processing queue:', error);
 		} finally {
 			this._processingQueues.delete(key);
+			this.logService.info(ClaudeQueueService.LOG_CATEGORY,
+				`🏁 PROCESSING END - Finished processing queue: ${key}`);
 		}
 	}
 

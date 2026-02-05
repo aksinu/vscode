@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IClaudeMessage, IClaudeSendRequestOptions } from '../../../common/types/claudeTypes.js';
+import { IClaudeMessage, IClaudeSendRequestOptions, IAssistantMessage } from '../../../common/types/claudeTypes.js';
 
 /**
  * 프롬프트 컨텍스트 빌더
@@ -60,7 +60,7 @@ export class ClaudeContextBuilder {
 
 		for (const msg of recentMessages) {
 			// 스트리밍 중인 메시지나 에러 메시지 제외
-			if (msg.isStreaming || msg.isError) {
+			if (msg.role === 'assistant' && ((msg as IAssistantMessage).isStreaming || (msg as IAssistantMessage).isError)) {
 				continue;
 			}
 

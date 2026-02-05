@@ -760,10 +760,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			return;
 		}
 
-		// 입력 초기화 (요청 진행 중이면 큐에 추가됨)
-		this.sessionInputManager.clearCurrentSessionState();
-
 		// 컨텍스트: 수동 첨부파일만 포함 (자동 컨텍스트 비활성화)
+		// 중요: clearCurrentSessionState() 호출 전에 첨부파일을 먼저 복사해야 함!
 		let context: { attachments?: IClaudeAttachment[] } | undefined;
 
 		// 첨부파일이 있을 때만 컨텍스트 생성
@@ -773,18 +771,11 @@ export class ClaudeChatViewPane extends ViewPane {
 			};
 		}
 
-		try {
-			// Waiting for response 상태 체크 (메시지 전송 전)
-			const currentSessionId = this.claudeService.getCurrentSession()?.id;
-			if (currentSessionId && this.claudeService.isWaitingForUser?.()) {
-				this.notificationService.warn(
-					localize('waitingForResponse', "Please respond to Claude's question first before sending a new message.")
-				);
-				// 입력창에 내용 복원
-				this.sessionInputManager.setValue(content);
-				return;
-			}
+		// 입력 초기화 (첨부파일 복사 후에 호출)
+		this.sessionInputManager.clearCurrentSessionState();
 
+		try {
+			// 상태 체크는 sendMessage 내부에서 처리 (idle 아니면 큐에 추가)
 			const result = await this.claudeService.sendMessage(content, { context });
 
 			// 큐가 가득 찬 경우 경고

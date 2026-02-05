@@ -11,6 +11,7 @@ import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { basename } from '../../../../../../base/common/resources.js';
+import { encodeBase64 } from '../../../../../../base/common/buffer.js';
 import { localize } from '../../../../../../nls.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
 import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
@@ -62,6 +63,27 @@ export class AttachmentManager extends Disposable {
 	}
 
 	/**
+	 * 이미지 파일 확장자 목록
+	 */
+	private static readonly IMAGE_EXTENSIONS = new Set([
+		'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg'
+	]);
+
+	/**
+	 * 이미지 MIME 타입 매핑
+	 */
+	private static readonly IMAGE_MIME_TYPES: Record<string, string> = {
+		'.png': 'image/png',
+		'.jpg': 'image/jpeg',
+		'.jpeg': 'image/jpeg',
+		'.gif': 'image/gif',
+		'.bmp': 'image/bmp',
+		'.webp': 'image/webp',
+		'.ico': 'image/x-icon',
+		'.svg': 'image/svg+xml'
+	};
+
+	/**
 	 * 파일 첨부 추가
 	 */
 	async addFile(uri: URI): Promise<void> {
@@ -74,6 +96,17 @@ export class AttachmentManager extends Disposable {
 		try {
 			const stat = await this.fileService.stat(uri);
 			const isDirectory = stat.isDirectory;
+			const fileName = basename(uri);
+
+			// 이미지 파일 체크
+			if (!isDirectory) {
+				const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+				if (AttachmentManager.IMAGE_EXTENSIONS.has(ext)) {
+					// 이미지 파일은 별도 처리
+					await this.addImageFromUri(uri, ext);
+					return;
+				}
+			}
 
 			// 파일 내용 읽기 (디렉토리가 아닌 경우)
 			let content: string | undefined;
@@ -96,7 +129,7 @@ export class AttachmentManager extends Disposable {
 				id: generateUuid(),
 				type: isDirectory ? 'folder' : 'file',
 				uri,
-				name: basename(uri),
+				name: fileName,
 				content
 			};
 
@@ -105,6 +138,34 @@ export class AttachmentManager extends Disposable {
 			// 알림 제거 - 첨부 태그가 UI에 표시되므로 별도 알림 불필요
 		} catch (error) {
 			this.notificationService.error(localize('attachError', "Failed to attach file: {0}", (error as Error).message));
+		}
+	}
+
+	/**
+	 * URI에서 이미지 파일 첨부
+	 */
+	private async addImageFromUri(uri: URI, ext: string): Promise<void> {
+		try {
+			const fileContent = await this.fileService.readFile(uri);
+			const base64 = encodeBase64(fileContent.value);
+			const mimeType = AttachmentManager.IMAGE_MIME_TYPES[ext] || 'image/png';
+			const fileName = basename(uri);
+
+			const attachment: IClaudeAttachment = {
+				id: generateUuid(),
+				type: 'image',
+				uri,
+				name: fileName,
+				content: `[Image: ${fileName}] (${Math.round(fileContent.value.byteLength / 1024)}KB)`,
+				imageData: base64,
+				mimeType
+			};
+
+			this._attachments.push(attachment);
+			this.updateUI();
+		} catch (error) {
+			console.error('[AttachmentManager] Failed to add image from URI:', error);
+			this.notificationService.error(localize('imageAttachError', "Failed to attach image: {0}", (error as Error).message));
 		}
 	}
 

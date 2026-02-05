@@ -6,33 +6,29 @@
 import { Emitter, Event } from '../../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
 import { IClaudeLogService } from '../../../../common/claudeLogService.js';
+import { ChatSessionState } from '../../../../common/types/claudeTypes.js';
 
 /**
- * 채팅 상태 타입
- * - idle: 입력 가능 상태
- * - streaming: Claude가 응답 생성 중
- * - waitingForUser: AskUser 대기 중 (사용자 응답 필요)
- * - rateLimit: Rate limit 대기 중
- * - error: 에러 상태
+ * 채팅 상태 관리
+ * 상태 정의는 claudeTypes.ts의 ChatSessionState를 사용
  */
-export type ChatState = 'idle' | 'streaming' | 'waitingForUser' | 'rateLimit' | 'error';
 
 /**
  * 상태 전이 정보
  */
-export interface IChatStateTransition {
+export interface IChatSessionStateTransition {
 	readonly sessionId: string;
-	readonly previousState: ChatState;
-	readonly currentState: ChatState;
+	readonly previousState: ChatSessionState;
+	readonly currentState: ChatSessionState;
 	readonly timestamp: number;
 }
 
 /**
  * 세션별 상태 정보
  */
-export interface ISessionChatState {
+export interface ISessionChatSessionState {
 	readonly sessionId: string;
-	readonly state: ChatState;
+	readonly state: ChatSessionState;
 	readonly currentMessageId?: string;
 	readonly waitingReason?: string;
 	readonly errorMessage?: string;
@@ -40,25 +36,25 @@ export interface ISessionChatState {
 }
 
 /**
- * ChatStateManager - 중앙 집중식 채팅 상태 관리
+ * ChatSessionStateManager - 중앙 집중식 채팅 상태 관리
  *
  * 책임:
- * - 세션별 상태 관리 (idle, streaming, waitingForUser, rateLimit, error)
+ * - 세션별 상태 관리 (idle, sending, responding, asking, rateLimit, error, cancelled)
  * - 상태 전이 이벤트 발행
  * - 상태 조회 API 제공
  *
  * 다른 서비스들은 이 매니저를 구독하여 상태 변경에 반응
  */
-export class ChatStateManager extends Disposable {
+export class ChatSessionStateManager extends Disposable {
 
-	private static readonly LOG_CATEGORY = 'ChatStateManager';
+	private static readonly LOG_CATEGORY = 'ChatSessionStateManager';
 
 	// 세션별 상태 저장
-	private readonly _sessionStates = new Map<string, ISessionChatState>();
+	private readonly _sessionStates = new Map<string, ISessionChatSessionState>();
 
 	// 상태 전이 이벤트
-	private readonly _onDidChangeState = this._register(new Emitter<IChatStateTransition>());
-	readonly onDidChangeState: Event<IChatStateTransition> = this._onDidChangeState.event;
+	private readonly _onDidChangeState = this._register(new Emitter<IChatSessionStateTransition>());
+	readonly onDidChangeState: Event<IChatSessionStateTransition> = this._onDidChangeState.event;
 
 	// idle 상태 진입 이벤트 (큐 처리 트리거용)
 	private readonly _onDidBecomeIdle = this._register(new Emitter<string>());
@@ -79,14 +75,14 @@ export class ChatStateManager extends Disposable {
 	/**
 	 * 세션 상태 조회
 	 */
-	getState(sessionId: string): ChatState {
+	getState(sessionId: string): ChatSessionState {
 		return this._sessionStates.get(sessionId)?.state ?? 'idle';
 	}
 
 	/**
 	 * 세션 상태 정보 전체 조회
 	 */
-	getSessionState(sessionId: string): ISessionChatState | undefined {
+	getSessionState(sessionId: string): ISessionChatSessionState | undefined {
 		return this._sessionStates.get(sessionId);
 	}
 
@@ -110,15 +106,22 @@ export class ChatStateManager extends Disposable {
 	/**
 	 * 사용자 응답 대기 중인지 확인 (AskUser)
 	 */
-	isWaitingForUser(sessionId: string): boolean {
-		return this.getState(sessionId) === 'waitingForUser';
+	isAsking(sessionId: string): boolean {
+		return this.getState(sessionId) === 'asking';
 	}
 
 	/**
-	 * 스트리밍 중인지 확인
+	 * 사용자 응답 대기 중인지 확인 (isAsking의 별칭)
 	 */
-	isStreaming(sessionId: string): boolean {
-		return this.getState(sessionId) === 'streaming';
+	isWaitingForUser(sessionId: string): boolean {
+		return this.getState(sessionId) === 'asking';
+	}
+
+	/**
+	 * 클로드 응답 중인지 확인
+	 */
+	isResponding(sessionId: string): boolean {
+		return this.getState(sessionId) === 'responding';
 	}
 
 	/**
@@ -133,7 +136,7 @@ export class ChatStateManager extends Disposable {
 	/**
 	 * 상태 설정 (범용)
 	 */
-	setState(sessionId: string, newState: ChatState, options?: {
+	setState(sessionId: string, newState: ChatSessionState, options?: {
 		currentMessageId?: string;
 		waitingReason?: string;
 		errorMessage?: string;
@@ -147,7 +150,7 @@ export class ChatStateManager extends Disposable {
 			return;
 		}
 
-		const newSessionState: ISessionChatState = {
+		const newSessionState: ISessionChatSessionState = {
 			sessionId,
 			state: newState,
 			currentMessageId: options?.currentMessageId ?? currentSessionState?.currentMessageId,
@@ -158,11 +161,11 @@ export class ChatStateManager extends Disposable {
 
 		this._sessionStates.set(sessionId, newSessionState);
 
-		this._logService.debug(ChatStateManager.LOG_CATEGORY,
+		this._logService.debug(ChatSessionStateManager.LOG_CATEGORY,
 			`State transition: ${sessionId} [${previousState}] -> [${newState}]`);
 
 		// 상태 전이 이벤트 발행
-		const transition: IChatStateTransition = {
+		const transition: IChatSessionStateTransition = {
 			sessionId,
 			previousState,
 			currentState: newState,
@@ -172,7 +175,7 @@ export class ChatStateManager extends Disposable {
 
 		// idle 상태 진입 시 특별 이벤트 발행 (큐 처리 트리거)
 		if (newState === 'idle' && previousState !== 'idle') {
-			this._logService.debug(ChatStateManager.LOG_CATEGORY,
+			this._logService.debug(ChatSessionStateManager.LOG_CATEGORY,
 				`Session became idle, firing onDidBecomeIdle: ${sessionId}`);
 			this._onDidBecomeIdle.fire(sessionId);
 		}
@@ -189,7 +192,7 @@ export class ChatStateManager extends Disposable {
 	 * 스트리밍 시작
 	 */
 	startStreaming(sessionId: string, messageId: string): void {
-		this.setState(sessionId, 'streaming', { currentMessageId: messageId });
+		this.setState(sessionId, 'responding', { currentMessageId: messageId });
 	}
 
 	/**
@@ -203,15 +206,15 @@ export class ChatStateManager extends Disposable {
 	 * AskUser 대기 상태로 전환
 	 */
 	waitForUser(sessionId: string, reason?: string): void {
-		this.setState(sessionId, 'waitingForUser', { waitingReason: reason });
+		this.setState(sessionId, 'asking', { waitingReason: reason });
 	}
 
 	/**
-	 * 사용자 응답 완료 -> streaming 재개
+	 * 사용자 응답 완료 -> responding 재개
 	 */
 	resumeFromUserResponse(sessionId: string): void {
 		const currentState = this._sessionStates.get(sessionId);
-		this.setState(sessionId, 'streaming', {
+		this.setState(sessionId, 'responding', {
 			currentMessageId: currentState?.currentMessageId
 		});
 	}
@@ -237,10 +240,10 @@ export class ChatStateManager extends Disposable {
 	}
 
 	/**
-	 * Rate limit 완료 -> idle 또는 streaming
+	 * Rate limit 완료 -> idle 또는 responding
 	 */
-	completeRateLimitWait(sessionId: string, resumeStreaming: boolean = false): void {
-		this.setState(sessionId, resumeStreaming ? 'streaming' : 'idle');
+	completeRateLimitWait(sessionId: string, resumeResponding: boolean = false): void {
+		this.setState(sessionId, resumeResponding ? 'responding' : 'idle');
 	}
 
 	/**
@@ -258,9 +261,51 @@ export class ChatStateManager extends Disposable {
 	}
 
 	/**
-	 * 요청 취소 -> idle
+	 * 요청 취소 -> cancelled
 	 */
 	cancelRequest(sessionId: string): void {
+		this.setState(sessionId, 'cancelled');
+	}
+
+	/**
+	 * 사용자가 입력 시작 -> composing
+	 */
+	startComposing(sessionId: string): void {
+		this.setState(sessionId, 'composing');
+	}
+
+	/**
+	 * 사용자가 입력 완료 (텍스트 비움) -> idle
+	 */
+	stopComposing(sessionId: string): void {
+		this.setState(sessionId, 'idle');
+	}
+
+	/**
+	 * 메시지 전송 시작 -> sending
+	 */
+	startSending(sessionId: string, messageId?: string): void {
+		this.setState(sessionId, 'sending', { currentMessageId: messageId });
+	}
+
+	/**
+	 * Claude 응답 시작 -> responding
+	 */
+	startResponding(sessionId: string, messageId?: string): void {
+		this.setState(sessionId, 'responding', { currentMessageId: messageId });
+	}
+
+	/**
+	 * Claude가 사용자 선택 대기 -> asking
+	 */
+	startAsking(sessionId: string, reason?: string): void {
+		this.setState(sessionId, 'asking', { waitingReason: reason });
+	}
+
+	/**
+	 * 취소 상태에서 복구 -> idle
+	 */
+	clearCancelled(sessionId: string): void {
 		this.setState(sessionId, 'idle');
 	}
 
@@ -271,7 +316,7 @@ export class ChatStateManager extends Disposable {
 	 */
 	deleteSession(sessionId: string): void {
 		this._sessionStates.delete(sessionId);
-		this._logService.debug(ChatStateManager.LOG_CATEGORY, `Session deleted: ${sessionId}`);
+		this._logService.debug(ChatSessionStateManager.LOG_CATEGORY, `Session deleted: ${sessionId}`);
 	}
 
 	/**
@@ -279,6 +324,6 @@ export class ChatStateManager extends Disposable {
 	 */
 	reset(): void {
 		this._sessionStates.clear();
-		this._logService.debug(ChatStateManager.LOG_CATEGORY, 'All session states reset');
+		this._logService.debug(ChatSessionStateManager.LOG_CATEGORY, 'All session states reset');
 	}
 }

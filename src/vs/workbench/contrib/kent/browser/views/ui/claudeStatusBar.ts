@@ -55,6 +55,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		this.updateExecutionMethod(status);
 		this.updateUltrathink(status);
 		this.updatePermissionMode();
+		this.updateChatState(status);
 	}
 
 	// ========== Private Methods ==========
@@ -105,6 +106,14 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		const execStatus = append(this.container, $('.claude-status-item.execution'));
 		const execText = append(execStatus, $('.claude-status-text'));
 		execText.textContent = 'CLI';
+
+		// 채팅 상태 표시 (오른쪽)
+		append(this.container, $('.claude-status-separator'));
+
+		const chatStateItem = append(this.container, $('.claude-status-item.chat-state'));
+		append(chatStateItem, $('.claude-status-icon'));  // Icon element (reserved for future use)
+		const chatStateText = append(chatStateItem, $('.claude-status-text'));
+		chatStateText.textContent = 'Idle';
 
 		// 설정 버튼 (오른쪽)
 		const settingsButton = append(this.container, $('button.claude-status-settings'));
@@ -200,6 +209,56 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 				if (icon) icon.textContent = '○';
 				if (text) text.textContent = 'Default';
 				this.permissionModeButton.title = localize('permissionModeDefault', "Default mode - Click to switch to Plan");
+				break;
+		}
+	}
+
+	private updateChatState(status: IClaudeStatusInfo): void {
+		const chatStateItem = this.container.querySelector('.claude-status-item.chat-state');
+		if (!chatStateItem) return;
+
+		const icon = chatStateItem.querySelector('.claude-status-icon');
+		const text = chatStateItem.querySelector('.claude-status-text');
+
+		// 모든 상태 클래스 제거
+		icon?.classList.remove('idle', 'sending', 'responding', 'asking', 'rateLimit', 'error', 'cancelled');
+
+		if (!status.chatState) {
+			// chatState가 없으면 idle로 처리
+			if (icon) icon.classList.add('idle');
+			if (text) text.textContent = 'Idle';
+			return;
+		}
+
+		// 상태에 따라 아이콘과 텍스트 업데이트
+		switch (status.chatState) {
+			case 'idle':
+				if (icon) icon.classList.add('idle');
+				if (text) text.textContent = 'Idle';
+				break;
+			case 'sending':
+				if (icon) icon.classList.add('sending');
+				if (text) text.textContent = 'Sending...';
+				break;
+			case 'responding':
+				if (icon) icon.classList.add('responding');
+				if (text) text.textContent = 'Claude responding...';
+				break;
+			case 'asking':
+				if (icon) icon.classList.add('asking');
+				if (text) text.textContent = 'Waiting for choice...';
+				break;
+			case 'rateLimit':
+				if (icon) icon.classList.add('rateLimit');
+				if (text) text.textContent = 'Rate limited';
+				break;
+			case 'error':
+				if (icon) icon.classList.add('error');
+				if (text) text.textContent = 'Error';
+				break;
+			case 'cancelled':
+				if (icon) icon.classList.add('cancelled');
+				if (text) text.textContent = 'Cancelled';
 				break;
 		}
 	}

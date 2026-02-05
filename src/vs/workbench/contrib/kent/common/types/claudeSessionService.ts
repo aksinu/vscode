@@ -13,6 +13,7 @@ export interface ISessionState {
 	accumulatedContent: string | undefined;
 	isWaitingForUser: boolean;
 	toolActions: IClaudeToolAction[];
+	currentToolAction?: IClaudeToolAction;
 	waitingMessageIds: Set<string>;
 	pendingRequests: IClaudeQueuedMessage[];
 	cliSessionId: string | undefined;

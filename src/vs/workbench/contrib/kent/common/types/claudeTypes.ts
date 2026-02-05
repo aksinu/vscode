@@ -252,30 +252,76 @@ export interface IClaudeUsageInfo {
 /**
  * Claude 메시지
  */
-export interface IClaudeMessage {
+/**
+ * 기본 메시지 인터페이스 (공통 필드)
+ */
+export interface IClaudeMessageBase {
 	readonly id: string;
 	readonly role: ClaudeMessageRole;
 	readonly content: string;
 	readonly timestamp: number;
+	/** 프로젝트 자체에서 추가되는 시스템 메시지 (취소, 오류 등) */
+	readonly systemMessage?: ISystemMessage;
+}
+
+/**
+ * 사용자 메시지 (개발자 말풍선)
+ */
+export interface IUserMessage extends IClaudeMessageBase {
+	readonly role: 'user';
+	/** 기존 컨텍스트 (레거시) */
 	readonly context?: IClaudeContext;
+	/** 첨부파일 리스트 */
+	readonly attachments?: IClaudeAttachment[];
+	/** 파일 변경사항 */
+	readonly fileChanges?: IClaudeFileChangesSummary;
+	/** 큐 거부됨 */
+	readonly queueRejected?: boolean;
+}
+
+/**
+ * 클로드 메시지 (클로드 말풍선) - 상태에 따라 동적 내용
+ */
+export interface IAssistantMessage extends IClaudeMessageBase {
+	readonly role: 'assistant';
 	readonly isStreaming?: boolean;
 	readonly isError?: boolean;
-	readonly toolActions?: IClaudeToolAction[];
+	/** 현재 실행 중인 툴 */
 	readonly currentToolAction?: IClaudeToolAction;
+	/** 완료된 툴 액션들 */
+	readonly toolActions?: IClaudeToolAction[];
+	/** 사용자 질문 (Ask) */
 	readonly askUserRequest?: IClaudeAskUserRequest;
 	readonly isWaitingForUser?: boolean;
-	/** 토큰 사용량 (assistant 메시지에만 해당) */
+	/** 토큰 사용량 */
 	readonly usage?: IClaudeUsageInfo;
-	/** 파일 변경사항 (assistant 메시지, 완료 후) */
+	/** 파일 변경사항 */
 	readonly fileChanges?: IClaudeFileChangesSummary;
-	/** 큐가 가득 차서 거부됨 */
+	/** 큐 거부됨 */
 	readonly queueRejected?: boolean;
-	/** 작업 시작 시간 (assistant 메시지, 스트리밍 시작할 때 설정) */
+	/** 작업 시작/완료 시간 */
 	readonly workStartTime?: number;
-	/** 작업 완료 시간 (assistant 메시지, 스트리밍 완료할 때 설정) */
 	readonly workEndTime?: number;
-	/** 첨부 파일들 (user 메시지) */
-	readonly attachments?: IClaudeAttachment[];
+	/** 사용자에 의한 취소 */
+	readonly isCanceled?: boolean;
+	readonly cancelTime?: number;
+}
+
+/**
+ * 통합 메시지 타입 (기존 호환성 유지)
+ */
+export type IClaudeMessage = IUserMessage | IAssistantMessage;
+
+/**
+ * 프로젝트 시스템 메시지
+ */
+export interface ISystemMessage {
+	readonly id: string;
+	readonly type: 'cancel' | 'error' | 'timeout' | 'queue-rejected' | 'rate-limit' | 'connection-lost';
+	readonly message: string;
+	readonly timestamp: number;
+	/** 추가 데이터 */
+	readonly data?: Record<string, any>;
 }
 
 /**
@@ -332,9 +378,22 @@ export interface IClaudeCodeReference {
 }
 
 /**
- * Claude 서비스 상태
+ * Claude 서비스 상태 (레거시)
  */
 export type ClaudeServiceState = 'idle' | 'sending' | 'streaming' | 'error';
+
+/**
+ * 채팅 세션의 상태 (채팅 입력창 제외)
+ */
+export type ChatSessionState =
+	| 'idle'          // 클로드가 일하지 않는 상태
+	| 'composing'     // 사용자가 입력 중
+	| 'sending'       // 메시지 전송 중
+	| 'responding'    // 클로드 응답 중 (스트리밍)
+	| 'asking'        // 클로드가 사용자 선택 대기 중
+	| 'rateLimit'     // Rate limit 대기 중
+	| 'error'         // 에러 상태
+	| 'cancelled';    // 응답 취소됨
 
 /**
  * Claude 설정
@@ -410,6 +469,7 @@ export interface IClaudeStatusInfo {
 	readonly lastConnected?: number;
 	readonly error?: string;
 	readonly version?: string;
+	readonly chatState?: ChatSessionState;  // 현재 채팅 세션 상태
 }
 
 /**

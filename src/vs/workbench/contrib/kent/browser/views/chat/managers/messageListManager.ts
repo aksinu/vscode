@@ -6,7 +6,7 @@
 import { $, append } from '../../../../../../../base/browser/dom.js';
 import { DisposableStore } from '../../../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../../../nls.js';
-import { IClaudeMessage } from '../../../../common/types/claudeTypes.js';
+import { IClaudeMessage, IAssistantMessage } from '../../../../common/types/claudeTypes.js';
 import { ClaudeMessageRenderer } from '../claudeMessageRenderer.js';
 
 /**
@@ -39,7 +39,7 @@ export class MessageListManager {
 		messageContainer.dataset.timestamp = String(message.timestamp);
 
 		// 스트리밍 상태에 따라 클래스 토글
-		if (message.isStreaming) {
+		if (message.role === 'assistant' && (message as IAssistantMessage).isStreaming) {
 			messageContainer.classList.add('streaming');
 		}
 
@@ -92,7 +92,7 @@ export class MessageListManager {
 		}
 
 		// 스트리밍 상태에 따라 클래스 토글 (애니메이션 제어)
-		existingContainer.classList.toggle('streaming', !!message.isStreaming);
+		existingContainer.classList.toggle('streaming', message.role === 'assistant' && !!(message as IAssistantMessage).isStreaming);
 
 		// 기존 disposables 정리
 		const oldDisposables = this.messageDisposables.get(message.id);
@@ -113,7 +113,7 @@ export class MessageListManager {
 		this.messageDisposables.set(message.id, disposables);
 
 		// 스트리밍 중이거나 파일 변경사항이 있으면 스크롤
-		if (message.isStreaming || message.fileChanges) {
+		if ((message.role === 'assistant' && (message as IAssistantMessage).isStreaming) || message.fileChanges) {
 			this.scrollToBottom();
 		}
 	}

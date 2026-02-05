@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
+import { Emitter, Event } from '../../../../../../../base/common/event.js';
 import { generateUuid } from '../../../../../../../base/common/uuid.js';
 import { IClaudeCLIStreamEvent } from '../../../../common/claudeCLI.js';
 import { IClaudeSessionService } from '../../../../common/types/claudeSessionService.js';
@@ -37,6 +38,10 @@ export class MultiSessionManager extends Disposable {
 
 	// 세션 상태 관리 (멀티 세션)
 	private readonly _sessionStates = new Map<string, ISessionState>();
+
+	// 이벤트 에미터
+	private readonly _onDidBecomeIdle = this._register(new Emitter<string>());
+	public readonly onDidBecomeIdle: Event<string> = this._onDidBecomeIdle.event;
 
 	constructor(
 		private readonly _sessionService: IClaudeSessionService,
@@ -206,6 +211,9 @@ export class MultiSessionManager extends Disposable {
 		sessionState.isWaitingForUser = false;
 		sessionState.currentMessageId = undefined;
 		this._logService.debug(MultiSessionManager.LOG_CATEGORY, `Background session state reset to idle: ${sessionId}`);
+
+		// idle 상태 이벤트 발생
+		this._onDidBecomeIdle.fire(sessionId);
 	}
 
 	/**
@@ -217,6 +225,9 @@ export class MultiSessionManager extends Disposable {
 			sessionState.state = 'idle';
 			sessionState.isWaitingForUser = false;
 			this._logService.debug(MultiSessionManager.LOG_CATEGORY, `Session state reset to idle after error: ${sessionId}`);
+
+			// idle 상태 이벤트 발생
+			this._onDidBecomeIdle.fire(sessionId);
 		}
 	}
 
@@ -309,5 +320,12 @@ export class MultiSessionManager extends Disposable {
 		if (state) {
 			state.isProcessingQueue = processing;
 		}
+	}
+
+	/**
+	 * 세션이 idle 상태가 되었음을 알림
+	 */
+	notifySessionBecameIdle(sessionId: string): void {
+		this._onDidBecomeIdle.fire(sessionId);
 	}
 }

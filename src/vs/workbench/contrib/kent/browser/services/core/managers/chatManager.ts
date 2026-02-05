@@ -11,14 +11,14 @@ import { IClaudeSessionService } from '../../../../common/types/claudeSessionSer
 import { IClaudeMessageService } from '../../../../common/types/claudeMessageService.js';
 import { IClaudeFileService } from '../../../../common/types/claudeFileService.js';
 import { IClaudeUIService } from '../../../../common/types/claudeUIService.js';
-import { IClaudeMessage, IClaudeSendRequestOptions, resolveModelName } from '../../../../common/types/claudeTypes.js';
+import { IClaudeMessage, IAssistantMessage, IClaudeSendRequestOptions, resolveModelName } from '../../../../common/types/claudeTypes.js';
 import { IClaudeLogService } from '../../../../common/claudeLogService.js';
 import { IClaudeQueueService } from '../../../../common/types/claudeQueueService.js';
 import { ClaudeContextBuilder } from '../claudeContextBuilder.js';
 import { ClaudeMultiConnection } from '../claudeConnection.js';
 import { ConfigManager } from './configManager.js';
 import { MultiSessionManager } from './multiSessionManager.js';
-import { ChatStateManager } from './chatStateManager.js';
+import { ChatSessionStateManager as ChatStateManager } from './chatStateManager.js';
 
 /**
  * ChatManager - 메시지 전송 핵심 로직
@@ -65,6 +65,42 @@ export class ChatManager extends Disposable {
 			this._sessionService.startNewSession();
 		}
 
+		// 상태 기반 전송/큐 처리
+		const queueSessionId = this._sessionService.getCurrentSession()?.id;
+		if (queueSessionId && this._chatStateManager) {
+			const currentState = this._chatStateManager.getState(queueSessionId);
+
+			// 현재 상태가 idle이 아니면 메시지를 큐에 추가
+			if (!this._chatStateManager.canSendMessage(queueSessionId)) {
+				this._logService.info(ChatManager.LOG_CATEGORY, `📬 MESSAGE QUEUED - Current state: ${currentState}, queuing message`);
+				const { message: queuedMessage, added } = this._queueService.addToQueue(content, options, queueSessionId);
+
+				if (added) {
+					// 큐에 성공적으로 추가됨 - queueRejected: false
+					return {
+						id: queuedMessage.id,
+						role: 'user' as const,
+						content: content,
+						attachments: options?.context?.attachments,
+						timestamp: Date.now(),
+						queueRejected: false  // 큐에 추가됨, 거부 아님
+					};
+				} else {
+					// 큐가 가득 차서 거부됨
+					return {
+						id: queuedMessage.id,
+						role: 'user' as const,
+						content: content,
+						attachments: options?.context?.attachments,
+						timestamp: Date.now(),
+						queueRejected: true  // 큐 거부됨
+					};
+				}
+			}
+
+			this._logService.info(ChatManager.LOG_CATEGORY, `📤 DIRECT SEND - Current state: ${currentState}, sending directly`);
+		}
+
 		// --continue 플래그 감지 (텍스트 또는 버튼)
 		let continueLastSession = this._continueMode;
 		let actualContent = content;
@@ -101,7 +137,9 @@ export class ChatManager extends Disposable {
 			role: 'user',
 			content,
 			timestamp: Date.now(),
-			context: options?.context
+			context: options?.context,
+			// 첨부파일을 별도 필드로도 저장 (UI 렌더링용)
+			attachments: options?.context?.attachments
 		};
 
 		this._sessionService.addMessage(userMessage);
@@ -141,14 +179,18 @@ export class ChatManager extends Disposable {
 		this._sessionService.addMessage(assistantMessage);
 		this._messageService.fireMessageReceive(assistantMessage);
 
-		// CLI 호출
-		this._sessionService.setState('streaming');
-		// ChatStateManager에도 상태 반영 (중앙 집중 상태 관리)
-		const sessionId = this._sessionService.getCurrentSession()?.id;
-		if (sessionId && this._chatStateManager) {
-			this._chatStateManager.startStreaming(sessionId, messageId);
+		// 메시지 전송 시작 - sending 상태로 전이
+		const sendingSessionId = this._sessionService.getCurrentSession()?.id;
+		if (sendingSessionId && this._chatStateManager) {
+			this._chatStateManager.startSending(sendingSessionId, messageId);
 		}
-		this._logService.debug(ChatManager.LOG_CATEGORY, 'State set to streaming, calling CLI...');
+
+		// CLI 호출 - responding 상태로 전이
+		this._sessionService.setState('streaming');
+		if (sendingSessionId && this._chatStateManager) {
+			this._chatStateManager.startResponding(sendingSessionId, messageId);
+		}
+		this._logService.debug(ChatManager.LOG_CATEGORY, 'State set to responding, calling CLI...');
 		this._logService.debug(ChatManager.LOG_CATEGORY, 'Sending prompt to CLI:', prompt.substring(0, 100));
 
 		try {
@@ -167,15 +209,15 @@ export class ChatManager extends Disposable {
 			const cliOptions = this.buildCLIOptions(options, continueLastSession);
 
 			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
-			const sessionId = this._sessionService.getCurrentSession()?.id;
-			if (!sessionId) {
+			const currentSessionId = this._sessionService.getCurrentSession()?.id;
+			if (!currentSessionId) {
 				throw new Error('No active session');
 			}
 
-			this._logService.debug(ChatManager.LOG_CATEGORY, 'Using multi-session sendPrompt for sessionId:', sessionId);
+			this._logService.debug(ChatManager.LOG_CATEGORY, 'Using multi-session sendPrompt for sessionId:', currentSessionId);
 			const timeoutMs = 15 * 60 * 1000; // 15분
 			await Promise.race([
-				this._multiConnection.sendPrompt(sessionId, prompt, cliOptions),
+				this._multiConnection.sendPrompt(currentSessionId, prompt, cliOptions),
 				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 15 minutes')), timeoutMs))
 			]);
 			this._logService.debug(ChatManager.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
@@ -191,17 +233,33 @@ export class ChatManager extends Disposable {
 			};
 
 			// 스트리밍 완료 후 큐에 대기중인 메시지 처리
-			this._logService.debug(ChatManager.LOG_CATEGORY, 'Streaming completed, processing queue...');
-			this._queueService.processQueue(sessionId);
+			this._logService.info(ChatManager.LOG_CATEGORY, `🎯 STREAMING COMPLETED for session ${currentSessionId}, checking queue...`);
+
+			// 큐에 대기중인 메시지가 있는지 확인
+			const queuedMessages = this._queueService.getQueuedMessages(currentSessionId);
+			this._logService.info(ChatManager.LOG_CATEGORY,
+				`🔍 QUEUE CHECK - Session: ${currentSessionId}, Queue length: ${queuedMessages.length}`);
+			if (queuedMessages.length > 0) {
+				this._logService.info(ChatManager.LOG_CATEGORY,
+					`⚡ PROCESSING QUEUE - Found ${queuedMessages.length} messages, starting queue processing...`);
+				this._queueService.processQueue(currentSessionId);
+			} else {
+				this._logService.info(ChatManager.LOG_CATEGORY, `✅ NO QUEUE - No messages in queue for session ${currentSessionId}`);
+			}
 
 			return finalMessage;
 		} catch (error) {
 			this._logService.error(ChatManager.LOG_CATEGORY, 'sendPrompt error:', error);
 
 			// 타임아웃 에러 시 세션 상태 복구
-			const sessionId = this._sessionService.getCurrentSession()?.id;
-			if (sessionId) {
-				this._multiSessionManager.handleSessionError(sessionId);
+			const errorSessionId = this._sessionService.getCurrentSession()?.id;
+			if (errorSessionId) {
+				this._multiSessionManager.handleSessionError(errorSessionId);
+
+				// ChatStateManager에도 에러 상태 반영
+				if (this._chatStateManager) {
+					this._chatStateManager.setError(errorSessionId, error instanceof Error ? error.message : String(error));
+				}
 			}
 			this._sessionService.setState('idle');
 			this._uiService.fireStateChange('idle');
@@ -334,6 +392,48 @@ export class ChatManager extends Disposable {
 	}
 
 	/**
+	 * 멀티세션 요청 취소
+	 */
+	cancelSessionRequest(sessionId: string): void {
+		this._multiConnection.cancelRequest(sessionId);
+
+		// 세션 상태 가져오기
+		const sessionState = this._sessionService.getSessionState(sessionId);
+
+		// 현재 스트리밍 중인 메시지 업데이트
+		if (sessionState.currentMessageId) {
+			const session = this._sessionService.getSessionById(sessionId);
+			if (session) {
+				const message = session.messages.find((m: IClaudeMessage) => m.id === sessionState.currentMessageId);
+				if (message && message.role === 'assistant' && message.isStreaming) {
+					// 취소된 메시지로 업데이트
+					const updatedMessage: IAssistantMessage = {
+						...message,
+						isStreaming: false,
+						currentToolAction: undefined,
+						workEndTime: Date.now(),
+						isCanceled: true,
+						cancelTime: Date.now()
+					};
+					if (this._sessionService.updateMessage(updatedMessage)) {
+						this._messageService.fireMessageUpdate(updatedMessage);
+					}
+				}
+			}
+		}
+
+		// 세션 상태 정리
+		sessionState.state = 'idle';
+		sessionState.currentMessageId = undefined;
+		sessionState.accumulatedContent = '';
+
+		// ChatStateManager에도 상태 반영
+		if (this._chatStateManager) {
+			this._chatStateManager.cancelRequest(sessionId);
+		}
+	}
+
+	/**
 	 * 요청 취소
 	 */
 	cancelRequest(): void {
@@ -349,13 +449,15 @@ export class ChatManager extends Disposable {
 				const currentSession = this._sessionService.getCurrentSession();
 				if (currentSession) {
 					const message = currentSession.messages.find(m => m.id === sessionState.currentMessageId);
-					if (message && message.isStreaming) {
+					if (message && message.role === 'assistant' && message.isStreaming) {
 						// 취소 시 도구 상태도 정리하여 "진행 중" 표시 제거
-						const updatedMessage: IClaudeMessage = {
+						const updatedMessage: IAssistantMessage = {
 							...message,
 							isStreaming: false,
 							currentToolAction: undefined,
-							workEndTime: Date.now()
+							workEndTime: Date.now(),
+							isCanceled: true,
+							cancelTime: Date.now()
 						};
 						if (this._sessionService.updateMessage(updatedMessage)) {
 							this._messageService.fireMessageUpdate(updatedMessage);
@@ -369,6 +471,14 @@ export class ChatManager extends Disposable {
 			sessionState.currentMessageId = undefined;
 			sessionState.accumulatedContent = '';
 			this._sessionService.clearToolActions();
+
+			// ChatStateManager에도 상태 반영 (중앙 집중 상태 관리)
+			if (this._chatStateManager) {
+				this._chatStateManager.completeStreaming(sessionId);
+			}
+
+			// idle 상태 이벤트 발생 (MultiSessionManager 방식 - 레거시)
+			this._multiSessionManager.notifySessionBecameIdle(sessionId);
 		}
 
 		// Legacy 상태 초기화

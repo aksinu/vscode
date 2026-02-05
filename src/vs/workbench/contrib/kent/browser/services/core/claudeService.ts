@@ -272,16 +272,26 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				const currentSessionId = this._multiSessionManager.getCurrentSessionId();
 				if (currentSessionId) {
 					const sessionState = this._multiSessionManager.getSessionState(currentSessionId);
-					return sessionState ? sessionState.state === 'streaming' : false;
+					const isStreaming = sessionState ? sessionState.state === 'streaming' : false;
+					this.logService.info(ClaudeService.LOG_CATEGORY,
+						`🔍 STREAMING CHECK - Session: ${currentSessionId}, isStreaming: ${isStreaming}, state: ${sessionState?.state}, sessionState: ${JSON.stringify(sessionState)}`);
+					return isStreaming;
 				}
 				// Fallback to legacy single session
-				return this.getState() === 'streaming';
+				const legacyStreaming = this.getState() === 'streaming';
+				this.logService.info(ClaudeService.LOG_CATEGORY,
+					`🔍 STREAMING CHECK - No current session, legacy streaming: ${legacyStreaming}, current state: ${this.getState()}`);
+				return legacyStreaming;
 			},
 			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
 				// Add to appropriate queue and return a user message placeholder
 				if (sessionId) {
+					this.logService.info(ClaudeService.LOG_CATEGORY,
+						`📥 QUEUE ADD - Adding message to session queue (${sessionId}): "${content.substring(0, 50)}..."`);
 					const queuedMessage = this._multiSessionManager.addToSessionQueue(sessionId, content, options, ClaudeService.MAX_QUEUE_SIZE);
 					if (queuedMessage) {
+						this.logService.info(ClaudeService.LOG_CATEGORY,
+							`✅ QUEUE SUCCESS - Message added to session queue: ${queuedMessage.id}`);
 						// Return a user message placeholder for immediate UI display
 						return {
 							id: queuedMessage.id,
@@ -291,18 +301,30 @@ export class ClaudeService extends Disposable implements IClaudeService {
 							context: options?.context,
 							isQueued: true
 						};
+					} else {
+						this.logService.error(ClaudeService.LOG_CATEGORY,
+							`❌ QUEUE FAILED - Failed to add message to session queue (${sessionId})`);
 					}
 				} else {
-					const queuedMessage = this._queueService.addToQueue(content, options);
-					// Return a user message placeholder for immediate UI display
-					return {
-						id: queuedMessage.id,
-						role: 'user' as const,
-						content,
-						timestamp: queuedMessage.timestamp,
-						context: options?.context,
-						isQueued: true
-					};
+					this.logService.info(ClaudeService.LOG_CATEGORY,
+						`📥 QUEUE ADD - Adding message to global queue: "${content.substring(0, 50)}..."`);
+					const { message: queuedMessage, added } = this._queueService.addToQueue(content, options);
+					if (added) {
+						this.logService.info(ClaudeService.LOG_CATEGORY,
+							`✅ QUEUE SUCCESS - Message added to global queue: ${queuedMessage.id}`);
+						// Return a user message placeholder for immediate UI display
+						return {
+							id: queuedMessage.id,
+							role: 'user' as const,
+							content,
+							timestamp: queuedMessage.timestamp,
+							context: options?.context,
+							isQueued: true
+						};
+					} else {
+						this.logService.error(ClaudeService.LOG_CATEGORY,
+							`❌ QUEUE FAILED - Global queue full, message rejected`);
+					}
 				}
 
 				// Fallback: create a temporary user message
@@ -531,10 +553,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// ========== Chat (ChatManager로 위임) ==========
 
 	async sendMessage(content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
+		// 새 메시지 전송 시 이전 도구 액션 상태 클리어
+		this._currentToolAction = undefined;
+		this._uiService.fireToolActionChange(undefined);
+
 		return this._messageService.sendMessage(content, options);
 	}
 
 	cancelRequest(): void {
+		// 도구 액션 상태 클리어 (취소 시 이전 도구 UI가 남지 않도록)
+		this._currentToolAction = undefined;
+		this._uiService.fireToolActionChange(undefined);
+
 		this._chatManager.cancelRequest();
 	}
 
@@ -843,9 +873,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	cancelSessionRequest(sessionId: string): void {
-		this._multiConnection.cancelRequest(sessionId);
-		// ChatStateManager를 통해 상태 전이
-		this._chatStateManager.cancelRequest(sessionId);
+		// ChatManager를 통해 취소 (메시지 상태 업데이트 포함)
+		this._chatManager.cancelSessionRequest(sessionId);
 		this._uiService.fireStateChange('idle');
 	}
 

@@ -3,6 +3,374 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+/* ==================== 새로운 말풍선 구조 V2 ==================== */
+
+/* 개발자 말풍선 (User Message) */
+.claude-user-message {
+	margin-bottom: 16px;
+	padding: 12px;
+	background-color: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	border-left: 3px solid var(--vscode-textLink-foreground);
+}
+
+.claude-user-message-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-user-icon {
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-user-role {
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.claude-user-time {
+	margin-left: auto;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-user-content {
+	margin-bottom: 8px;
+}
+
+.claude-user-text {
+	line-height: 1.6;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.claude-user-attachments {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.claude-user-attachments-header {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-bottom: 6px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-user-attachments-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.claude-user-attachment-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: default;
+}
+
+.claude-attachment-icon {
+	font-size: 10px;
+}
+
+.claude-user-system-message {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 8px;
+	padding: 6px 8px;
+	background-color: var(--vscode-inputValidation-warningBackground);
+	border: 1px solid var(--vscode-inputValidation-warningBorder);
+	border-radius: 4px;
+	font-size: 12px;
+	color: var(--vscode-inputValidation-warningForeground);
+}
+
+/* 클로드 말풍선 (Assistant Message) */
+.claude-assistant-message {
+	margin-bottom: 16px;
+	padding: 12px;
+	background-color: var(--vscode-panel-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	border-left: 3px solid var(--vscode-textLink-activeForeground);
+}
+
+.claude-assistant-message.error {
+	border-left-color: var(--vscode-errorForeground);
+}
+
+.claude-assistant-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 12px;
+}
+
+.claude-assistant-icon {
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.claude-assistant-role {
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.claude-assistant-state {
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+}
+
+.claude-assistant-time {
+	margin-left: auto;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-assistant-time .work-time {
+	color: var(--vscode-textLink-foreground);
+}
+
+.claude-assistant-content {
+	margin-bottom: 8px;
+	line-height: 1.6;
+}
+
+.claude-error-message {
+	color: var(--vscode-errorForeground);
+	background-color: var(--vscode-inputValidation-errorBackground);
+	padding: 8px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-inputValidation-errorBorder);
+}
+
+.claude-waiting,
+.claude-sending {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--vscode-descriptionForeground);
+	font-style: italic;
+}
+
+/* 현재 실행 중인 툴 */
+.claude-current-tool {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	margin: 8px 0;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	border-radius: 4px;
+	font-size: 12px;
+}
+
+.claude-tool-spinner {
+	font-size: 10px;
+}
+
+.claude-tool-name {
+	font-weight: 500;
+}
+
+.claude-tool-input {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	margin-left: auto;
+}
+
+/* 툴 요약 */
+.claude-tool-summary {
+	margin: 8px 0;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.claude-tool-summary-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	background-color: var(--vscode-editor-background);
+	cursor: pointer;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-tool-summary-header:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.claude-tool-summary-list {
+	padding: 4px 0;
+}
+
+.claude-tool-summary-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 8px;
+	font-size: 11px;
+}
+
+.claude-tool-status-icon {
+	font-size: 10px;
+}
+
+.claude-tool-summary-item .claude-tool-name {
+	font-weight: 500;
+}
+
+.claude-tool-desc {
+	color: var(--vscode-descriptionForeground);
+	margin-left: auto;
+}
+
+/* Ask 질문 */
+.claude-ask-user {
+	margin: 8px 0;
+	padding: 8px;
+	background-color: var(--vscode-inputValidation-infoBackground);
+	border: 1px solid var(--vscode-inputValidation-infoBorder);
+	border-radius: 4px;
+}
+
+.claude-ask-auto-accepted {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--vscode-inputValidation-infoForeground);
+	font-size: 12px;
+}
+
+.claude-ask-question {
+	margin-bottom: 8px;
+}
+
+.claude-ask-text {
+	margin-bottom: 8px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.claude-ask-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.claude-ask-option {
+	padding: 4px 8px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 12px;
+	transition: all 0.2s ease;
+}
+
+.claude-ask-option:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+/* 사용량 정보 */
+.claude-assistant-usage {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-usage-worktime {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.claude-usage-tokens {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.token-item {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.token-item.cache {
+	color: var(--vscode-textLink-foreground);
+}
+
+/* 파일 변경사항 */
+.claude-file-changes {
+	margin: 8px 0;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.claude-file-changes-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	background-color: var(--vscode-editor-background);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-file-changes-summary .added {
+	color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.claude-file-changes-summary .removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+
+/* 시스템 메시지 */
+.claude-assistant-system {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 8px;
+	padding: 6px 8px;
+	background-color: var(--vscode-inputValidation-warningBackground);
+	border: 1px solid var(--vscode-inputValidation-warningBorder);
+	border-radius: 4px;
+	font-size: 12px;
+}
+
+.claude-system-icon {
+	color: var(--vscode-inputValidation-warningForeground);
+}
+
+.claude-system-text {
+	color: var(--vscode-inputValidation-warningForeground);
+}
+
 /* ========== Container ========== */
 
 .claude-chat-container {
@@ -1433,6 +1801,42 @@
 .claude-status-settings:hover {
 	opacity: 1;
 	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ========== Chat State Styles ========== */
+
+.claude-status-icon.idle {
+	color: var(--vscode-statusBar-foreground);
+}
+
+.claude-status-icon.composing {
+	color: var(--vscode-terminal-ansiBlue);
+}
+
+.claude-status-icon.sending {
+	color: var(--vscode-terminal-ansiYellow);
+	animation: claude-pulse 1s infinite;
+}
+
+.claude-status-icon.responding {
+	color: var(--vscode-terminal-ansiGreen);
+	animation: claude-pulse 1s infinite;
+}
+
+.claude-status-icon.asking {
+	color: var(--vscode-terminal-ansiMagenta);
+}
+
+.claude-status-icon.rateLimit {
+	color: var(--vscode-terminal-ansiYellow);
+}
+
+.claude-status-icon.error {
+	color: var(--vscode-errorForeground);
+}
+
+.claude-status-icon.cancelled {
+	color: var(--vscode-terminal-ansiRed);
 }
 
 /* ========== Open Files Buttons ========== */
@@ -2884,4 +3288,207 @@
 
 .claude-file-changes.read-only .claude-file-changes-header {
 	background-color: var(--vscode-inputValidation-infoBackground);
+}
+
+/* ========== Canceled Message ========== */
+
+.claude-message-canceled {
+	margin-top: 8px;
+	padding: 8px 12px;
+	background-color: var(--vscode-inputValidation-warningBackground);
+	border-left: 3px solid var(--vscode-inputValidation-warningBorder);
+	border-radius: 4px;
+	color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+	font-size: 12px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	opacity: 0.9;
+}
+
+.claude-cancel-icon {
+	color: var(--vscode-inputValidation-warningBorder);
+	font-size: 14px;
+}
+
+/* ========== 새로운 말풍선 구조 스타일 ========== */
+
+/* 공통 말풍선 스타일 */
+.claude-bubble {
+	margin: 12px 0;
+	padding: 12px;
+	border-radius: 8px;
+	background: var(--vscode-editor-background);
+}
+
+/* 개발자 말풍선 */
+.claude-bubble.user {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-widget-border);
+}
+
+/* 클로드 말풍선 */
+.claude-bubble.assistant {
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+}
+
+/* 말풍선 헤더 */
+.claude-bubble-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-bubble-icon {
+	font-size: 16px;
+}
+
+.claude-bubble-name {
+	font-weight: 600;
+}
+
+.claude-bubble-time {
+	margin-left: auto;
+	opacity: 0.7;
+}
+
+.claude-bubble-status {
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 11px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+/* 말풍선 본문 */
+.claude-bubble-content {
+	line-height: 1.5;
+}
+
+/* 첨부파일 리스트 */
+.claude-bubble-attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.claude-attachment-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: var(--vscode-button-secondaryBackground);
+	border-radius: 4px;
+	font-size: 11px;
+}
+
+/* 시스템 메시지 */
+.claude-bubble-system-message {
+	margin-top: 8px;
+	padding: 6px 8px;
+	background: var(--vscode-inputValidation-infoBackground);
+	border-left: 3px solid var(--vscode-inputValidation-infoBorder);
+	border-radius: 3px;
+	font-size: 11px;
+	color: var(--vscode-inputValidation-infoForeground);
+}
+
+/* 현재 툴 표시 (진행 중) */
+.claude-current-tool {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	margin-top: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+}
+
+.claude-current-tool-spinner {
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+/* 툴 요약 (완료된 툴들) */
+.claude-tool-summary {
+	margin-top: 8px;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 4px;
+}
+
+.claude-tool-summary-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	cursor: pointer;
+	user-select: none;
+}
+
+.claude-tool-summary-count {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Ask 질문 스타일 */
+.claude-ask-section {
+	margin-top: 12px;
+	padding: 12px;
+	background: var(--vscode-inputValidation-infoBackground);
+	border: 1px solid var(--vscode-inputValidation-infoBorder);
+	border-radius: 4px;
+}
+
+.claude-ask-question {
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.claude-ask-options {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.claude-ask-option {
+	padding: 8px;
+	background: var(--vscode-button-secondaryBackground);
+	border: 1px solid var(--vscode-button-secondaryBorder);
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+
+.claude-ask-option:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* 메시지 상태별 스타일 */
+.claude-bubble.sending {
+	opacity: 0.7;
+}
+
+.claude-bubble.error {
+	border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+.claude-bubble.cancelled {
+	opacity: 0.6;
+}
+
+.claude-bubble.rate-limit {
+	border-color: var(--vscode-inputValidation-warningBorder);
 }

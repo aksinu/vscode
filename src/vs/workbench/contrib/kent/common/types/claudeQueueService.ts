@@ -26,7 +26,7 @@ export interface IClaudeQueueService {
 	readonly onDidChangeQueue: Event<IClaudeQueuedMessage[]>;
 
 	// Queue operations
-	addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): IClaudeQueuedMessage;
+	addToQueue(content: string, options?: IClaudeSendRequestOptions, sessionId?: string): { message: IClaudeQueuedMessage; added: boolean };
 	addToGlobalQueue(message: IClaudeQueuedMessage): void;
 	removeFromQueue(id: string, sessionId?: string): boolean;
 	clearQueue(sessionId?: string): void;
