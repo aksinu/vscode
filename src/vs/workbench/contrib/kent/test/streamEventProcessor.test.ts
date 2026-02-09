@@ -84,7 +84,9 @@ class TestStreamEventProcessor {
   private _accumulatedContent = '';
   private _currentToolActions = new Map<string, IToolAction>();
   private _isComplete = false;
-  // _usage field reserved for future use
+  private _usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
+
+  get usage() { return this._usage; }
 
   constructor(initialMessage: IClaudeMessage) {
     this._currentMessage = { ...initialMessage, isStreaming: true, isComplete: false };

@@ -28,6 +28,7 @@ import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
 import { IModelService } from '../../../../../../editor/common/services/model.js';
 import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
+import { FileSnapshotManager } from '../file/claudeFileSnapshot.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
 
@@ -48,6 +49,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private readonly _multiSessionManager: MultiSessionManager;
 	private readonly _chatManager: ChatManager;
 	private readonly _chatStateManager: ChatStateManager;
+	private readonly _fileSnapshotManager: FileSnapshotManager;
 
 	// ========== Legacy 단일 상태 (하위 호환성 + ContextProvider 접근용) ==========
 	private _state: ClaudeServiceState = 'idle';
@@ -145,6 +147,17 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// ChatStateManager 생성 (중앙 집중식 상태 관리)
 		this._chatStateManager = this._register(new ChatStateManager(logService));
 
+		// FileSnapshotManager 생성 (파일 변경사항 추적)
+		this._fileSnapshotManager = this._register(new FileSnapshotManager(
+			_platformFileService,
+			_modelService,
+			_textModelService,
+			_editorService,
+			_textFileService,
+			logService,
+			storageService
+		));
+
 		// ========== 연결 관리자 생성 ==========
 		this._connection = this._register(new ClaudeConnection(mainProcessService, this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Connection manager created');
@@ -214,6 +227,27 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			() => this._sessionService.getCurrentSession(),
 			(_sessionId: string) => undefined
 		);
+
+		// FileService Core 델리게이트 설정 (FileSnapshotManager 연결)
+		this._fileService.setCoreFileDelegates({
+			startCommand: (workingDir?: string) => this._fileSnapshotManager.startCommand(workingDir),
+			captureBeforeEdit: (filePath: string) => this._fileSnapshotManager.captureBeforeEdit(filePath),
+			captureAfterEdit: (filePath: string) => this._fileSnapshotManager.captureAfterEdit(filePath),
+			captureAllPendingModifications: () => this._fileSnapshotManager.captureAllPendingModifications(),
+			cleanupInvalidSnapshots: () => this._fileSnapshotManager.cleanupInvalidSnapshots(),
+			removeSnapshot: (fileUri: string) => this._fileSnapshotManager.removeSnapshot(fileUri),
+			getChangedFiles: () => this._fileSnapshotManager.getChangedFiles(),
+			getFileChangesSummary: () => this._fileSnapshotManager.getChangesSummary(),
+			getSessionChangesHistory: () => ({ sessionId: '', totalFilesChanged: 0, totalLinesAdded: 0, totalLinesRemoved: 0, entries: [], filesSummary: [] }),
+			getSnapshotCount: () => this._fileSnapshotManager.snapshotCount,
+			showFileDiff: (fileChange) => this._fileSnapshotManager.showDiff(fileChange),
+			revertFile: (fileChange) => this._fileSnapshotManager.revertFile(fileChange.filePath),
+			revertAllFiles: () => this._fileSnapshotManager.revertAll(),
+			revertSelectedFiles: (fileChanges) => this._fileSnapshotManager.revertFiles(fileChanges.map(fc => fc.filePath)),
+			acceptFile: (fileChange) => this._fileSnapshotManager.acceptFile(fileChange.filePath),
+			acceptAllFiles: () => this._fileSnapshotManager.acceptAll(),
+			acceptSelectedFiles: (fileChanges) => this._fileSnapshotManager.acceptFiles(fileChanges.map(fc => fc.filePath))
+		});
 
 		// RateLimitService 델리게이트 설정
 		this._rateLimitService.setCoreRateLimitDelegates({
@@ -974,11 +1008,17 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 * 명령 완료 시 호출 (ContextProvider용)
 	 */
 	async handleCommandComplete(): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] handleCommandComplete started');
+
 		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
+		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] Calling captureAllPendingModifications...');
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] _fileService type: ${this._fileService.constructor.name}`);
 		await this._fileService.captureAllPendingModifications();
+		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] captureAllPendingModifications done');
 
 		const changesSummary = this._fileService.getFileChangesSummary();
 
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Changes found: ${changesSummary.changes.length}`);
 		// 디버깅: 스냅샷 상태 출력
 		for (const change of changesSummary.changes) {
 			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] - ${change.filePath}: ${change.changeType}, +${change.linesAdded}/-${change.linesRemoved}`);
@@ -1001,8 +1041,66 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			}
 		}
 
+		// 🧪 수동 테스트 비활성화 (실제 파일 추적 재활성화됨)
+
 		// 🔧 QUEUE SAFETY: 명령 완료 시 큐 처리 보장 (추가 안전장치)
 		this._ensureQueueProcessingAfterComplete();
+	}
+
+	/**
+	 * 🧪 FileChanges 수동 테스트용 메서드 (FileWatcher 비활성화 상태에서)
+	 */
+	async testFileChangesManually(): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, '🧪 [MANUAL TEST] Starting FileChanges test...');
+
+		try {
+			// Test.md 파일을 강제로 스냅샷 등록
+			const testFilePath = 'd:\\_______________Kent\\vscode\\Test.md';
+			this.logService.info(ClaudeService.LOG_CATEGORY, `🧪 [MANUAL TEST] Adding snapshot for: ${testFilePath}`);
+
+			// 강제로 파일 변경 감지 시뮬레이션
+			await this._fileService.captureAllPendingModifications();
+			const changesSummary = this._fileService.getFileChangesSummary();
+
+			this.logService.info(ClaudeService.LOG_CATEGORY, `🧪 [MANUAL TEST] Found ${changesSummary.changes.length} changes`);
+
+			// 현재 메시지에 FileChanges 추가 (테스트용 더미 데이터도 포함)
+			if (this._currentMessageId && this._sessionService.hasCurrentSession()) {
+				const messages = this._sessionService.getMessages();
+				const currentMessage = messages.find(m => m.id === this._currentMessageId);
+
+				if (currentMessage) {
+					// 실제 변경사항이 없으면 테스트용 더미 데이터 생성
+					const finalChanges: IClaudeFileChangesSummary = changesSummary.changes.length > 0 ? changesSummary : {
+						filesCreated: 0,
+						filesModified: 1,
+						filesDeleted: 0,
+						totalLinesAdded: 53,
+						totalLinesRemoved: 0,
+						changes: [{
+							filePath: testFilePath,
+							fileName: testFilePath.split('/').pop() || testFilePath,
+							changeType: 'modified',
+							linesAdded: 53,
+							linesRemoved: 0,
+							originalContent: '',
+							modifiedContent: '# Test FileChanges\n\n테스트용 파일 변경사항입니다.'
+						}]
+					};
+
+					const updatedMessage: IClaudeMessage = {
+						...currentMessage,
+						fileChanges: finalChanges
+					};
+
+					this._sessionService.updateMessage(updatedMessage);
+					this._messageService.fireMessageUpdate(updatedMessage);
+					this.logService.info(ClaudeService.LOG_CATEGORY, `🧪 [MANUAL TEST] Message updated with ${finalChanges.changes.length} file changes`);
+				}
+			}
+		} catch (error) {
+			this.logService.error(ClaudeService.LOG_CATEGORY, '🧪 [MANUAL TEST] Error:', error);
+		}
 	}
 
 	/**
@@ -1076,5 +1174,34 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				return Event.None as Event<T>;
 			}
 		};
+	}
+
+	// ========== ICLICallbacks 메서드들 ==========
+
+	/**
+	 * 파일 수정 전 스냅샷 캡처 (CLIEventHandler에서 호출)
+	 */
+	async captureFileBeforeEdit(filePath: string): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.captureFileBeforeEdit: ${filePath}`);
+		await this._fileService.captureBeforeEdit(filePath);
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.captureFileBeforeEdit done: ${filePath}`);
+	}
+
+	/**
+	 * 파일 수정 후 스냅샷 캡처 (CLIEventHandler에서 호출)
+	 */
+	async captureFileAfterEdit(filePath: string): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.captureFileAfterEdit: ${filePath}`);
+		await this._fileService.captureAfterEdit(filePath);
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.captureFileAfterEdit done: ${filePath}`);
+	}
+
+	/**
+	 * 명령 완료 시 FileChanges 처리 (CLIEventHandler에서 호출)
+	 */
+	async onCommandComplete(): Promise<void> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.onCommandComplete called`);
+		await this.handleCommandComplete();
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] ClaudeService.onCommandComplete done`);
 	}
 }

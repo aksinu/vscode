@@ -432,8 +432,7 @@ export class CLIEventHandler extends Disposable {
 		toolActionCtx.addToolAction(toolActionObj);
 
 		// 파일 수정 도구인 경우 스냅샷 캡처 (await 필수!)
-		// 파일 변경 추적 비활성화
-		const isFileTool = false; // this.isFileModifyTool(toolName);
+		const isFileTool = this.isFileModifyTool(toolName);
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] isFileModifyTool(${toolName}): ${isFileTool}`);
 
 		if (isFileTool) {
@@ -448,6 +447,13 @@ export class CLIEventHandler extends Disposable {
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Tool use started:', toolActionObj.tool, toolActionObj.input);
 		this.updateCurrentMessage();
+	}
+
+	/**
+	 * 파일 수정 도구인지 확인
+	 */
+	private isFileModifyTool(toolName: string): boolean {
+		return ['Edit', 'Write', 'NotebookEdit'].includes(toolName);
 	}
 
 	/**
@@ -609,8 +615,7 @@ export class CLIEventHandler extends Disposable {
 			});
 
 			// 파일 수정 도구의 결과인 경우 수정 후 내용 캡처 (await 필수!)
-			// 파일 변경 추적 비활성화
-			const isFileTool = false; // this.isFileModifyTool(currentToolAction.tool);
+			const isFileTool = this.isFileModifyTool(currentToolAction.tool);
 			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[FileChanges] handleToolResult: isFileModifyTool(${currentToolAction.tool})=${isFileTool}, is_error=${event.is_error}`);
 
 			if (isFileTool && !event.is_error) {

@@ -357,8 +357,13 @@ export class FileSnapshotManager extends Disposable {
 			if (snapshot.modifiedContent === undefined) {
 				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] Capturing pending modification for: ${filePath}`);
 				await this.captureAfterEdit(filePath);
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] Capture completed for: ${filePath}`);
+			} else {
+				this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] Skipping already captured: ${filePath}`);
 			}
 		}
+
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY, `[FileChanges] captureAllPendingModifications finished`);
 	}
 
 	/**

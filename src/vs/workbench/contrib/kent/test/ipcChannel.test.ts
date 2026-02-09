@@ -3,7 +3,7 @@
  * Claude 모듈의 Main/Renderer 프로세스 간 IPC 통신을 테스트합니다.
  */
 
-import { Emitter } from '../../../../base/common/event.js';
+import { Event, Emitter } from '../../../../base/common/event.js';
 
 // Mock 타입 정의
 interface IClaudeCLIStreamEvent {
@@ -362,7 +362,7 @@ async function testEventStreaming() {
   // 이벤트 리스너 등록
   console.log('1️⃣ 이벤트 리스너 등록');
 
-  const dataDisposable = client.onDidReceiveData(event => {
+  const dataDisposable = client.onDidReceiveData((event: IClaudeCLIStreamEvent) => {
     receivedEvents.push(event);
     console.log(`   📨 [이벤트] ${event.type}: ${event.content || event.delta?.text || event.message || ''}`);
 
@@ -381,7 +381,7 @@ async function testEventStreaming() {
     console.log(`   🏁 [완료] 스트리밍 완료`);
   });
 
-  const errorDisposable = client.onDidError(error => {
+  const errorDisposable = client.onDidError((error: string) => {
     errorMessage = error;
     console.log(`   ❌ [에러] ${error}`);
   });
@@ -529,7 +529,7 @@ async function testRequestCancellation() {
   let errorReceived = false;
 
   // 에러 이벤트 리스너
-  const errorDisposable = client.onDidError(error => {
+  const errorDisposable = client.onDidError((error: string) => {
     errorReceived = true;
     console.log(`   📨 [에러 이벤트] ${error}`);
   });
@@ -575,13 +575,11 @@ async function testUserInputRequest() {
   const clientChannel = new TestChannel(serverChannel);
   const client = new TestClaudeCLIChannelClient(clientChannel);
 
-  let _receivedInputRequest = false;
   let responseReceived = false;
 
   // 이벤트 리스너 등록
-  const dataDisposable = client.onDidReceiveData(event => {
+  const dataDisposable = client.onDidReceiveData((event: IClaudeCLIStreamEvent) => {
     if (event.type === 'input_request') {
-      _receivedInputRequest = true;
       console.log(`   📨 [입력 요청] 수신됨`);
     } else if (event.type === 'assistant') {
       responseReceived = true;

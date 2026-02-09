@@ -130,45 +130,32 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ---
 
-## Subagent Reference
+## Agent Teams (통합 팀)
 
-작업 유형에 따라 적절한 에이전트 활용:
+작업 유형에 따라 적절한 팀 에이전트 활용:
 
-### 지식 에이전트 (Knowledge)
-| Agent | 용도 | 언제 사용 |
-|-------|------|----------|
-| `vscode-structure` | VS Code 소스 구조 | 디렉토리 구조, 레이어 규칙 질문 |
-| `contribution-pattern` | Contribution 패턴 | 서비스/뷰/커맨드 등록 방법 |
-| `claude-integration` | Claude 통합 설계 | IPC, 모듈 아키텍처 질문 |
-| `project-status` | 프로젝트 상태 | 현재 진행상황, 완료된 작업 |
-| `design-specs` | 설계 명세 | 기능 스펙, 설계 결정 |
-| `typescript-expert` | TypeScript 전문 | 타입 시스템, 고급 패턴, VS Code 타입 |
+### 팀 에이전트 (권장)
+| Team | 통합 역할 | 언제 사용 |
+|------|----------|----------|
+| `dev-team` | architect + coder + typescript + contribution | 새 기능 설계 및 구현 |
+| `bugfix-team` | debugger + coder + typescript | 버그 분석, 에러 수정, TODO 해결 |
+| `ui-team` | ui-designer + coder + component + composition | UI 개발, CSS, 접근성 |
+| `quality-team` | reviewer + tester + performance + SOLID + refactoring | 코드 리뷰, 테스트, 최적화 |
+| `infra-team` | ipc + filesystem + build-deploy | IPC 통신, 파일 시스템, 빌드 |
+| `context-team` | project-status + design-specs + vscode-structure + claude | 프로젝트 상태, 아키텍처 이해 |
 
-### 작업 에이전트 (Task)
-| Agent | 용도 | 언제 사용 |
-|-------|------|----------|
-| `architect` | 소프트웨어 설계 | 새 기능 설계, 아키텍처 결정 |
-| `coder` | 코드 작성 | 구현, 버그 수정, 기본 리팩토링 |
-| `refactoring-expert` | 리팩토링 전문 | 코드 냄새 탐지, 구조 개선, 품질 향상 |
-| `debugger` | 디버깅 | 오류 분석, 로그 해석, 문제 해결 |
-| `reviewer` | 코드 리뷰 | 품질 체크, 패턴 준수 검증 |
-| `tester` | 테스트 | 테스트 케이스 설계, 테스트 작성 |
+### 개별 에이전트 (세부 참조용)
+<details>
+<summary>20개 개별 에이전트 목록</summary>
 
-### 전문 에이전트 (Specialist)
-| Agent | 용도 | 언제 사용 |
-|-------|------|----------|
-| `ui-designer` | UI/UX 디자인 | UI 컴포넌트, 사용자 경험 설계 |
-| `ipc-expert` | IPC 통신 | Main/Renderer 프로세스 통신, 채널 설계 |
-| `performance-optimizer` | 성능 최적화 | 메모리, CPU, 렌더링 최적화 |
-| `filesystem-expert` | 파일 시스템 | 파일 처리, 변경 추적, 스냅샷 |
-| `build-deploy-expert` | 빌드/배포 | 빌드 시스템, 컴파일 최적화, 패키징 |
+**Knowledge**: `vscode-structure`, `contribution-pattern`, `claude-integration`, `project-status`, `design-specs`, `typescript-expert`
 
-### 설계 철학 에이전트 (Design Philosophy)
-| Agent | 용도 | 언제 사용 |
-|-------|------|----------|
-| `component-architect` | 컴포넌트 설계 | 컴포넌트 기반 아키텍처, 조합 설계 |
-| `composition-advocate` | 탈상속 설계 | 상속보다 구성, 인터페이스 설계 |
-| `solid-principles-expert` | SOLID 원칙 | 단일 책임, SOLID 패턴 적용 |
+**Task**: `architect`, `coder`, `refactoring-expert`, `debugger`, `reviewer`, `tester`
+
+**Specialist**: `ui-designer`, `ipc-expert`, `performance-optimizer`, `filesystem-expert`, `build-deploy-expert`
+
+**Design Philosophy**: `component-architect`, `composition-advocate`, `solid-principles-expert`
+</details>
 
 ---
 

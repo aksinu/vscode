@@ -60,7 +60,8 @@
       "Bash(git -C /mnt/d/_______________Kent/vscode status:*)",
       "Bash(find:*)",
       "Bash(tree:*)",
-      "Bash(ls -la \"d:\\\\_______________Kent\\\\vscode\\\\src\\\\vs\\\\workbench\\\\contrib\\\\kent\\\\browser\\\\services\\\\queue\"\" 2>/dev/null || dir \"d:_______________Kentvscodesrcvsworkbenchcontribkentbrowserservicesqueue\"\")"
+      "Bash(ls -la \"d:\\\\_______________Kent\\\\vscode\\\\src\\\\vs\\\\workbench\\\\contrib\\\\kent\\\\browser\\\\services\\\\queue\"\" 2>/dev/null || dir \"d:_______________Kentvscodesrcvsworkbenchcontribkentbrowserservicesqueue\"\")",
+      "WebFetch(domain:www.anthropic.com)"
     ]
   }
 }

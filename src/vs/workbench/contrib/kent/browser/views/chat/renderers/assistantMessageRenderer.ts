@@ -88,7 +88,15 @@ export class AssistantMessageRenderer {
 		}
 
 		// 파일 변경사항 (완료 후)
+		console.log('[DEBUG] AssistantMessageRenderer - fileChanges check:', {
+			isStreaming: message.isStreaming,
+			hasFileChanges: !!message.fileChanges,
+			changesLength: message.fileChanges?.changes?.length || 0,
+			fileChanges: message.fileChanges
+		});
+
 		if (!message.isStreaming && message.fileChanges && message.fileChanges.changes.length > 0) {
+			console.log('[DEBUG] AssistantMessageRenderer - Rendering fileChanges!', message.fileChanges);
 			this.renderFileChanges(message.fileChanges, messageElement, disposables, readOnly);
 		}
 
