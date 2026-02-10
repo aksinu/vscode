@@ -14,7 +14,6 @@ import { validateClaudeModel, CLAUDE_DEFAULT_MODEL, getAvailableModelsForUI, res
 export interface ISessionSettings {
 	name: string;
 	model?: string;
-	ultrathink?: boolean;
 	autoAccept?: boolean;
 }
 
@@ -28,6 +27,7 @@ export interface ISessionSettingsPanelCallbacks {
 	getAvailableModels(): string[];
 	onCommit?(): Promise<void>;
 	hasChangesToCommit?(): boolean;
+	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
 }
 
 /**
@@ -115,14 +115,6 @@ export class SessionSettingsPanel extends Disposable {
 		// 모델 오버라이드
 		this.createModelSetting(content);
 
-		// Ultrathink 오버라이드
-		this.createToggleSetting(content, {
-			label: localize('ultrathinkOverride', "Ultrathink"),
-			description: localize('ultrathinkOverrideDesc', "Enable ultrathink mode (adds ultrathink keyword to prompt)"),
-			checked: this.currentSettings.ultrathink || false,
-			onChange: (checked) => { this.currentSettings.ultrathink = checked; }
-		});
-
 		// Auto Accept 설정
 		this.createToggleSetting(content, {
 			label: localize('autoAccept', "Auto Accept"),
@@ -174,14 +166,36 @@ export class SessionSettingsPanel extends Disposable {
 		cancelBtn.textContent = localize('cancel', "Cancel");
 		this.disposables.push(addDisposableListener(cancelBtn, EventType.CLICK, () => this.close()));
 
-		const saveBtn = append(footer, $('button.claude-settings-btn.primary'));
+		const saveBtn = append(footer, $('button.claude-settings-btn.primary')) as HTMLButtonElement;
 		saveBtn.textContent = localize('save', "Save");
-		this.disposables.push(addDisposableListener(saveBtn, EventType.CLICK, () => {
-			// 모델 유효성 검증 - 유효하지 않으면 기본 모델로 대체
+		this.disposables.push(addDisposableListener(saveBtn, EventType.CLICK, async () => {
 			if (this.currentSettings.model) {
 				const validation = validateClaudeModel(this.currentSettings.model);
 				if (!validation.isValid) {
-					this.currentSettings.model = validation.model || CLAUDE_DEFAULT_MODEL;
+					// 커스텀 모델 → CLI 검증
+					if (this.callbacks.validateModel) {
+						saveBtn.textContent = localize('validating', "Validating...");
+						saveBtn.disabled = true;
+
+						try {
+							const resolved = resolveModelName(this.currentSettings.model);
+							const result = await this.callbacks.validateModel(resolved);
+							if (!result.valid) {
+								this.updateModelWarning(result.error || `Model "${this.currentSettings.model}" is not valid`);
+								saveBtn.textContent = localize('save', "Save");
+								saveBtn.disabled = false;
+								return;
+							}
+							this.currentSettings.model = resolved;
+						} catch {
+							this.updateModelWarning(`Validation failed for "${this.currentSettings.model}"`);
+							saveBtn.textContent = localize('save', "Save");
+							saveBtn.disabled = false;
+							return;
+						}
+					} else {
+						this.currentSettings.model = validation.model || CLAUDE_DEFAULT_MODEL;
+					}
 				}
 			}
 			this.callbacks.onSave(this.currentSettings);

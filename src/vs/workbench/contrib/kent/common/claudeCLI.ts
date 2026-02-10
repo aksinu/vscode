@@ -279,6 +279,11 @@ export interface IClaudeCLIMultiService {
 	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }>;
 
 	/**
+	 * 모델 유효성 검증 (CLI 실행)
+	 */
+	validateModel(model: string): Promise<{ valid: boolean; error?: string }>;
+
+	/**
 	 * 특정 chatId의 인스턴스 제거
 	 */
 	destroyInstance(chatId: string): void;

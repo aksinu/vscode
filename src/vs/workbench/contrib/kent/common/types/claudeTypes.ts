@@ -14,7 +14,10 @@ export const CLAUDE_AVAILABLE_MODELS = [
 	'claude-sonnet-4-20250514',
 	'claude-opus-4-20250514',
 	'claude-3-5-sonnet-20241022',
-	'claude-3-5-haiku-20241022'
+	'claude-3-5-haiku-20241022',
+	// 짧은 모델 ID (날짜 없는 버전)
+	'claude-sonnet-4-6',
+	'claude-opus-4-6',
 ] as const;
 
 /**
@@ -53,7 +56,9 @@ export const CLAUDE_MODEL_ALIASES: Record<string, string> = {
  */
 export const CLAUDE_MODEL_DISPLAY_NAMES: Record<string, string> = {
 	'claude-opus-4-20250514': 'Opus 4',
+	'claude-opus-4-6': 'Opus 4',
 	'claude-sonnet-4-20250514': 'Sonnet 4',
+	'claude-sonnet-4-6': 'Sonnet 4',
 	'claude-3-5-sonnet-20241022': 'Sonnet 3.5',
 	'claude-3-5-haiku-20241022': 'Haiku 3.5'
 };
@@ -463,7 +468,6 @@ export type ClaudeExecutionMethod = 'cli' | 'script';
 export interface IClaudeStatusInfo {
 	readonly connectionStatus: ClaudeConnectionStatus;
 	readonly model: string;
-	readonly ultrathink: boolean;
 	readonly executionMethod: ClaudeExecutionMethod;
 	readonly scriptPath?: string;
 	readonly lastConnected?: number;

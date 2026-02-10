@@ -31,6 +31,7 @@ import { ITextModelService } from '../../../../../../editor/common/services/reso
 import { FileSnapshotManager } from '../file/claudeFileSnapshot.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ITextFileService } from '../../../../../services/textfile/common/textfiles.js';
+import { INativeWorkbenchEnvironmentService } from '../../../../../services/environment/electron-browser/environmentService.js';
 
 // Manager imports
 import { ConfigManager, HistoryManager, FileWatcherManager, MultiSessionManager, ChatManager, ChatStateManager } from './managers/index.js';
@@ -73,7 +74,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	private readonly _cliEventHandler: CLIEventHandler;
 
 	// Status 관련
-	private _ultrathink = false;
 	private _sessionAutoAcceptOverride: boolean | undefined;
 
 	// Expose _localConfig for ContextProvider (delegate to ConfigManager)
@@ -117,7 +117,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		@IClaudeFileService private readonly _fileService: IClaudeFileService,
 		@IClaudeRateLimitService private readonly _rateLimitService: IClaudeRateLimitService,
 		@IClaudeSessionService private readonly _sessionService: IClaudeSessionService,
-		@IClaudeUIService private readonly _uiService: IClaudeUIService
+		@IClaudeUIService private readonly _uiService: IClaudeUIService,
+		@INativeWorkbenchEnvironmentService _environmentService: INativeWorkbenchEnvironmentService
 	) {
 		super();
 
@@ -125,6 +126,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._configManager = this._register(new ConfigManager(
 			_platformFileService,
 			_workspaceContextService,
+			_environmentService,
 			logService
 		));
 
@@ -680,6 +682,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._sessionService.renameSession(sessionId, title);
 	}
 
+	async saveGlobalModel(model: string | undefined): Promise<void> {
+		const resolvedModel = model ? resolveModelName(model) : undefined;
+		await this._configManager.saveGlobalModel(resolvedModel);
+
+		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Global model saved to ~/.claude/settings.json:', displayName);
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
 	async setSessionModel(model: string): Promise<void> {
 		const resolvedModel = model ? resolveModelName(model) : undefined;
 
@@ -691,12 +702,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Model saved to .claude/settings.json:', displayName);
-		this._uiService.fireStatusInfoChange(this.getStatusInfo());
-	}
-
-	setSessionUltrathink(enabled: boolean): void {
-		this._chatManager.setSessionUltrathinkOverride(enabled);
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session ultrathink override:', enabled ? 'ON' : 'OFF');
 		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
@@ -770,14 +775,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	getStatusInfo(): IClaudeStatusInfo {
 		const connInfo = this._multiConnection.getInfo();
-		const effectiveUltrathink = this._chatManager.getSessionUltrathinkOverride() !== undefined
-			? this._chatManager.getSessionUltrathinkOverride()!
-			: (this._configManager.getLocalConfig().ultrathink ?? this._ultrathink);
 
 		return {
 			connectionStatus: connInfo.status,
 			model: this.configurationService.getValue<string>('claude.model') || 'claude-sonnet-4',
-			ultrathink: effectiveUltrathink,
 			executionMethod: 'cli',
 			scriptPath: undefined,
 			lastConnected: connInfo.lastConnected,
@@ -789,17 +790,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._multiConnection.connect();
 	}
 
-	async toggleUltrathink(): Promise<void> {
-		this._ultrathink = !this._ultrathink;
-		this._chatManager.setSessionUltrathinkOverride(this._ultrathink);
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Ultrathink:', this._ultrathink ? 'ON' : 'OFF');
-		this._uiService.fireStatusInfoChange(this.getStatusInfo());
-	}
-
-	isUltrathinkEnabled(): boolean {
-		return this._chatManager.getSessionUltrathinkOverride() !== undefined
-			? this._chatManager.getSessionUltrathinkOverride()!
-			: (this._configManager.getLocalConfig().ultrathink ?? this._ultrathink);
+	async validateModel(model: string): Promise<{ valid: boolean; error?: string }> {
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Validating model via CLI:', model);
+		return this._multiConnection.validateModel(model);
 	}
 
 	// ========== File Snapshot / Diff ==========

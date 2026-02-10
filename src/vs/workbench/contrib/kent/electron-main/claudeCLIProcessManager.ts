@@ -239,6 +239,60 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 	}
 
 	/**
+	 * 모델 유효성 검증 (CLI 실행)
+	 * claude -p "hi" --model <model> --max-turns 1 --output-format stream-json 으로 실행하여 확인
+	 */
+	async validateModel(model: string): Promise<{ valid: boolean; error?: string }> {
+		debugLog('[ProcessManager] validateModel:', model);
+
+		return new Promise((resolve) => {
+			try {
+				const cleanEnv = { ...process.env };
+				delete cleanEnv.NODE_OPTIONS;
+				delete cleanEnv.ELECTRON_RUN_AS_NODE;
+				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
+				const proc = spawn('claude', [
+					'-p', 'hi',
+					'--model', model,
+					'--max-turns', '1',
+					'--output-format', 'stream-json'
+				], {
+					shell: true,
+					env: cleanEnv,
+					timeout: 15000
+				});
+
+				let stderr = '';
+
+				proc.stderr?.on('data', (data: Buffer) => {
+					stderr += data.toString();
+				});
+
+				proc.on('close', (code) => {
+					debugLog('[ProcessManager] validateModel closed, code:', code, 'model:', model);
+
+					if (code === 0) {
+						resolve({ valid: true });
+					} else {
+						const errorMsg = stderr.trim() || `Model validation failed (exit code: ${code})`;
+						resolve({ valid: false, error: errorMsg });
+					}
+				});
+
+				proc.on('error', (error) => {
+					debugLog('[ProcessManager] validateModel error:', error.message);
+					resolve({ valid: false, error: error.message });
+				});
+
+			} catch (error) {
+				debugLog('[ProcessManager] validateModel exception:', error);
+				resolve({ valid: false, error: String(error) });
+			}
+		});
+	}
+
+	/**
 	 * 특정 인스턴스 제거
 	 */
 	destroyInstance(chatId: string): void {

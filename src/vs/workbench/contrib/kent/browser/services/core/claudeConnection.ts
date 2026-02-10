@@ -448,6 +448,16 @@ export class ClaudeMultiConnection extends Disposable {
 		}
 	}
 
+	// ========== Validation ==========
+
+	/**
+	 * 모델 유효성 검증 (Main Process에서 CLI 실행)
+	 */
+	async validateModel(model: string): Promise<{ valid: boolean; error?: string }> {
+		this.logService.debug(ClaudeMultiConnection.LOG_CATEGORY, `validateModel: ${model}`);
+		return this.multiClient.validateModel(model);
+	}
+
 	// ========== Multi-Session Methods ==========
 
 	/**

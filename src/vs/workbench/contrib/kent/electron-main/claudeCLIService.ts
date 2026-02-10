@@ -206,9 +206,6 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			claudeArgs.push('--agents', options.agents);
 		}
 
-		// Ultrathink 모드는 프롬프트에 "ultrathink:" 키워드를 추가하는 방식으로 처리됨
-		// (claudeService.ts에서 프롬프트 전처리)
-
 		// 실행 명령어 및 인자 결정
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
 		debugLog(' Spawning:', spawnCommand, spawnArgs.join(' '));

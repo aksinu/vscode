@@ -365,7 +365,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			onContinue: () => this.continueLastSession(),
 			getAvailableModels: () => this.getAvailableModels(),
 			onCommit: () => this.gitCommitManager.handleCommitChanges(),
-			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit()
+			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit(),
+			validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
 		}));
 
 		// 상태 바 (입력창 위)
@@ -375,7 +376,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				getStatusInfo: () => this.claudeService.getStatusInfo?.(),
 				checkConnection: () => this.claudeService.checkConnection?.() ?? Promise.resolve(false),
-				toggleUltrathink: () => this.claudeService.toggleUltrathink?.() ?? Promise.resolve(),
 				openLocalSettings: () => this.localSettingsManager.open(),
 				openSessionSettings: () => this.sessionSettingsPanel.open(this.container),
 				cyclePermissionMode: () => this.cyclePermissionMode(),
@@ -437,7 +437,9 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.notificationService,
 			{
 				reloadLocalConfig: () => this.claudeService.reloadLocalConfig?.(),
-				getAvailableModels: () => this.getAvailableModels()
+				getAvailableModels: () => this.getAvailableModels(),
+				onModelSaved: (model) => this.claudeService.saveGlobalModel?.(model),
+				validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
 			}
 		));
 
@@ -463,15 +465,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.updateTitle(settings.name);
 		}
 
-		// 모델 오버라이드 적용
-		if (settings.model) {
-			this.claudeService.setSessionModel?.(settings.model);
-		}
-
-		// Ultrathink 오버라이드 적용
-		if (settings.ultrathink !== undefined) {
-			this.claudeService.setSessionUltrathink?.(settings.ultrathink);
-		}
+		// 모델 오버라이드 적용 (undefined = 기본 모델로 복원, 빈 문자열로 전달하여 오버라이드 제거)
+		this.claudeService.setSessionModel?.(settings.model || '');
 
 		// Auto Accept 오버라이드 적용
 		if (settings.autoAccept !== undefined) {

@@ -117,14 +117,14 @@ export interface IClaudeService {
 	renameSession?(sessionId: string, title: string): boolean;
 
 	/**
+	 * 글로벌 모델 저장 (~/.claude/settings.json)
+	 */
+	saveGlobalModel?(model: string | undefined): Promise<void>;
+
+	/**
 	 * 세션별 모델 오버라이드 설정
 	 */
 	setSessionModel?(model: string): void;
-
-	/**
-	 * 세션별 Ultrathink 오버라이드 설정
-	 */
-	setSessionUltrathink?(enabled: boolean): void;
 
 	/**
 	 * 세션별 Auto Accept 오버라이드 설정
@@ -230,14 +230,9 @@ export interface IClaudeService {
 	checkConnection?(): Promise<boolean>;
 
 	/**
-	 * Ultrathink 토글
+	 * 모델 유효성 검증 (CLI 실행)
 	 */
-	toggleUltrathink?(): Promise<void>;
-
-	/**
-	 * Ultrathink 활성화 여부
-	 */
-	isUltrathinkEnabled?(): boolean;
+	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
 
 	// ========== File Changes ==========
 

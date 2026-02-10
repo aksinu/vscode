@@ -38,7 +38,6 @@ export class ChatManager extends Disposable {
 
 	// Session overrides
 	private _sessionModelOverride: string | undefined;
-	private _sessionUltrathinkOverride: boolean | undefined;
 
 	constructor(
 		private readonly _configurationService: IConfigurationService,
@@ -381,14 +380,6 @@ export class ChatManager extends Disposable {
 
 	getSessionModelOverride(): string | undefined {
 		return this._sessionModelOverride;
-	}
-
-	setSessionUltrathinkOverride(enabled: boolean | undefined): void {
-		this._sessionUltrathinkOverride = enabled;
-	}
-
-	getSessionUltrathinkOverride(): boolean | undefined {
-		return this._sessionUltrathinkOverride;
 	}
 
 	/**

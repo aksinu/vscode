@@ -185,6 +185,10 @@ export class ClaudeCLIMultiChannel implements IServerChannel<string> {
 			}
 			case 'checkConnection':
 				return this.service.checkConnection() as Promise<T>;
+			case 'validateModel': {
+				const [model] = args as [string];
+				return this.service.validateModel(model) as Promise<T>;
+			}
 			case 'destroyInstance': {
 				const [chatId] = args as [string];
 				this.service.destroyInstance(chatId);
@@ -272,6 +276,11 @@ export class ClaudeCLIMultiChannelClient implements IClaudeCLIMultiService {
 	checkConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
 		console.log('[ClaudeCLIMultiChannelClient] Checking connection via channel');
 		return this.channel.call('checkConnection');
+	}
+
+	validateModel(model: string): Promise<{ valid: boolean; error?: string }> {
+		console.log('[ClaudeCLIMultiChannelClient] Validating model via channel:', model);
+		return this.channel.call('validateModel', [model]);
 	}
 
 	destroyInstance(chatId: string): void {

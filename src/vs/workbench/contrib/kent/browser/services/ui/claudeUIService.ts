@@ -85,7 +85,6 @@ export class ClaudeUIService extends Disposable implements IClaudeUIService {
 		return {
 			connectionStatus: state === 'error' ? 'error' : 'disconnected',
 			model: '',
-			ultrathink: false,
 			executionMethod: 'cli'
 		};
 	}

@@ -15,7 +15,6 @@ import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
 export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 	getStatusInfo(): IClaudeStatusInfo | undefined;
 	checkConnection(): Promise<boolean>;
-	toggleUltrathink(): Promise<void>;
 	openLocalSettings(): Promise<void>;
 	openSessionSettings(): void;
 	cyclePermissionMode(): Promise<void>;
@@ -28,7 +27,6 @@ export interface IStatusBarCallbacks extends IUIManagerCallbacks {
  */
 export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 
-	private ultrathinkButton: HTMLButtonElement | undefined;
 	private permissionModeButton: HTMLButtonElement | undefined;
 
 	constructor(
@@ -50,10 +48,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 	 */
 	override update(status: IClaudeStatusInfo): void {
 		this.updateConnectionStatus(status);
-		// 모델 표시 제거 - CLI에서 현재 모델을 알 수 없어 불확실한 정보 표시 방지
-		// this.updateModel(status);
 		this.updateExecutionMethod(status);
-		this.updateUltrathink(status);
 		this.updatePermissionMode();
 		this.updateChatState(status);
 	}
@@ -61,21 +56,6 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 	// ========== Private Methods ==========
 
 	private createStatusBar(): void {
-		// Ultrathink 토글 버튼 (좌측)
-		this.ultrathinkButton = append(this.container, $('button.claude-ultrathink-toggle')) as HTMLButtonElement;
-		this.ultrathinkButton.title = localize('toggleUltrathink', "Toggle Ultrathink mode");
-		const ultrathinkIcon = append(this.ultrathinkButton, $('span.codicon.codicon-lightbulb'));
-		ultrathinkIcon.setAttribute('aria-hidden', 'true');
-		const ultrathinkText = append(this.ultrathinkButton, $('span.claude-ultrathink-text'));
-		ultrathinkText.textContent = 'Ultrathink';
-
-		this.registerDisposable(addDisposableListener(this.ultrathinkButton, EventType.CLICK, async () => {
-			await this.callbacks.toggleUltrathink();
-		}));
-
-		// 구분자
-		append(this.container, $('.claude-status-separator'));
-
 		// Permission Mode 토글 버튼
 		this.permissionModeButton = append(this.container, $('button.claude-permission-mode-toggle')) as HTMLButtonElement;
 		this.permissionModeButton.title = localize('cyclePermissionMode', "Click to cycle permission mode");
@@ -169,15 +149,6 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 			} else {
 				execItem.textContent = 'CLI';
 			}
-		}
-	}
-
-	private updateUltrathink(status: IClaudeStatusInfo): void {
-		if (this.ultrathinkButton) {
-			this.ultrathinkButton.classList.toggle('active', status.ultrathink);
-			this.ultrathinkButton.title = status.ultrathink
-				? localize('ultrathinkOn', "Ultrathink ON - Click to disable")
-				: localize('ultrathinkOff', "Ultrathink OFF - Click to enable");
 		}
 	}
 
