@@ -24,7 +24,7 @@ import { ILayoutService } from '../../layout/browser/layoutService.js';
 import { IHoverService } from '../../hover/browser/hover.js';
 import { MarkdownString } from '../../../base/common/htmlContent.js';
 import { HoverPosition } from '../../../base/browser/ui/hover/hoverWidget.js';
-import { IHoverWidget } from '../../../base/browser/ui/hover/hover.js';
+import { IHoverPositionOptions, IHoverWidget } from '../../../base/browser/ui/hover/hover.js';
 
 export const acceptSelectedActionCommand = 'acceptSelectedCodeAction';
 export const previewSelectedActionCommand = 'previewSelectedCodeAction';
@@ -44,6 +44,8 @@ export interface IActionListItemHover {
 	 * Content to display in the hover.
 	 */
 	readonly content?: string;
+
+	readonly position?: IHoverPositionOptions;
 }
 
 export interface IActionListItem<T> {
@@ -409,10 +411,20 @@ export class ActionList<T> extends Disposable {
 
 	focusPrevious() {
 		this._list.focusPrevious(1, true, undefined, this.focusCondition);
+		const focused = this._list.getFocus();
+		if (focused.length > 0) {
+			this._list.reveal(focused[0]);
+		}
+		this._list.domFocus();
 	}
 
 	focusNext() {
 		this._list.focusNext(1, true, undefined, this.focusCondition);
+		const focused = this._list.getFocus();
+		if (focused.length > 0) {
+			this._list.reveal(focused[0]);
+		}
+		this._list.domFocus();
 	}
 
 	acceptSelected(preview?: boolean) {
@@ -445,6 +457,7 @@ export class ActionList<T> extends Disposable {
 	}
 
 	private onFocus() {
+		this._list.domFocus();
 		const focused = this._list.getFocus();
 		if (focused.length === 0) {
 			return;
@@ -479,6 +492,7 @@ export class ActionList<T> extends Disposable {
 					position: {
 						hoverPosition: HoverPosition.LEFT,
 						forcePosition: false,
+						...element.hover.position,
 					},
 					appearance: {
 						showPointer: true,

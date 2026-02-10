@@ -47,9 +47,9 @@ export class RunAutomaticTasks extends Disposable implements IWorkbenchContribut
 		if (!this._workspaceTrustManagementService.isWorkspaceTrusted()) {
 			return;
 		}
-		const hasShownPromptForAutomaticTasks = this._storageService.getBoolean(HAS_PROMPTED_FOR_AUTOMATIC_TASKS, StorageScope.WORKSPACE, false);
-		if (this._hasRunTasks ||
-			(this._configurationService.getValue(ALLOW_AUTOMATIC_TASKS) === 'off' && hasShownPromptForAutomaticTasks)) {
+		const { value, userValue } = this._configurationService.inspect<string>(ALLOW_AUTOMATIC_TASKS);
+		// If user explicitly set it to 'off', don't run or prompt
+		if (this._hasRunTasks || (value === 'off' && userValue !== undefined)) {
 			return;
 		}
 		this._hasRunTasks = true;
@@ -144,7 +144,7 @@ export class RunAutomaticTasks extends Disposable implements IWorkbenchContribut
 							if (configuredTask._label) {
 								taskNames.push(configuredTask._label);
 							} else {
-								taskNames.push(configuredTask.configures.task);
+								taskNames.push(configuredTask.configures.task as string);
 							}
 							const location = this._getTaskSource(configuredTask._source);
 							if (location) {
@@ -188,14 +188,14 @@ export class RunAutomaticTasks extends Disposable implements IWorkbenchContribut
 					label: nls.localize('allow', "Allow and Run"),
 					run: () => {
 						resolve(true);
-						configurationService.updateValue(ALLOW_AUTOMATIC_TASKS, 'on', ConfigurationTarget.WORKSPACE);
+						configurationService.updateValue(ALLOW_AUTOMATIC_TASKS, 'on', ConfigurationTarget.USER);
 					}
 				},
 				{
 					label: nls.localize('disallow', "Disallow"),
 					run: () => {
 						resolve(false);
-						configurationService.updateValue(ALLOW_AUTOMATIC_TASKS, 'off', ConfigurationTarget.WORKSPACE);
+						configurationService.updateValue(ALLOW_AUTOMATIC_TASKS, 'off', ConfigurationTarget.USER);
 					}
 				},
 				{
@@ -227,7 +227,7 @@ export class ManageAutomaticTaskRunning extends Action2 {
 		});
 	}
 
-	public async run(accessor: ServicesAccessor): Promise<any> {
+	public async run(accessor: ServicesAccessor): Promise<void> {
 		const quickInputService = accessor.get(IQuickInputService);
 		const configurationService = accessor.get(IConfigurationService);
 		const allowItem: IQuickPickItem = { label: nls.localize('workbench.action.tasks.allowAutomaticTasks', "Allow Automatic Tasks") };

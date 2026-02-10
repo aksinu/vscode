@@ -24,6 +24,7 @@
     "contribSourceControlTitleMenu",
     "contribViewsWelcome",
     "editSessionIdentityProvider",
+    "envIsConnectionMetered",
     "findFiles2",
     "quickDiffProvider",
     "quickPickSortByLabel",
@@ -39,7 +40,8 @@
     "tabInputMultiDiff",
     "tabInputTextMerge",
     "textEditorDiffInformation",
-    "timeline"
+    "timeline",
+    "workspaceTrust"
   ],
   "categories": [
     "Other"

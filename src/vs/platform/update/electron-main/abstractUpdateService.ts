@@ -6,6 +6,7 @@
 import { IntervalTimer, timeout } from '../../../base/common/async.js';
 import { CancellationToken, CancellationTokenSource } from '../../../base/common/cancellation.js';
 import { Emitter, Event } from '../../../base/common/event.js';
+import { IMeteredConnectionService } from '../../meteredConnection/common/meteredConnection.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { ILifecycleMainService, LifecycleMainPhase } from '../../lifecycle/electron-main/lifecycleMainService.js';
@@ -44,6 +45,7 @@ export abstract class AbstractUpdateService implements IUpdateService {
 	protected _overwrite: boolean = false;
 	private _hasCheckedForOverwriteOnQuit: boolean = false;
 	private readonly overwriteUpdatesCheckInterval = new IntervalTimer();
+	private _disableProgressiveReleases: boolean = false;
 
 	private readonly _onStateChange = new Emitter<State>();
 	readonly onStateChange: Event<State> = this._onStateChange.event;
@@ -74,6 +76,7 @@ export abstract class AbstractUpdateService implements IUpdateService {
 		@IRequestService protected requestService: IRequestService,
 		@ILogService protected logService: ILogService,
 		@IProductService protected readonly productService: IProductService,
+		@IMeteredConnectionService protected readonly meteredConnectionService: IMeteredConnectionService,
 		protected readonly supportsUpdateOverwrite: boolean,
 	) {
 		lifecycleMainService.when(LifecycleMainPhase.AfterWindowOpen)
@@ -163,10 +166,15 @@ export abstract class AbstractUpdateService implements IUpdateService {
 		this.doCheckForUpdates(explicit);
 	}
 
-	async downloadUpdate(): Promise<void> {
+	async downloadUpdate(explicit: boolean): Promise<void> {
 		this.logService.trace('update#downloadUpdate, state = ', this.state.type);
 
 		if (this.state.type !== StateType.AvailableForDownload) {
+			return;
+		}
+
+		if (!explicit && this.meteredConnectionService.isConnectionMetered) {
+			this.logService.info('update#downloadUpdate - skipping download because connection is metered');
 			return;
 		}
 
@@ -247,7 +255,7 @@ export abstract class AbstractUpdateService implements IUpdateService {
 			this.logService.info('update#readyStateCheck: newer update available, restarting update machinery');
 			await this.cancelPendingUpdate();
 			this._overwrite = true;
-			this.setState(State.Overwriting(explicit));
+			this.setState(State.Overwriting(this._state.update, explicit));
 			this.doCheckForUpdates(explicit, pendingUpdateCommit);
 			return true;
 		}
@@ -287,6 +295,15 @@ export abstract class AbstractUpdateService implements IUpdateService {
 
 	async _applySpecificUpdate(packagePath: string): Promise<void> {
 		// noop
+	}
+
+	async disableProgressiveReleases(): Promise<void> {
+		this.logService.info('update#disableProgressiveReleases');
+		this._disableProgressiveReleases = true;
+	}
+
+	protected shouldDisableProgressiveReleases(): boolean {
+		return this._disableProgressiveReleases;
 	}
 
 	protected getUpdateType(): UpdateType {

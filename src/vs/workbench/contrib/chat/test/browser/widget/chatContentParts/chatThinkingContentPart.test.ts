@@ -6,7 +6,7 @@
 import assert from 'assert';
 import { $ } from '../../../../../../../base/browser/dom.js';
 import { Event } from '../../../../../../../base/common/event.js';
-import { DisposableStore } from '../../../../../../../base/common/lifecycle.js';
+import { DisposableStore, toDisposable } from '../../../../../../../base/common/lifecycle.js';
 import { observableValue } from '../../../../../../../base/common/observable.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../../base/test/common/utils.js';
 import { mainWindow } from '../../../../../../../base/browser/window.js';
@@ -25,7 +25,6 @@ import { ThinkingDisplayMode } from '../../../../common/constants.js';
 import { CodeBlockModelCollection } from '../../../../common/widget/codeBlockModelCollection.js';
 import { EditorPool, DiffEditorPool } from '../../../../browser/widget/chatContentParts/chatContentCodePools.js';
 import { IHoverService } from '../../../../../../../platform/hover/browser/hover.js';
-import { ChatTreeItem } from '../../../../browser/chat.js';
 import { ILanguageModelsService } from '../../../../common/languageModels.js';
 import { URI } from '../../../../../../../base/common/uri.js';
 
@@ -49,7 +48,7 @@ suite('ChatThinkingContentPart', () => {
 		};
 
 		return {
-			element: mockElement as ChatTreeItem,
+			element: mockElement as IChatResponseViewModel,
 			elementIndex: 0,
 			container: mainWindow.document.createElement('div'),
 			content: [],
@@ -95,7 +94,7 @@ suite('ChatThinkingContentPart', () => {
 		// Mock the anchor service
 		mockAnchorService = {
 			_serviceBrand: undefined,
-			register: () => ({ dispose: () => { } }),
+			register: () => toDisposable(() => { }),
 			lastFocusedAnchor: undefined
 		};
 		instantiationService.stub(IChatMarkdownAnchorService, mockAnchorService);
@@ -107,7 +106,7 @@ suite('ChatThinkingContentPart', () => {
 			showDelayedHover: () => undefined,
 			showAndFocusLastHover: () => { },
 			hideHover: () => { },
-			setupDelayedHover: () => ({ dispose: () => { } }),
+			setupDelayedHover: () => toDisposable(() => { }),
 			setupManagedHover: () => ({ dispose: () => { }, show: () => { }, hide: () => { }, update: () => { } }),
 			showManagedHover: () => undefined,
 			isHovered: () => false,
@@ -121,7 +120,7 @@ suite('ChatThinkingContentPart', () => {
 			getLanguageModelIds: () => [],
 			lookupLanguageModel: () => undefined,
 			selectLanguageModels: async () => [],
-			registerLanguageModelChat: () => ({ dispose: () => { } }),
+			registerLanguageModelChat: () => toDisposable(() => { }),
 			sendChatRequest: async () => ({ stream: (async function* () { })(), result: Promise.resolve({}) }),
 			computeTokenLength: async () => 0
 		} as unknown as ILanguageModelsService;
@@ -150,7 +149,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			assert.strictEqual(part.domNode.classList.contains('chat-used-context-collapsed'), true, 'Should be collapsed by default');
 		});
@@ -168,7 +167,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			assert.ok(part.domNode.classList.contains('chat-thinking-box'), 'Should have chat-thinking-box class');
 		});
@@ -186,7 +185,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			const button = part.domNode.querySelector('.chat-used-context-label .monaco-button');
 			assert.ok(button, 'Should have collapse button');
@@ -209,7 +208,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// In collapsed mode, content wrapper should not be initialized
 			const contentList = part.domNode.querySelector('.chat-used-context-list');
@@ -229,7 +228,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Click the button to expand
 			const button = part.domNode.querySelector('.monaco-button') as HTMLElement;
@@ -260,7 +259,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// In CollapsedPreview mode, should be expanded while streaming
 			assert.strictEqual(part.domNode.classList.contains('chat-used-context-collapsed'), false,
@@ -280,11 +279,56 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// When complete, should be collapsed
 			assert.strictEqual(part.domNode.classList.contains('chat-used-context-collapsed'), true,
 				'Should be collapsed when complete');
+		});
+
+		test('should be collapsed when streamingCompleted is true even if element.isComplete is false (look-ahead completion)', () => {
+			// This tests the scenario where we know the thinking part is complete
+			// based on look-ahead (subsequent non-pinnable parts exist), but the
+			// overall response is still in progress
+			const content = createThinkingPart('**Finished analyzing**');
+			const context = createMockRenderContext(false); // element.isComplete = false
+
+			const part = store.add(instantiationService.createInstance(
+				ChatThinkingContentPart,
+				content,
+				context,
+				mockMarkdownRenderer,
+				true // streamingCompleted = true (look-ahead detected this thinking is done)
+			));
+
+			mainWindow.document.body.appendChild(part.domNode);
+			disposables.add(toDisposable(() => part.domNode.remove()));
+
+			// Even though element.isComplete is false, this thinking part should be
+			// collapsed because streamingCompleted is true (determined by look-ahead)
+			assert.strictEqual(part.domNode.classList.contains('chat-used-context-collapsed'), true,
+				'Should be collapsed when streamingCompleted is true, even if element.isComplete is false');
+		});
+
+		test('should use lazy rendering when streamingCompleted is true even if element.isComplete is false', () => {
+			// Verify lazy rendering is triggered when streamingCompleted=true and element.isComplete=false
+			const content = createThinkingPart('**Looking ahead completed**');
+			const context = createMockRenderContext(false); // element.isComplete = false
+
+			const part = store.add(instantiationService.createInstance(
+				ChatThinkingContentPart,
+				content,
+				context,
+				mockMarkdownRenderer,
+				true // streamingCompleted = true
+			));
+
+			mainWindow.document.body.appendChild(part.domNode);
+			disposables.add(toDisposable(() => part.domNode.remove()));
+
+			// Content should not be rendered because it's collapsed (lazy rendering)
+			const contentList = part.domNode.querySelector('.chat-used-context-list');
+			assert.strictEqual(contentList, null, 'Content should not be rendered when streamingCompleted=true (collapsed = lazy)');
 		});
 	});
 
@@ -306,7 +350,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			assert.ok(part.domNode.classList.contains('chat-thinking-fixed-mode'),
 				'Should have fixed mode class');
@@ -325,7 +369,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Fixed mode should initialize content immediately (eager rendering)
 			// The scrollable element should be present
@@ -346,7 +390,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			const scrollable = part.domNode.querySelector('.monaco-scrollable-element');
 			assert.ok(scrollable, 'Should have scrollable container');
@@ -371,7 +415,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// First expand to render content
 			const button = part.domNode.querySelector('.monaco-button') as HTMLElement;
@@ -399,7 +443,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Expand first
 			const button = part.domNode.querySelector('.monaco-button') as HTMLElement;
@@ -432,7 +476,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			let factoryCalled = false;
 			const factory = () => {
@@ -463,7 +507,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Expand first
 			const button = part.domNode.querySelector('.monaco-button') as HTMLElement;
@@ -497,7 +541,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			let factoryCalled = false;
 			const factory = () => {
@@ -532,7 +576,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			let factoryCalled = false;
 			const factory = () => {
@@ -565,7 +609,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			const appendOrder: string[] = [];
 
@@ -647,7 +691,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Append tool1 while collapsed (lazy)
 			let tool1Rendered = false;
@@ -744,7 +788,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Step 1: Tool1 arrives while collapsed - should be lazy
 			part.appendItem(() => {
@@ -831,7 +875,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Step 1: New thinking section arrives while collapsed
 			const thinkingContent1 = createThinkingPart('**Starting analysis**', 'thinking-2');
@@ -889,7 +933,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Only call setupThinkingContainer, no subsequent updateThinking
 			const thinkingContent = createThinkingPart('**Analyzing files**', 'thinking-2');
@@ -955,7 +999,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Should be expanded initially
 			assert.strictEqual(part.domNode.classList.contains('chat-used-context-collapsed'), false);
@@ -979,7 +1023,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			part.finalizeTitleIfDefault();
 
@@ -1085,24 +1129,6 @@ suite('ChatThinkingContentPart', () => {
 			mockConfigurationService.setUserConfiguration('chat.agent.thinkingStyle', ThinkingDisplayMode.Collapsed);
 		});
 
-		test('should be focusable via tabIndex', () => {
-			const content = createThinkingPart('**Content**');
-			const context = createMockRenderContext(false);
-
-			const part = store.add(instantiationService.createInstance(
-				ChatThinkingContentPart,
-				content,
-				context,
-				mockMarkdownRenderer,
-				false
-			));
-
-			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
-
-			assert.strictEqual(part.domNode.tabIndex, 0, 'Should be focusable');
-		});
-
 		test('should have proper aria-expanded attribute', () => {
 			const content = createThinkingPart('**Content**');
 			const context = createMockRenderContext(false);
@@ -1116,7 +1142,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			const button = part.domNode.querySelector('.monaco-button') as HTMLElement;
 			assert.ok(button, 'Button should exist');
@@ -1141,7 +1167,7 @@ suite('ChatThinkingContentPart', () => {
 			));
 
 			mainWindow.document.body.appendChild(part.domNode);
-			disposables.add({ dispose: () => part.domNode.remove() });
+			disposables.add(toDisposable(() => part.domNode.remove()));
 
 			// Should have loading spinner icon
 			const loadingIcon = part.domNode.querySelector('.codicon-loading');

@@ -30,6 +30,7 @@ import { Promises } from '../../../../base/common/async.js';
 import { IUserDataSyncWorkbenchService } from '../../../services/userDataSync/common/userDataSync.js';
 import { Event } from '../../../../base/common/event.js';
 import { toAction } from '../../../../base/common/actions.js';
+import { IDefaultAccountService } from '../../../../platform/defaultAccount/common/defaultAccount.js';
 
 export const CONTEXT_UPDATE_STATE = new RawContextKey<string>('updateState', StateType.Uninitialized);
 export const MAJOR_MINOR_UPDATE_AVAILABLE = new RawContextKey<boolean>('majorMinorUpdateAvailable', false);
@@ -316,7 +317,7 @@ export class UpdateContribution extends Disposable implements IWorkbenchContribu
 			nls.localize('thereIsUpdateAvailable', "There is an available update."),
 			[{
 				label: nls.localize('download update', "Download Update"),
-				run: () => this.updateService.downloadUpdate()
+				run: () => this.updateService.downloadUpdate(true)
 			}, {
 				label: nls.localize('later', "Later"),
 				run: () => { }
@@ -474,7 +475,7 @@ export class UpdateContribution extends Disposable implements IWorkbenchContribu
 			when: CONTEXT_UPDATE_STATE.isEqualTo(StateType.CheckingForUpdates)
 		});
 
-		CommandsRegistry.registerCommand('update.downloadNow', () => this.updateService.downloadUpdate());
+		CommandsRegistry.registerCommand('update.downloadNow', () => this.updateService.downloadUpdate(true));
 		MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
 			group: '7_update',
 			command: {
@@ -670,6 +671,44 @@ export class SwitchProductQualityContribution extends Disposable implements IWor
 					return result;
 				}
 			}));
+		}
+	}
+}
+
+export class DefaultAccountUpdateContribution extends Disposable implements IWorkbenchContribution {
+
+	constructor(
+		@IUpdateService private readonly updateService: IUpdateService,
+		@IDefaultAccountService private readonly defaultAccountService: IDefaultAccountService
+	) {
+		super();
+
+		if (isWeb) {
+			return; // Electron only
+		}
+
+		// Check on startup
+		this.checkDefaultAccount();
+
+		// Listen for account changes
+		this._register(this.defaultAccountService.onDidChangeDefaultAccount(() => {
+			this.checkDefaultAccount();
+		}));
+	}
+
+	private async checkDefaultAccount(): Promise<void> {
+		try {
+			const defaultAccount = await this.defaultAccountService.getDefaultAccount();
+			const shouldDisable = defaultAccount?.entitlementsData?.organization_login_list?.some(
+				org => org.toLowerCase() === 'visual-studio-code'
+			) ?? false;
+
+			if (shouldDisable) {
+				await this.updateService.disableProgressiveReleases();
+				this.dispose();
+			}
+		} catch (error) {
+			// Silently ignore errors - if we can't get the account, we don't disable background updates
 		}
 	}
 }

@@ -55,11 +55,6 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 				mode: 'startup'
 			}
 		},
-		[InlineChatConfigKeys.DefaultModel]: {
-			markdownDescription: localize('defaultModel', "The default model to use for inline chat. The value can be the model's qualified name (e.g., `{0}`) or the model name for Copilot models (e.g., `{1}`). If not set, the vendor's default model for inline chat is used.", 'GPT-4o (copilot)', 'GPT-4o'),
-			default: '',
-			type: 'string'
-		},
 		[InlineChatConfigKeys.Affordance]: {
 			description: localize('affordance', "Controls whether an inline chat affordance is shown when text is selected."),
 			default: 'off',
@@ -70,6 +65,9 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 				localize('affordance.gutter', "Show an affordance in the gutter."),
 				localize('affordance.editor', "Show an affordance in the editor at the cursor position."),
 			],
+			experiment: {
+				mode: 'auto'
+			},
 			tags: ['experimental']
 		},
 		[InlineChatConfigKeys.RenderMode]: {
@@ -81,6 +79,9 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 				localize('renderMode.zone', "Render inline chat as a zone widget below the current line."),
 				localize('renderMode.hover', "Render inline chat as a hover overlay."),
 			],
+			experiment: {
+				mode: 'auto'
+			},
 			tags: ['experimental']
 		}
 	}
