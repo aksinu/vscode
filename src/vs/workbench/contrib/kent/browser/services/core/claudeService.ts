@@ -680,11 +680,17 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._sessionService.renameSession(sessionId, title);
 	}
 
-	setSessionModel(model: string): void {
+	async setSessionModel(model: string): Promise<void> {
 		const resolvedModel = model ? resolveModelName(model) : undefined;
+
+		// 프로젝트 .claude/settings.json에 저장 (영구 반영)
+		await this._configManager.saveProjectModel(resolvedModel);
+
+		// 메모리 캐시도 업데이트 (다음 요청에 즉시 반영)
 		this._chatManager.setSessionModelOverride(resolvedModel || undefined);
+
 		const displayName = resolvedModel ? getModelDisplayName(resolvedModel) : '(cleared)';
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session model override:', displayName);
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Model saved to .claude/settings.json:', displayName);
 		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
@@ -1010,25 +1016,29 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	async handleCommandComplete(): Promise<void> {
 		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] handleCommandComplete started');
 
+		// 비동기 작업 전에 메시지 ID를 미리 저장 (ChatManager.streamingCompleted가 비동기 중 ID를 클리어할 수 있음)
+		const savedMessageId = this._currentMessageId || this._sessionService.getCurrentMessageId();
+		const savedMessages = this._sessionService.hasCurrentSession() ? [...this._sessionService.getMessages()] : [];
+		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Saved messageId before async: ${savedMessageId}, messages: ${savedMessages.length}`);
+
 		// tool_result 이벤트가 누락된 경우를 대비해 아직 캡처되지 않은 파일들 캡처
 		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] Calling captureAllPendingModifications...');
-		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] _fileService type: ${this._fileService.constructor.name}`);
 		await this._fileService.captureAllPendingModifications();
 		this.logService.info(ClaudeService.LOG_CATEGORY, '[FileChanges] captureAllPendingModifications done');
 
 		const changesSummary = this._fileService.getFileChangesSummary();
 
 		this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Changes found: ${changesSummary.changes.length}`);
-		// 디버깅: 스냅샷 상태 출력
 		for (const change of changesSummary.changes) {
 			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] - ${change.filePath}: ${change.changeType}, +${change.linesAdded}/-${change.linesRemoved}`);
 		}
 
-		// 현재 메시지에 파일 변경사항 추가
-		if (changesSummary.changes.length > 0 && this._currentMessageId && this._sessionService.hasCurrentSession()) {
-			const messages = this._sessionService.getMessages();
-			const currentMessage = messages.find(m => m.id === this._currentMessageId);
-			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${this._currentMessageId}, found: ${!!currentMessage}`);
+		// 현재 메시지에 파일 변경사항 추가 (저장해둔 메시지 ID 사용)
+		if (changesSummary.changes.length > 0 && savedMessageId) {
+			// 최신 메시지 목록에서 찾기 (세션이 아직 유효한 경우)
+			const currentMessages = this._sessionService.hasCurrentSession() ? this._sessionService.getMessages() : savedMessages;
+			const currentMessage = currentMessages.find(m => m.id === savedMessageId);
+			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${savedMessageId}, found: ${!!currentMessage}`);
 
 			if (currentMessage) {
 				const updatedMessage: IClaudeMessage = {

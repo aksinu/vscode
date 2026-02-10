@@ -5,20 +5,31 @@
 
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../../../base/common/uri.js';
+import { VSBuffer } from '../../../../../../../base/common/buffer.js';
 import { IFileService } from '../../../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../../../platform/workspace/common/workspace.js';
 import { IClaudeLocalConfig, DEFAULT_LOCAL_CONFIG } from '../../../../common/config/claudeLocalConfig.js';
 import { IClaudeLogService } from '../../../../common/claudeLogService.js';
 
 /**
+ * 프로젝트 .claude/settings.json 구조
+ */
+interface IClaudeProjectSettings {
+	model?: string;
+	[key: string]: unknown;
+}
+
+/**
  * ConfigManager - 로컬 설정 관리
  * 책임: loadLocalConfig, reloadLocalConfig, getLocalConfig, getWorkspaceRoot
+ *       + 프로젝트 .claude/settings.json 읽기/쓰기
  */
 export class ConfigManager extends Disposable {
 
 	private static readonly LOG_CATEGORY = 'ConfigManager';
 
 	private _localConfig: IClaudeLocalConfig = DEFAULT_LOCAL_CONFIG;
+	private _projectSettings: IClaudeProjectSettings = {};
 
 	constructor(
 		private readonly _platformFileService: IFileService,
@@ -29,7 +40,7 @@ export class ConfigManager extends Disposable {
 	}
 
 	/**
-	 * 로컬 설정 로드
+	 * 로컬 설정 로드 (.vscode/claude.local.json + .claude/settings.json)
 	 */
 	async loadLocalConfig(): Promise<void> {
 		try {
@@ -39,21 +50,91 @@ export class ConfigManager extends Disposable {
 				return;
 			}
 
+			// 1. .vscode/claude.local.json (기존 로컬 설정)
 			const configUri = URI.joinPath(workspaceFolder.uri, '.vscode', 'claude.local.json');
-			this._logService.debug(ConfigManager.LOG_CATEGORY, 'Looking for local config at:', configUri.fsPath);
-
 			try {
 				const content = await this._platformFileService.readFile(configUri);
 				const configData = JSON.parse(content.value.toString()) as IClaudeLocalConfig;
 				this._localConfig = { ...DEFAULT_LOCAL_CONFIG, ...configData };
 				this._logService.info(ConfigManager.LOG_CATEGORY, 'Local config loaded:', this._localConfig);
 			} catch {
-				// 파일이 없으면 기본값 사용
 				this._logService.debug(ConfigManager.LOG_CATEGORY, 'No local config file, using defaults');
+			}
+
+			// 2. .claude/settings.json (프로젝트별 Claude Code 설정)
+			await this.loadProjectSettings(workspaceFolder.uri);
+
+			// 프로젝트 설정의 model이 있으면 localConfig에 병합 (프로젝트 설정 우선)
+			if (this._projectSettings.model) {
+				this._localConfig = { ...this._localConfig, model: this._projectSettings.model };
+				this._logService.info(ConfigManager.LOG_CATEGORY, 'Project model override:', this._projectSettings.model);
 			}
 		} catch (e) {
 			this._logService.error(ConfigManager.LOG_CATEGORY, 'Failed to load local config:', e);
 		}
+	}
+
+	/**
+	 * 프로젝트 .claude/settings.json 로드
+	 */
+	private async loadProjectSettings(workspaceUri: URI): Promise<void> {
+		const settingsUri = URI.joinPath(workspaceUri, '.claude', 'settings.json');
+		try {
+			const content = await this._platformFileService.readFile(settingsUri);
+			this._projectSettings = JSON.parse(content.value.toString());
+			this._logService.info(ConfigManager.LOG_CATEGORY, 'Project settings loaded from .claude/settings.json');
+		} catch {
+			this._projectSettings = {};
+			this._logService.debug(ConfigManager.LOG_CATEGORY, 'No .claude/settings.json found');
+		}
+	}
+
+	/**
+	 * 프로젝트 .claude/settings.json에 모델 저장
+	 */
+	async saveProjectModel(model: string | undefined): Promise<void> {
+		const workspaceFolder = this._workspaceContextService.getWorkspace().folders[0];
+		if (!workspaceFolder) {
+			this._logService.error(ConfigManager.LOG_CATEGORY, 'Cannot save model: no workspace folder');
+			return;
+		}
+
+		const settingsUri = URI.joinPath(workspaceFolder.uri, '.claude', 'settings.json');
+
+		// 기존 설정 읽기 (다른 필드 보존)
+		let existingSettings: IClaudeProjectSettings = {};
+		try {
+			const content = await this._platformFileService.readFile(settingsUri);
+			existingSettings = JSON.parse(content.value.toString());
+		} catch {
+			// 파일 없으면 새로 생성
+		}
+
+		// model 필드 업데이트
+		if (model) {
+			existingSettings.model = model;
+		} else {
+			delete existingSettings.model;
+		}
+
+		// 파일 쓰기
+		const jsonContent = JSON.stringify(existingSettings, null, '\t');
+		await this._platformFileService.writeFile(settingsUri, VSBuffer.fromString(jsonContent));
+
+		// 캐시 업데이트
+		this._projectSettings = existingSettings;
+		if (model) {
+			this._localConfig = { ...this._localConfig, model };
+		}
+
+		this._logService.info(ConfigManager.LOG_CATEGORY, `Project model saved to .claude/settings.json: ${model || '(cleared)'}`);
+	}
+
+	/**
+	 * 프로젝트 설정 가져오기
+	 */
+	getProjectSettings(): IClaudeProjectSettings {
+		return this._projectSettings;
 	}
 
 	/**

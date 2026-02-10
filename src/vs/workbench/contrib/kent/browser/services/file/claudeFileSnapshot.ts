@@ -87,87 +87,24 @@ export class FileSnapshotManager extends Disposable {
 	 * 파일 변경 감지 설정
 	 */
 	private setupFileWatching(): void {
-		// 파일 시스템 변경 이벤트 구독
-		this._register(this.fileService.onDidFilesChange(event => {
-			const affectedPaths: string[] = [];
+		// ⚠️ FileWatcher가 비활성화된 상태에서는 파일 시스템 변경 감지 비활성화
+		// Edit tool 기반 추적으로 대체
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+			`🔧 FileWatcher-based tracking disabled, using tool-based tracking only`);
 
-			// 변경된 파일들 확인 (추가, 업데이트, 삭제)
-			const allChangedUris = [
-				...event.rawAdded,
-				...event.rawUpdated,
-				...event.rawDeleted
-			];
+		// 기존 파일 시스템 변경 감지 로직을 주석 처리
+		// this._register(this.fileService.onDidFilesChange(event => {
+		//     ... file watching logic disabled ...
+		// }));
 
-			for (const uri of allChangedUris) {
-				const filePath = uri.fsPath;
-				if (this._snapshots.has(filePath)) {
-					affectedPaths.push(filePath);
-				}
-			}
-
-			if (affectedPaths.length > 0) {
-				this.logService.info(FileSnapshotManager.LOG_CATEGORY,
-					`File system changes detected for ${affectedPaths.length} tracked files`);
-				// 파일 변경 감지 시 스냅샷 정리 (비동기)
-				setTimeout(() => this.cleanupInvalidSnapshots(), 100);
-			}
-		}));
-
-		// 에디터가 열릴 때 해당 파일의 스냅샷 검증
-		this._register(this.editorService.onDidActiveEditorChange(() => {
-			const activeEditor = this.editorService.activeEditor;
-			if (activeEditor?.resource) {
-				const filePath = activeEditor.resource.fsPath;
-				if (this._snapshots.has(filePath)) {
-					this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
-						`Active editor changed to tracked file: ${filePath}`);
-					// 해당 파일만 검증 (비동기)
-					setTimeout(() => this.validateSpecificSnapshot(filePath), 50);
-				}
-			}
-		}));
+		// ⚠️ 에디터 변경 감지도 비활성화 (tool-based tracking 사용)
+		// this._register(this.editorService.onDidActiveEditorChange(() => {
+		//     ... editor change validation disabled ...
+		// }));
 	}
 
-	/**
-	 * 특정 파일의 스냅샷 검증
-	 */
-	private async validateSpecificSnapshot(filePath: string): Promise<void> {
-		const snapshot = this._snapshots.get(filePath);
-		if (!snapshot) {
-			return;
-		}
-
-		try {
-			const uri = this.resolveUri(filePath);
-			const model = this.modelService.getModel(uri);
-
-			if (model) {
-				const currentContent = model.getValue();
-
-				// 현재 내용이 원본과 같다면 변경이 없었으므로 스냅샷 제거
-				if (currentContent === snapshot.originalContent) {
-					this._snapshots.delete(filePath);
-					this.saveSnapshots();
-					this._onDidChangeFiles.fire(this.getChangesSummary());
-					this.logService.info(FileSnapshotManager.LOG_CATEGORY,
-						`Removed snapshot for unchanged file: ${filePath}`);
-					return;
-				}
-
-				// 현재 내용이 예상된 수정 내용과 다르다면 외부 변경이므로 스냅샷 제거
-				if (snapshot.modifiedContent && currentContent !== snapshot.modifiedContent) {
-					this._snapshots.delete(filePath);
-					this.saveSnapshots();
-					this._onDidChangeFiles.fire(this.getChangesSummary());
-					this.logService.info(FileSnapshotManager.LOG_CATEGORY,
-						`Removed snapshot for externally changed file: ${filePath}`);
-				}
-			}
-		} catch (error) {
-			this.logService.debug(FileSnapshotManager.LOG_CATEGORY,
-				`Error validating snapshot for ${filePath}:`, error);
-		}
-	}
+	// validateSpecificSnapshot 메소드 제거됨
+	// Tool-based tracking에서는 external change 검사가 불필요함
 
 	/**
 	 * 새 명령 시작 - 스냅샷 초기화
@@ -314,8 +251,8 @@ export class FileSnapshotManager extends Disposable {
 		try {
 			const uri = snapshot.uri;
 
-			// 파일이 쓰여질 시간을 약간 대기 (파일 시스템 동기화)
-			await new Promise(resolve => setTimeout(resolve, 200));
+			// ⚡ Tool-based tracking에서는 즉시 캡처 (FileWatcher 비활성화로 external conflict 없음)
+			await new Promise(resolve => setTimeout(resolve, 50)); // 최소한의 대기만
 
 			// 열려있는 에디터 모델에서 먼저 확인
 			const model = this.modelService.getModel(uri);
@@ -631,8 +568,18 @@ export class FileSnapshotManager extends Disposable {
 
 	/**
 	 * 파일 변경 감지 시 스냅샷 정리 (IDE 재시작 등)
+	 * ⚠️ FileWatcher 비활성화 시 사용하지 않음
 	 */
 	cleanupInvalidSnapshots(): void {
+		this.logService.info(FileSnapshotManager.LOG_CATEGORY,
+			`🚫 cleanupInvalidSnapshots disabled - using tool-based tracking only`);
+
+		// FileWatcher가 비활성화된 상태에서는 external change 검사를 하지 않음
+		// Edit tool로 수정된 파일만 추적하도록 변경
+		return;
+
+		// 기존 로직 비활성화
+		/*
 		const toRemove: string[] = [];
 
 		for (const [filePath, snapshot] of this._snapshots.entries()) {
@@ -670,6 +617,7 @@ export class FileSnapshotManager extends Disposable {
 			this.logService.info(FileSnapshotManager.LOG_CATEGORY,
 				`Cleaned up ${toRemove.length} invalid snapshots`);
 		}
+		*/
 	}
 
 	/**
