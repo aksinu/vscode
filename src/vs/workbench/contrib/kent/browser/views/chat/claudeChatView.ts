@@ -23,7 +23,7 @@ import { IThemeService } from '../../../../../../platform/theme/common/themeServ
 import { IViewPaneOptions, ViewPane } from '../../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../../common/views.js';
 import { IClaudeService } from '../../../common/services/core/claude.js';
-import { IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels } from '../../../common/types/claudeTypes.js';
+import { IAssistantMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
@@ -662,7 +662,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				onFocusChange: (focused: boolean) => this.inputFocusedKey.set(focused),
 				onContentChange: () => this.autocompleteManager.check(),
 				onPaste: (e: ClipboardEvent) => this.clipboardManager.handlePaste(e),
-				onKeyDown: (keyCode: number) => this.autocompleteManager.handleKeyDown(keyCode),
+				onKeyDown: (keyCode: number) => this.handleInputKeyDown(keyCode),
 				registerDisposable: (d: any) => this._register(d)
 			}
 		));
@@ -676,7 +676,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				onFocusChange: (focused) => this.inputFocusedKey.set(focused),
 				onContentChange: () => this.autocompleteManager.check(),
 				onPaste: (e) => this.clipboardManager.handlePaste(e),
-				onKeyDown: (keyCode) => this.autocompleteManager.handleKeyDown(keyCode),
+				onKeyDown: (keyCode) => this.handleInputKeyDown(keyCode),
 				onSessionStateChanged: (sessionId, hasContent) => this.onSessionInputStateChanged(sessionId, hasContent),
 				registerDisposable: (d) => this._register(d)
 			}
@@ -693,7 +693,9 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				onAttachFile: (uri) => this.attachmentManager.addFile(uri),
 				onAttachWorkspace: () => this.attachWorkspaceContext(),
+				onAttachSelection: () => this.attachEditorSelection(),
 				onCommandSelected: (prompt) => this.sessionInputManager.setCommandPrompt(prompt),
+				onBuiltinCommand: (commandId) => this.handleBuiltinCommand(commandId),
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -874,6 +876,38 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	// ========== 자동완성 헬퍼 ==========
+
+	/**
+	 * 에디터 선택 영역 첨부 (@selection)
+	 */
+	private attachEditorSelection(): void {
+		const editor = this.editorService.activeTextEditorControl;
+		if (!editor || !('getModel' in editor)) {
+			this.notificationService.info(localize('noActiveEditor', "No active editor"));
+			return;
+		}
+
+		const codeEditor = editor as ICodeEditor;
+		const selection = codeEditor.getSelection();
+		const model = codeEditor.getModel();
+
+		if (!selection || !model || selection.isEmpty()) {
+			this.notificationService.info(localize('noSelection', "No text selected in the editor"));
+			return;
+		}
+
+		const selectedText = model.getValueInRange(selection);
+		const fileName = model.uri.path.split('/').pop() || 'unknown';
+
+		this.attachmentManager.addSelection(
+			fileName,
+			selectedText,
+			model.uri,
+			model.getLanguageId(),
+			selection.startLineNumber,
+			selection.endLineNumber
+		);
+	}
 
 	/**
 	 * 워크스페이스 컨텍스트 첨부
@@ -1113,6 +1147,113 @@ export class ClaudeChatViewPane extends ViewPane {
 				localize('failedToUpdatePermissionMode', "Failed to update permission mode: {0}", String(error))
 			);
 		}
+	}
+
+	// ========== 입력 키 핸들링 ==========
+
+	/**
+	 * 입력 에디터 키 이벤트 처리
+	 * @returns 이벤트가 처리되었으면 true
+	 */
+	private handleInputKeyDown(keyCode: number): boolean {
+		// 1. Autocomplete가 열려있으면 우선 처리
+		if (this.autocompleteManager.handleKeyDown(keyCode)) {
+			return true;
+		}
+
+		// 2. ↑↓ 키로 히스토리 탐색 (입력이 비어있거나 한 줄일 때만)
+		const editor = this.inputEditorManager.editorInstance;
+		const model = editor.getModel();
+		const position = editor.getPosition();
+
+		if (keyCode === 16 /* UpArrow */ && model && position) {
+			// 첫 번째 줄에서만 히스토리 위로
+			if (position.lineNumber === 1) {
+				return this.sessionInputManager.navigateHistoryUp();
+			}
+		}
+
+		if (keyCode === 18 /* DownArrow */ && model && position) {
+			// 마지막 줄에서만 히스토리 아래로
+			if (position.lineNumber === model.getLineCount()) {
+				return this.sessionInputManager.navigateHistoryDown();
+			}
+		}
+
+		return false;
+	}
+
+	// ========== 내장 커맨드 처리 ==========
+
+	/**
+	 * 내장 커맨드 처리 (프롬프트 삽입이 아닌 직접 실행)
+	 */
+	private handleBuiltinCommand(commandId: string): void {
+		switch (commandId) {
+			case 'cost':
+				this.showCostSummary();
+				break;
+		}
+	}
+
+	/**
+	 * /cost - 세션 토큰 사용량 및 비용 요약 표시
+	 */
+	private showCostSummary(): void {
+		const messages = this.claudeService.getMessages();
+
+		let totalInputTokens = 0;
+		let totalOutputTokens = 0;
+		let totalCacheReadTokens = 0;
+		let totalCacheCreationTokens = 0;
+		let totalCostUsd = 0;
+		let messageCount = 0;
+
+		for (const msg of messages) {
+			if (msg.role === 'assistant') {
+				const assistantMsg = msg as IAssistantMessage;
+				if (assistantMsg.usage) {
+					totalInputTokens += assistantMsg.usage.inputTokens || 0;
+					totalOutputTokens += assistantMsg.usage.outputTokens || 0;
+					totalCacheReadTokens += assistantMsg.usage.cacheReadTokens || 0;
+					totalCacheCreationTokens += assistantMsg.usage.cacheCreationTokens || 0;
+					totalCostUsd += assistantMsg.usage.totalCostUsd || 0;
+					messageCount++;
+				}
+			}
+		}
+
+		// 모델 정보
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		const modelName = statusInfo?.model ? getModelDisplayName(statusInfo.model) : 'Unknown';
+
+		// 포맷팅
+		const formatTokens = (n: number): string => {
+			if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+			if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+			return String(n);
+		};
+
+		let html = `<strong>Session Cost Summary</strong><br>`;
+		html += `Model: ${modelName}<br>`;
+		html += `Turns: ${messageCount}<br>`;
+		html += `───────────────<br>`;
+		html += `Input tokens: ${formatTokens(totalInputTokens)}<br>`;
+		html += `Output tokens: ${formatTokens(totalOutputTokens)}<br>`;
+		if (totalCacheReadTokens > 0) {
+			html += `Cache read: ${formatTokens(totalCacheReadTokens)}<br>`;
+		}
+		if (totalCacheCreationTokens > 0) {
+			html += `Cache creation: ${formatTokens(totalCacheCreationTokens)}<br>`;
+		}
+		html += `───────────────<br>`;
+		if (totalCostUsd > 0) {
+			html += `<strong>Total cost: $${totalCostUsd.toFixed(4)}</strong>`;
+		} else {
+			html += `<strong>Total tokens: ${formatTokens(totalInputTokens + totalOutputTokens)}</strong>`;
+		}
+
+		this.messageListManager?.appendInfoMessage(html);
 	}
 
 	/**

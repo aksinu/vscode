@@ -218,6 +218,32 @@ export class AttachmentManager extends Disposable {
 	}
 
 	/**
+	 * 에디터 선택 영역 첨부 (@selection)
+	 */
+	addSelection(fileName: string, selectedText: string, uri?: URI, languageId?: string, startLine?: number, endLine?: number): void {
+		// 이미 selection 첨부가 있으면 교체
+		const existingIndex = this._attachments.findIndex(a => a.type === 'selection');
+		if (existingIndex !== -1) {
+			this._attachments.splice(existingIndex, 1);
+		}
+
+		const lineInfo = startLine !== undefined && endLine !== undefined
+			? ` (L${startLine}-${endLine})`
+			: '';
+
+		const attachment: IClaudeAttachment = {
+			id: generateUuid(),
+			type: 'selection',
+			uri,
+			name: `Selection: ${fileName}${lineInfo}`,
+			content: selectedText
+		};
+
+		this._attachments.push(attachment);
+		this.updateUI();
+	}
+
+	/**
 	 * 코드 참조 첨부 (에디터에서 복사한 코드)
 	 */
 	addCodeReference(ref: IClaudeCodeReference): void {

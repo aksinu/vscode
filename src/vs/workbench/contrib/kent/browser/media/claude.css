@@ -1602,6 +1602,35 @@
 	white-space: nowrap;
 }
 
+/* ========== Info Message (/cost 등) ========== */
+
+.claude-info-message {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 8px 16px;
+	padding: 10px 14px;
+	background-color: var(--vscode-inputValidation-infoBackground);
+	border: 1px solid var(--vscode-inputValidation-infoBorder);
+	border-radius: 6px;
+	font-size: 12px;
+	line-height: 1.6;
+	color: var(--vscode-foreground);
+}
+
+.claude-info-message .codicon-info {
+	flex-shrink: 0;
+	font-size: 14px;
+	margin-top: 1px;
+	color: var(--vscode-notificationsInfoIcon-foreground);
+}
+
+.claude-info-message .claude-info-text {
+	flex: 1;
+	word-break: break-word;
+	font-family: var(--vscode-editor-font-family), monospace;
+}
+
 /* ========== Auto Accept ========== */
 
 .claude-ask-user.auto-accepted {

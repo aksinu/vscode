@@ -29,9 +29,16 @@ export interface IAutocompleteItem {
 export interface IAutocompleteCallbacks {
 	onAttachFile(uri: URI): Promise<void>;
 	onAttachWorkspace(): void;
+	onAttachSelection(): void;
 	onCommandSelected(prompt: string): void;
+	onBuiltinCommand(commandId: string): void;
 	registerDisposable<T extends IDisposable>(disposable: T): T;
 }
+
+/**
+ * 내장 커맨드 목록 (프롬프트 삽입이 아닌 직접 실행)
+ */
+const BUILTIN_COMMAND_IDS = new Set(['cost']);
 
 /**
  * 자동완성 매니저
@@ -156,6 +163,13 @@ export class AutocompleteManager {
 				type: 'mention'
 			},
 			{
+				id: 'selection',
+				icon: 'codicon-selection',
+				label: '@selection',
+				description: localize('mentionSelection', "Attach editor selection"),
+				type: 'mention'
+			},
+			{
 				id: 'workspace',
 				icon: 'codicon-folder-library',
 				label: '@workspace',
@@ -235,6 +249,13 @@ export class AutocompleteManager {
 				icon: 'codicon-rocket',
 				label: '/optimize',
 				description: localize('cmdOptimize', "Optimize for performance"),
+				type: 'command'
+			},
+			{
+				id: 'cost',
+				icon: 'codicon-credit-card',
+				label: '/cost',
+				description: localize('cmdCost', "Show session token usage and cost"),
 				type: 'command'
 			}
 		];
@@ -360,12 +381,20 @@ export class AutocompleteManager {
 					await this.callbacks.onAttachFile(model.uri);
 				}
 			}
+		} else if (item.id === 'selection') {
+			this.callbacks.onAttachSelection();
 		} else if (item.id === 'workspace') {
 			await this.callbacks.onAttachWorkspace();
 		}
 	}
 
 	private handleCommandItem(item: IAutocompleteItem): void {
+		// 내장 커맨드는 직접 실행
+		if (BUILTIN_COMMAND_IDS.has(item.id)) {
+			this.callbacks.onBuiltinCommand(item.id);
+			return;
+		}
+
 		const commandPrompts: Record<string, string> = {
 			'explain': localize('promptExplain', "Explain this code in detail:"),
 			'fix': localize('promptFix', "Find and fix bugs in this code:"),

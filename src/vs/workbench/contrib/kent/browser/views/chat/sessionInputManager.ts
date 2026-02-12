@@ -22,6 +22,11 @@ interface IInputSessionState {
 }
 
 /**
+ * 프롬프트 히스토리 상수
+ */
+const PROMPT_HISTORY_MAX_SIZE = 50;
+
+/**
  * SessionInputManager 콜백 인터페이스
  */
 export interface ISessionInputCallbacks extends IInputEditorCallbacks {
@@ -48,6 +53,15 @@ export class SessionInputManager extends Disposable {
 
 	/** 첨부파일 매니저 */
 	private readonly attachmentManager: AttachmentManager;
+
+	/** 프롬프트 히스토리 (최근 전송 메시지) */
+	private readonly promptHistory: string[] = [];
+
+	/** 히스토리 탐색 인덱스 (-1 = 현재 입력) */
+	private historyIndex: number = -1;
+
+	/** 히스토리 탐색 시작 시 현재 입력 내용 임시 저장 */
+	private historyDraftText: string = '';
 
 	constructor(
 		inputEditor: InputEditorManager,
@@ -157,6 +171,12 @@ export class SessionInputManager extends Disposable {
 	public clearCurrentSessionState(): void {
 		if (!this.currentSessionId) {
 			return;
+		}
+
+		// 전송된 내용을 히스토리에 추가
+		const text = this.inputEditor.getValue().trim();
+		if (text) {
+			this.addToHistory(text);
 		}
 
 		// 실제 UI 초기화
@@ -274,6 +294,99 @@ export class SessionInputManager extends Disposable {
 	 */
 	public layout(): void {
 		this.inputEditor.layout();
+	}
+
+	// ========== 프롬프트 히스토리 ==========
+
+	/**
+	 * 히스토리에 추가
+	 */
+	private addToHistory(text: string): void {
+		// 중복 방지 (마지막 항목과 같으면 무시)
+		if (this.promptHistory.length > 0 && this.promptHistory[this.promptHistory.length - 1] === text) {
+			this.resetHistoryNavigation();
+			return;
+		}
+
+		this.promptHistory.push(text);
+
+		// 최대 크기 제한
+		if (this.promptHistory.length > PROMPT_HISTORY_MAX_SIZE) {
+			this.promptHistory.shift();
+		}
+
+		this.resetHistoryNavigation();
+	}
+
+	/**
+	 * 히스토리 탐색 초기화
+	 */
+	private resetHistoryNavigation(): void {
+		this.historyIndex = -1;
+		this.historyDraftText = '';
+	}
+
+	/**
+	 * 히스토리 위로 탐색 (↑ 키)
+	 * @returns 탐색되었으면 true
+	 */
+	public navigateHistoryUp(): boolean {
+		if (this.promptHistory.length === 0) {
+			return false;
+		}
+
+		// 첫 번째 탐색 시 현재 입력 내용 저장
+		if (this.historyIndex === -1) {
+			this.historyDraftText = this.inputEditor.getValue();
+		}
+
+		const nextIndex = this.historyIndex === -1
+			? this.promptHistory.length - 1
+			: Math.max(0, this.historyIndex - 1);
+
+		if (nextIndex === this.historyIndex) {
+			return false; // 이미 가장 오래된 항목
+		}
+
+		this.historyIndex = nextIndex;
+		this.inputEditor.setValue(this.promptHistory[this.historyIndex]);
+		this.moveCursorToEnd();
+		return true;
+	}
+
+	/**
+	 * 히스토리 아래로 탐색 (↓ 키)
+	 * @returns 탐색되었으면 true
+	 */
+	public navigateHistoryDown(): boolean {
+		if (this.historyIndex === -1) {
+			return false; // 이미 현재 입력
+		}
+
+		if (this.historyIndex >= this.promptHistory.length - 1) {
+			// 현재 입력으로 복원
+			this.historyIndex = -1;
+			this.inputEditor.setValue(this.historyDraftText);
+			this.moveCursorToEnd();
+			return true;
+		}
+
+		this.historyIndex++;
+		this.inputEditor.setValue(this.promptHistory[this.historyIndex]);
+		this.moveCursorToEnd();
+		return true;
+	}
+
+	/**
+	 * 커서를 입력 끝으로 이동
+	 */
+	private moveCursorToEnd(): void {
+		const model = this.inputEditor.editorInstance.getModel();
+		if (model) {
+			const lastLine = model.getLineCount();
+			const lastColumn = model.getLineMaxColumn(lastLine);
+			this.inputEditor.editorInstance.setPosition({ lineNumber: lastLine, column: lastColumn });
+		}
 	}
 
 	override dispose(): void {

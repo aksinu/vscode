@@ -147,6 +147,21 @@ export class MessageListManager {
 	}
 
 	/**
+	 * 시스템 정보 메시지 추가 (채팅 영역에 인라인 표시)
+	 */
+	appendInfoMessage(content: string): void {
+		const infoContainer = $('.claude-info-message');
+		const iconEl = append(infoContainer, $('span.codicon.codicon-info'));
+		iconEl.setAttribute('aria-hidden', 'true');
+
+		const textEl = append(infoContainer, $('span.claude-info-text'));
+		textEl.innerHTML = content;
+
+		this.messagesContainer.insertBefore(infoContainer, this.loadingElement);
+		this.scrollToBottom();
+	}
+
+	/**
 	 * 리소스 정리
 	 */
 	dispose(): void {
