@@ -83,8 +83,8 @@ export class AssistantMessageRenderer {
 			this.renderAskUser(message.askUserRequest, messageElement, disposables);
 		}
 
-		// 토큰 사용량 및 작업시간 (완료 후)
-		if (!message.isStreaming && (message.usage || message.workStartTime)) {
+		// 토큰 사용량 (완료 후)
+		if (!message.isStreaming && message.usage) {
 			this.renderUsageInfo(message, messageElement);
 		}
 
@@ -104,6 +104,11 @@ export class AssistantMessageRenderer {
 		// 시스템메시지 (취소, 오류 등)
 		if (message.systemMessage || message.isCanceled) {
 			this.renderSystemMessage(message, messageElement);
+		}
+
+		// 경과 시간 (우하단, 항상 표시)
+		if (message.workStartTime) {
+			this.renderElapsedTime(message, messageElement, disposables);
 		}
 
 		return disposables;
@@ -317,18 +322,10 @@ export class AssistantMessageRenderer {
 	}
 
 	/**
-	 * 사용량 정보 (토큰, 작업시간)
+	 * 사용량 정보 (토큰)
 	 */
 	private renderUsageInfo(message: IAssistantMessage, container: HTMLElement): void {
 		const usageElement = append(container, $('.claude-assistant-usage'));
-
-		// 작업 시간
-		if (message.workStartTime) {
-			const workTimeElement = append(usageElement, $('.claude-usage-worktime'));
-			const duration = this.calculateWorkDuration(message);
-			append(workTimeElement, $('.codicon.codicon-clock'));
-			append(workTimeElement, $('span')).textContent = duration;
-		}
 
 		// 토큰 정보
 		if (message.usage) {
@@ -558,35 +555,37 @@ export class AssistantMessageRenderer {
 		}
 	}
 
-	private updateTimeDisplay(timeElement: HTMLElement, message: IAssistantMessage, disposables: DisposableStore): void {
-		const baseTime = this.formatTime(message.timestamp);
+	private updateTimeDisplay(timeElement: HTMLElement, message: IAssistantMessage, _disposables: DisposableStore): void {
+		timeElement.textContent = this.formatTime(message.timestamp);
+	}
 
-		const updateTimeContent = (workTime: string) => {
-			clearNode(timeElement);
-			timeElement.appendChild(document.createTextNode(baseTime + ' '));
-			const workTimeSpan = append(timeElement, $('.work-time'));
-			workTimeSpan.textContent = '• ' + workTime;
+	/**
+	 * 경과 시간 표시 (메시지 우하단, 항상 표시)
+	 */
+	private renderElapsedTime(message: IAssistantMessage, container: HTMLElement, disposables: DisposableStore): void {
+		const elapsedElement = append(container, $('.claude-elapsed-time'));
+		const clockIcon = append(elapsedElement, $('.codicon.codicon-clock'));
+		clockIcon.style.fontSize = '11px';
+		const timeSpan = append(elapsedElement, $('span'));
+
+		const updateElapsed = () => {
+			timeSpan.textContent = this.calculateWorkDuration(message);
 		};
 
-		if (message.workStartTime) {
-			const workTime = this.calculateWorkDuration(message);
-			updateTimeContent(workTime);
+		updateElapsed();
 
-			// 실시간 업데이트 (스트리밍 중일 때)
-			if (message.isStreaming) {
-				const updateInterval = setInterval(() => {
-					if (!message.isStreaming) {
-						clearInterval(updateInterval);
-						return;
-					}
-					const currentWorkTime = this.calculateWorkDuration(message);
-					updateTimeContent(currentWorkTime);
-				}, 1000);
+		// 스트리밍 중이면 실시간 업데이트
+		if (message.isStreaming) {
+			const updateInterval = setInterval(() => {
+				if (!message.isStreaming) {
+					clearInterval(updateInterval);
+					updateElapsed(); // 최종 시간 반영
+					return;
+				}
+				updateElapsed();
+			}, 1000);
 
-				disposables.add({ dispose: () => clearInterval(updateInterval) });
-			}
-		} else {
-			timeElement.textContent = baseTime;
+			disposables.add({ dispose: () => clearInterval(updateInterval) });
 		}
 	}
 

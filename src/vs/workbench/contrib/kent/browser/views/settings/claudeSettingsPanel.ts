@@ -142,6 +142,26 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxSessions: value }; }
 		});
 
+		// Max Turns 설정
+		this.createNumberSetting(content, {
+			label: localize('maxTurns', "Max Turns"),
+			description: localize('maxTurnsDesc', "Maximum conversation turns per session (CLI --max-turns)"),
+			value: this.currentConfig.maxTurns ?? 1000,
+			min: 1,
+			max: 1000,
+			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxTurns: value }; }
+		});
+
+		// Max Budget (USD) 설정
+		this.createNumberSetting(content, {
+			label: localize('maxBudgetUsd', "Max Budget (USD)"),
+			description: localize('maxBudgetUsdDesc', "Maximum budget in USD per session (CLI --max-budget-usd)"),
+			value: this.currentConfig.maxBudgetUsd ?? 5,
+			min: 0.01,
+			max: 100,
+			step: 0.01,
+			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxBudgetUsd: value }; }
+		});
 
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
@@ -354,6 +374,7 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		value: number;
 		min: number;
 		max: number;
+		step?: number;
 		onChange: (value: number) => void;
 	}): HTMLElement {
 		const item = append(container, $('.claude-settings-item'));
@@ -370,9 +391,13 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		input.min = options.min.toString();
 		input.max = options.max.toString();
 		input.value = options.value.toString();
+		if (options.step) {
+			input.step = options.step.toString();
+		}
 
+		const parse = options.step ? parseFloat : parseInt;
 		this.modalDisposables.push(addDisposableListener(input, EventType.INPUT, () => {
-			const value = Math.max(options.min, Math.min(options.max, parseInt(input.value) || options.min));
+			const value = Math.max(options.min, Math.min(options.max, parse(input.value) || options.min));
 			input.value = value.toString();
 			options.onChange(value);
 		}));

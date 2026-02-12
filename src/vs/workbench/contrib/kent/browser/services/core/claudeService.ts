@@ -304,19 +304,19 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// ClaudeMessageService 큐 델리게이트 설정
 		this._messageService.setQueueDelegates(
 			() => {
-				// Check if currently streaming
+				// Check if currently streaming via ChatStateManager (central state)
 				const currentSessionId = this._multiSessionManager.getCurrentSessionId();
 				if (currentSessionId) {
-					const sessionState = this._multiSessionManager.getSessionState(currentSessionId);
-					const isStreaming = sessionState ? sessionState.state === 'streaming' : false;
+					const chatState = this._chatStateManager.getState(currentSessionId);
+					const isStreaming = chatState === 'sending' || chatState === 'responding';
 					this.logService.info(ClaudeService.LOG_CATEGORY,
-						`🔍 STREAMING CHECK - Session: ${currentSessionId}, isStreaming: ${isStreaming}, state: ${sessionState?.state}, sessionState: ${JSON.stringify(sessionState)}`);
+						`🔍 STREAMING CHECK - Session: ${currentSessionId}, isStreaming: ${isStreaming}, chatState: ${chatState}`);
 					return isStreaming;
 				}
 				// Fallback to legacy single session
-				const legacyStreaming = this.getState() === 'streaming';
+				const legacyStreaming = this._state !== 'idle';
 				this.logService.info(ClaudeService.LOG_CATEGORY,
-					`🔍 STREAMING CHECK - No current session, legacy streaming: ${legacyStreaming}, current state: ${this.getState()}`);
+					`🔍 STREAMING CHECK - No current session, legacy streaming: ${legacyStreaming}, current state: ${this._state}`);
 				return legacyStreaming;
 			},
 			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
@@ -406,6 +406,41 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._register(this._multiConnection.onDidChangeStatus(() => {
 			this._uiService.fireStatusInfoChange(this.getStatusInfo());
 		}));
+
+		// ChatStateManager → UI 상태 매핑 (ChatSessionState → ClaudeServiceState)
+		// 현재 세션의 상태 변경만 UI에 전달
+		this._register(this._chatStateManager.onDidChangeState(transition => {
+			const currentSessionId = this._sessionService.getCurrentSession()?.id;
+			if (transition.sessionId !== currentSessionId) {
+				return;
+			}
+
+			// ChatSessionState → ClaudeServiceState 매핑
+			const uiState = this.mapToUIState(transition.currentState);
+			this._state = uiState;
+			this._uiService.setState(uiState);
+		}));
+	}
+
+	/**
+	 * ChatSessionState → ClaudeServiceState 매핑
+	 */
+	private mapToUIState(chatState: import('../../../common/types/claudeTypes.js').ChatSessionState): ClaudeServiceState {
+		switch (chatState) {
+			case 'sending':
+				return 'sending';
+			case 'responding':
+			case 'asking':
+			case 'rateLimit':
+				return 'streaming';
+			case 'error':
+				return 'error';
+			case 'idle':
+			case 'composing':
+			case 'cancelled':
+			default:
+				return 'idle';
+		}
 	}
 
 	// ========== CLI 이벤트 구독 ==========

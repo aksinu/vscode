@@ -108,17 +108,38 @@ export class ClaudeUIService extends Disposable implements IClaudeUIService {
 	// ========== Event Firing ==========
 
 	/**
-	 * 상태 변경 이벤트 발생 (디바운싱 적용)
+	 * 상태 변경 이벤트 발생
+	 * idle↔non-idle 전환은 즉시 fire (Cancel 버튼 표시에 critical)
+	 * 같은 카테고리 내 전환은 디바운싱 적용
 	 */
 	fireStateChange(state: ClaudeServiceState): void {
+		const prevState = this._currentState;
+
+		// _currentState 즉시 동기화
+		this._currentState = state;
+
+		// idle↔non-idle 전환은 즉시 fire (디바운스 없이)
+		const wasIdle = prevState === 'idle';
+		const isIdle = state === 'idle';
+
+		if (wasIdle !== isIdle) {
+			// Critical 전환: 디바운싱 취소하고 즉시 fire
+			if (this._stateChangeTimeout) {
+				clearTimeout(this._stateChangeTimeout);
+				this._stateChangeTimeout = null;
+			}
+			this._pendingStateChange = null;
+			this._onDidChangeState.fire(state);
+			return;
+		}
+
+		// 같은 카테고리 내 전환: 디바운싱 적용
 		this._pendingStateChange = state;
 
-		// 기존 타이머 취소
 		if (this._stateChangeTimeout) {
 			clearTimeout(this._stateChangeTimeout);
 		}
 
-		// 새 타이머 설정
 		this._stateChangeTimeout = setTimeout(() => {
 			if (this._pendingStateChange !== null) {
 				this._onDidChangeState.fire(this._pendingStateChange);

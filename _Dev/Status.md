@@ -8,14 +8,43 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | 🎯 **Phase 7 진행중** - 모델 설정 리팩토링 + CLI 검증 |
+| **Phase** | 🎯 **Phase 8 진행중** - 상태 관리 버그 수정 + 설정 패널 확장 |
 | **Status** | [x] 코드 완료, ⚠️ 컴파일 필요 |
 | **Build** | ⚠️ 컴파일 필요 |
-| **Updated** | 2026-02-10 |
+| **Updated** | 2026-02-12 |
 
 ---
 
 ## Latest Completion
+
+### [x] 상태 관리 버그 수정 — Cancel 버튼 미표시 문제 (2026-02-12)
+
+**문제**: Claude 응답 중 Cancel 버튼이 표시되지 않는 현상
+**원인**: ChatStateManager(새 상태 시스템)와 ClaudeUIService(레거시 UI 상태)가 연결되지 않음
+
+**수정 파일 2개:**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `browser/services/core/claudeService.ts` | ChatStateManager.onDidChangeState → UI 상태 매핑 연결, STREAMING CHECK에서 ChatStateManager 활용 |
+| `browser/services/ui/claudeUIService.ts` | idle↔non-idle 전환 시 디바운스 없이 즉시 fire, `_currentState` 즉시 동기화 |
+
+**상태 매핑 (ChatSessionState → ClaudeServiceState):**
+```
+sending    → sending
+responding → streaming
+asking     → streaming
+rateLimit  → streaming
+error      → error
+idle       → idle
+```
+
+### [x] Max Turns / Max Budget 설정 패널 추가 (2026-02-12)
+
+**변경 파일 1개:** `claudeSettingsPanel.ts`
+- Max Turns (디폴트: 1000, 범위: 1~1000)
+- Max Budget USD (디폴트: 5, 범위: 0.01~100, step: 0.01)
+- `createNumberSetting()`에 `step` 옵션 + `parseFloat` 지원 추가
 
 ### [x] 모델 설정 리팩토링 + CLI 검증 (2026-02-10)
 

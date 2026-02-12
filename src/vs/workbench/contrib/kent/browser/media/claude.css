@@ -145,8 +145,14 @@
 	color: var(--vscode-descriptionForeground);
 }
 
-.claude-assistant-time .work-time {
-	color: var(--vscode-textLink-foreground);
+.claude-elapsed-time {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
 }
 
 .claude-assistant-content {
