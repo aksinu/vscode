@@ -25,6 +25,7 @@ import {
  * 파일 변경사항 관련 콜백들을 포함
  */
 export interface IAssistantMessageRendererOptions {
+	readonly onRespondToAskUser?: (responses: string[]) => void;
 	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
 	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
 	readonly onAcceptFile?: (fileChange: IClaudeFileChange) => void;
@@ -296,7 +297,18 @@ export class AssistantMessageRenderer {
 				}
 
 				const clickHandler = () => {
-					// TODO: 옵션 선택 처리
+					// 선택된 옵션 시각적 표시
+					const allButtons = optionsContainer.querySelectorAll('.claude-ask-option');
+					allButtons.forEach(btn => btn.classList.remove('selected'));
+					button.classList.add('selected');
+
+					// 모든 버튼 비활성화 (중복 클릭 방지)
+					allButtons.forEach(btn => (btn as HTMLButtonElement).disabled = true);
+
+					// 응답 전송
+					if (this._options.onRespondToAskUser) {
+						this._options.onRespondToAskUser([option.label]);
+					}
 				};
 				button.addEventListener('click', clickHandler);
 				disposables.add({ dispose: () => button.removeEventListener('click', clickHandler) });

@@ -23,25 +23,16 @@ ProjectRoot/
 ├── .claude/
 │   ├── settings.local.json  # 로컬 권한 설정
 │   └── agents/              # 서브에이전트 정의
-│       ├── vscode-structure.md     # VS Code 구조 전문가
-│       ├── contribution-pattern.md # Contribution 패턴 전문가
-│       ├── claude-integration.md   # Claude 통합 설계 전문가
-│       ├── project-status.md       # 프로젝트 상태 추적
-│       ├── design-specs.md         # 설계 명세 전문가
-│       ├── typescript-expert.md    # TypeScript 전문가
-│       ├── ui-designer.md          # UI/UX 디자인 전문가
-│       ├── ipc-expert.md           # IPC 통신 전문가
-│       ├── performance-optimizer.md # 성능 최적화 전문가
-│       ├── filesystem-expert.md    # 파일 시스템 전문가
-│       ├── build-deploy-expert.md  # 빌드/배포 전문가
-│       ├── component-architect.md  # 컴포넌트 기반 설계자
-│       ├── composition-advocate.md # 탈상속주의자
-│       ├── solid-principles-expert.md # SOLID 원칙 전도사
-│       ├── architect.md            # 소프트웨어 설계자
-│       ├── coder.md                # 코드 작성 전문가
-│       ├── debugger.md             # 디버깅 전문가
-│       ├── reviewer.md             # 코드 리뷰어
-│       └── tester.md               # 테스트 전문가
+│       ├── project-context.md  # 프로젝트 컨텍스트 (구조+상태+설계)
+│       ├── architect.md        # 소프트웨어 설계자
+│       ├── coder.md            # 코드 작성 전문가
+│       ├── debugger.md         # 디버깅 전문가
+│       ├── reviewer.md         # 코드 리뷰어 (테스트+성능+리팩토링 포함)
+│       ├── ui-designer.md      # UI/UX 디자인 전문가
+│       ├── dev-team.md         # 개발 팀 (architect + coder)
+│       ├── bugfix-team.md      # 버그 수정 팀 (debugger + coder)
+│       ├── ui-team.md          # UI 팀 (ui-designer + coder)
+│       └── quality-team.md     # 품질 팀 (reviewer 기반)
 │
 ├── _Dev/                  # 개발 문서
 │   ├── Status.md          # 현재 진행 상태 ★ 작업 시작 시 확인
@@ -50,8 +41,6 @@ ProjectRoot/
 │       ├── SPEC_001_ChatArchitecture.md
 │       ├── SPEC_002_ClaudeFeatures.md
 │       └── SPEC_005_FileChangesTracking.md
-│
-# 제거됨: _Guides/ (Phase 5 완료로 초기 설계 가이드 불필요)
 │
 └── src/                   # VS Code 소스
     └── vs/workbench/contrib/kent/  # Claude 모듈
@@ -130,32 +119,42 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ---
 
-## Agent Teams (통합 팀)
+## Agent 활용 원칙
 
-작업 유형에 따라 적절한 팀 에이전트 활용:
+### 적극적 Agent 활용 (필수)
+- **사용자가 명시하지 않아도** 작업 특성에 맞는 agent를 적극 활용할 것
+- **개발 범위가 큰 경우** agent team을 적극 활용하여 병렬 작업
+- 단순 질문이나 1-2줄 수정이 아닌 이상, 관련 agent 참조를 기본으로
 
-### 팀 에이전트 (권장)
-| Team | 통합 역할 | 언제 사용 |
-|------|----------|----------|
-| `dev-team` | architect + coder + typescript + contribution | 새 기능 설계 및 구현 |
-| `bugfix-team` | debugger + coder + typescript | 버그 분석, 에러 수정, TODO 해결 |
-| `ui-team` | ui-designer + coder + component + composition | UI 개발, CSS, 접근성 |
-| `quality-team` | reviewer + tester + performance + SOLID + refactoring | 코드 리뷰, 테스트, 최적화 |
-| `infra-team` | ipc + filesystem + build-deploy | IPC 통신, 파일 시스템, 빌드 |
-| `context-team` | project-status + design-specs + vscode-structure + claude | 프로젝트 상태, 아키텍처 이해 |
+### Agent 선택 기준
+| 상황 | Agent/Team |
+|------|-----------|
+| 프로젝트 상태/구조 파악 | `project-context` |
+| 새 기능 설계+구현 | `dev-team` (architect + coder) |
+| 버그/에러 수정 | `bugfix-team` (debugger + coder) |
+| UI/CSS 작업 | `ui-team` (ui-designer + coder) |
+| 코드 리뷰/품질 검증 | `quality-team` (reviewer 기반) |
+| 설계만 필요 | `architect` 단독 |
+| 구현만 필요 | `coder` 단독 |
+| 디버깅만 필요 | `debugger` 단독 |
 
-### 개별 에이전트 (세부 참조용)
-<details>
-<summary>20개 개별 에이전트 목록</summary>
+### 개별 에이전트 (6개)
+| Agent | 역할 |
+|-------|------|
+| `project-context` | 프로젝트 상태, VS Code 구조, Claude 모듈 아키텍처 |
+| `architect` | 기능 설계, 아키텍처 결정, 모듈 구조 계획 |
+| `coder` | TypeScript 코드 작성, VS Code 패턴 준수 |
+| `debugger` | 에러 분석, 스택 트레이스, 버그 추적 |
+| `reviewer` | 코드 리뷰, 테스트, 성능, 리팩토링 판단 |
+| `ui-designer` | UI/UX 설계, CSS, 접근성, 테마 호환 |
 
-**Knowledge**: `vscode-structure`, `contribution-pattern`, `claude-integration`, `project-status`, `design-specs`, `typescript-expert`
-
-**Task**: `architect`, `coder`, `refactoring-expert`, `debugger`, `reviewer`, `tester`
-
-**Specialist**: `ui-designer`, `ipc-expert`, `performance-optimizer`, `filesystem-expert`, `build-deploy-expert`
-
-**Design Philosophy**: `component-architect`, `composition-advocate`, `solid-principles-expert`
-</details>
+### 팀 에이전트 (4개)
+| Team | 구성 | 언제 사용 |
+|------|------|----------|
+| `dev-team` | architect + coder | 새 기능 설계 및 구현 |
+| `bugfix-team` | debugger + coder | 버그 분석, 에러 수정 |
+| `ui-team` | ui-designer + coder | UI 개발, CSS, 접근성 |
+| `quality-team` | reviewer 기반 | 코드 리뷰, 테스트, 최적화 |
 
 ---
 

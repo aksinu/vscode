@@ -61,7 +61,13 @@
       "Bash(find:*)",
       "Bash(tree:*)",
       "Bash(ls -la \"d:\\\\_______________Kent\\\\vscode\\\\src\\\\vs\\\\workbench\\\\contrib\\\\kent\\\\browser\\\\services\\\\queue\"\" 2>/dev/null || dir \"d:_______________Kentvscodesrcvsworkbenchcontribkentbrowserservicesqueue\"\")",
-      "WebFetch(domain:www.anthropic.com)"
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"tasklist /FI \"\"IMAGENAME eq Code*\"\" /FO TABLE 2>nul\")",
+      "Bash(cmd /c \"rmdir /s /q D:\\\\_______________Kent\\\\vscode\\\\.build\\\\electron 2>&1\")",
+      "Bash(npm show:*)",
+      "Bash(npm update:*)"
     ]
   }
 }

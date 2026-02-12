@@ -38,8 +38,9 @@ export class MessageRendererFactory {
 	constructor(options: IMessageRendererOptions) {
 		this.userRenderer = new UserMessageRenderer();
 
-		// AssistantMessageRenderer에 파일 변경 관련 옵션 전달
+		// AssistantMessageRenderer에 옵션 전달
 		const assistantOptions: IAssistantMessageRendererOptions = {
+			onRespondToAskUser: options.onRespondToAskUser,
 			onShowFileDiff: options.onShowFileDiff,
 			onRevertFile: options.onRevertFile,
 			onAcceptFile: options.onAcceptFile,
