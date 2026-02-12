@@ -25,6 +25,7 @@ import {
  * 파일 변경사항 관련 콜백들을 포함
  */
 export interface IAssistantMessageRendererOptions {
+	readonly onApplyCode?: (code: string, language: string, filePath?: string) => void;
 	readonly onRespondToAskUser?: (responses: string[]) => void;
 	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
 	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
@@ -541,6 +542,130 @@ export class AssistantMessageRenderer {
 		const result = renderMarkdown(markdown, renderOptions);
 		disposables.add(result);
 		append(container, result.element);
+
+		// 코드 블록에 Copy/Apply 액션 버튼 추가
+		this.enhanceCodeBlocks(result.element, disposables);
+	}
+
+	private enhanceCodeBlocks(element: HTMLElement, disposables: DisposableStore): void {
+		const codeBlocks = element.querySelectorAll('pre');
+		for (const pre of codeBlocks) {
+			const code = pre.querySelector('code');
+			if (!code) continue;
+
+			// 언어 감지 (class="language-xxx")
+			const langClass = Array.from(code.classList).find(c => c.startsWith('language-'));
+			const language = langClass ? langClass.replace('language-', '') : '';
+			const codeText = code.textContent || '';
+
+			// 파일 경로 감지 (코드 블록 직전 텍스트에서)
+			const detectedFilePath = this.detectFilePathFromContext(pre);
+
+			// 래퍼로 감싸기
+			const wrapper = $('.claude-code-block-wrapper');
+			pre.parentNode?.insertBefore(wrapper, pre);
+			wrapper.appendChild(pre);
+
+			// 액션 바
+			const actions = append(wrapper, $('.claude-code-block-actions'));
+
+			// 파일 경로 표시 (감지된 경우)
+			if (detectedFilePath) {
+				const fileLabel = append(actions, $('span.claude-code-block-file'));
+				const fileName = detectedFilePath.split(/[/\\]/).pop() || detectedFilePath;
+				fileLabel.textContent = fileName;
+				fileLabel.title = detectedFilePath;
+			}
+
+			// 언어 표시
+			if (language) {
+				const langLabel = append(actions, $('span.claude-code-block-lang'));
+				langLabel.textContent = language;
+			}
+
+			// 복사 버튼
+			const copyBtn = append(actions, $('button.claude-code-block-btn'));
+			copyBtn.title = localize('copyCode', "Copy");
+			append(copyBtn, $('span.codicon.codicon-copy'));
+			const copyLabel = append(copyBtn, $('span'));
+			copyLabel.textContent = localize('copy', "Copy");
+
+			const onCopy = () => {
+				navigator.clipboard.writeText(codeText).then(() => {
+					copyLabel.textContent = localize('copied', "Copied!");
+					setTimeout(() => {
+						copyLabel.textContent = localize('copy', "Copy");
+					}, 2000);
+				});
+			};
+			copyBtn.addEventListener('click', onCopy);
+			disposables.add({ dispose: () => copyBtn.removeEventListener('click', onCopy) });
+
+			// Apply 버튼 (콜백이 있을 때만)
+			if (this._options.onApplyCode) {
+				const applyBtn = append(actions, $('button.claude-code-block-btn.apply'));
+				const applyTitle = detectedFilePath
+					? localize('applyCodeToFile', "Apply to {0}", detectedFilePath.split(/[/\\]/).pop() || detectedFilePath)
+					: localize('applyCode', "Apply to editor");
+				applyBtn.title = applyTitle;
+				append(applyBtn, $('span.codicon.codicon-insert'));
+				const applyLabel = append(applyBtn, $('span'));
+				applyLabel.textContent = localize('apply', "Apply");
+
+				const onApply = () => {
+					this._options.onApplyCode!(codeText, language, detectedFilePath);
+				};
+				applyBtn.addEventListener('click', onApply);
+				disposables.add({ dispose: () => applyBtn.removeEventListener('click', onApply) });
+			}
+		}
+	}
+
+	/**
+	 * 코드 블록 주변 텍스트에서 파일 경로 감지
+	 * Claude 응답에서 흔한 패턴: "파일명:", "`파일명`:", "// 파일명" 등
+	 */
+	private detectFilePathFromContext(preElement: HTMLElement): string | undefined {
+		// 코드 블록 바로 이전 형제 요소에서 파일 경로 검색
+		let prevElement = preElement.previousElementSibling;
+
+		// 최대 2단계 위까지 검색 (p, h3 등)
+		for (let i = 0; i < 2 && prevElement; i++) {
+			const text = prevElement.textContent || '';
+			const filePath = this.extractFilePath(text);
+			if (filePath) {
+				return filePath;
+			}
+			prevElement = prevElement.previousElementSibling;
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * 텍스트에서 파일 경로 추출
+	 */
+	private extractFilePath(text: string): string | undefined {
+		// 파일 경로 패턴들 (우선순위 순)
+		const patterns: RegExp[] = [
+			// src/path/to/file.ts, ./path/to/file.ts 등 (백틱 감싸기)
+			/`([^\s`]+\.[a-zA-Z]{1,10})`/,
+			// **path/to/file.ts** (볼드)
+			/\*\*([^\s*]+\.[a-zA-Z]{1,10})\*\*/,
+			// path/to/file.ext: 또는 path/to/file.ext 패턴 (슬래시 포함)
+			/(?:^|\s)((?:[a-zA-Z]:)?(?:[/\\])?(?:[\w.-]+[/\\])+[\w.-]+\.[a-zA-Z]{1,10})[\s:]/,
+			// 단독 파일명.확장자: (마지막 줄)
+			/(?:^|\s)([\w.-]+\.(?:ts|tsx|js|jsx|py|java|go|rs|css|html|json|md|yaml|yml|toml|sh|bash|sql|c|cpp|h|hpp))[\s:]*$/,
+		];
+
+		for (const pattern of patterns) {
+			const match = text.match(pattern);
+			if (match && match[1]) {
+				return match[1];
+			}
+		}
+
+		return undefined;
 	}
 
 	private getStateDisplayText(state: ChatSessionState, message: IAssistantMessage): string {

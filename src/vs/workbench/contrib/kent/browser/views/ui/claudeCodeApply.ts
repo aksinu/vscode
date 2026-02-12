@@ -11,6 +11,8 @@ import { INotificationService } from '../../../../../../platform/notification/co
 import { IQuickInputService, IQuickPickItem } from '../../../../../../platform/quickinput/common/quickInput.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ITextModelService } from '../../../../../../editor/common/services/resolverService.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
 import { URI } from '../../../../../../base/common/uri.js';
 import { Range } from '../../../../../../editor/common/core/range.js';
 import { basename } from '../../../../../../base/common/resources.js';
@@ -34,15 +36,28 @@ export class CodeApplyManager extends Disposable {
 		private readonly quickInputService: IQuickInputService,
 		private readonly modelService: IModelService,
 		private readonly textModelService: ITextModelService,
+		private readonly fileService: IFileService,
+		private readonly workspaceContextService: IWorkspaceContextService,
 		private readonly callbacks: ICodeApplyCallbacks
 	) {
 		super();
 	}
 
 	/**
-	 * 코드 적용 (QuickPick으로 방식 선택)
+	 * 코드 적용 (파일 경로 감지 + QuickPick)
 	 */
-	async apply(code: string, _language: string): Promise<void> {
+	async apply(code: string, _language: string, filePath?: string): Promise<void> {
+		// 파일 경로가 감지된 경우: 해당 파일을 열고 Diff 미리보기
+		if (filePath) {
+			const resolvedUri = await this.resolveFilePath(filePath);
+			if (resolvedUri) {
+				await this.applyToFile(resolvedUri, code);
+				return;
+			}
+			// 파일을 찾지 못하면 일반 적용으로 폴백
+		}
+
+		// 기존 로직: 현재 열린 에디터에 적용
 		const editor = this.editorService.activeTextEditorControl;
 		if (!editor || !('getModel' in editor)) {
 			this.notificationService.info(localize('noActiveEditor', "No active editor to apply code"));
@@ -68,7 +83,86 @@ export class CodeApplyManager extends Disposable {
 			return;
 		}
 
-		// QuickPick으로 적용 방식 선택
+		await this.showApplyPicker(codeEditor, model.uri, targetRange, originalText, code);
+	}
+
+	// ========== File Path Resolution ==========
+
+	/**
+	 * 파일 경로를 워크스페이스 기준으로 URI 해석
+	 */
+	private async resolveFilePath(filePath: string): Promise<URI | undefined> {
+		const workspaceFolders = this.workspaceContextService.getWorkspace().folders;
+		if (workspaceFolders.length === 0) {
+			return undefined;
+		}
+
+		// 절대 경로인지 확인
+		if (/^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith('/')) {
+			const uri = URI.file(filePath);
+			try {
+				await this.fileService.stat(uri);
+				return uri;
+			} catch {
+				return undefined;
+			}
+		}
+
+		// 상대 경로: 각 워크스페이스 폴더에서 검색
+		for (const folder of workspaceFolders) {
+			const candidateUri = URI.joinPath(folder.uri, filePath);
+			try {
+				await this.fileService.stat(candidateUri);
+				return candidateUri;
+			} catch {
+				// 다음 폴더에서 시도
+			}
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * 특정 파일에 코드 적용 (Diff 미리보기)
+	 */
+	private async applyToFile(fileUri: URI, code: string): Promise<void> {
+		// 파일 열기
+		const editorPane = await this.editorService.openEditor({ resource: fileUri });
+		if (!editorPane) {
+			this.notificationService.warn(localize('cannotOpenFile', "Cannot open file: {0}", basename(fileUri)));
+			return;
+		}
+
+		const control = editorPane.getControl();
+		if (!control || !('getModel' in control)) {
+			return;
+		}
+
+		const codeEditor = control as ICodeEditor;
+		const model = codeEditor.getModel();
+		if (!model) {
+			return;
+		}
+
+		const fullRange = model.getFullModelRange();
+		const originalText = model.getValue();
+
+		// 변경사항이 없으면 알림
+		if (originalText === code) {
+			this.notificationService.info(localize('noChanges', "No changes to apply"));
+			return;
+		}
+
+		// Diff 미리보기로 바로 이동 (파일이 감지된 경우)
+		await this.showDiffPreview(fileUri, fullRange, originalText, code);
+	}
+
+	// ========== Private Methods ==========
+
+	/**
+	 * QuickPick으로 적용 방식 선택
+	 */
+	private async showApplyPicker(editor: ICodeEditor, uri: URI, range: Range, originalText: string, code: string): Promise<void> {
 		interface IApplyQuickPickItem extends IQuickPickItem {
 			id: string;
 		}
@@ -97,15 +191,11 @@ export class CodeApplyManager extends Disposable {
 		const selectedItem = selected as IApplyQuickPickItem;
 
 		if (selectedItem.id === 'apply') {
-			// 바로 적용
-			this.executeApply(codeEditor, targetRange, code);
+			this.executeApply(editor, range, code);
 		} else {
-			// Diff 미리보기
-			await this.showDiffPreview(model.uri, targetRange, originalText, code);
+			await this.showDiffPreview(uri, range, originalText, code);
 		}
 	}
-
-	// ========== Private Methods ==========
 
 	/**
 	 * 에디터에 코드 직접 적용

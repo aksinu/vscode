@@ -15,7 +15,7 @@ import { AssistantMessageRenderer, IAssistantMessageRendererOptions } from './as
 import { IClaudeFileChange } from '../../../../common/types/claudeTypes.js';
 
 export interface IMessageRendererOptions {
-	readonly onApplyCode?: (code: string, language: string) => void;
+	readonly onApplyCode?: (code: string, language: string, filePath?: string) => void;
 	readonly onRespondToAskUser?: (responses: string[]) => void;
 	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
 	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
@@ -40,6 +40,7 @@ export class MessageRendererFactory {
 
 		// AssistantMessageRenderer에 옵션 전달
 		const assistantOptions: IAssistantMessageRendererOptions = {
+			onApplyCode: options.onApplyCode,
 			onRespondToAskUser: options.onRespondToAskUser,
 			onShowFileDiff: options.onShowFileDiff,
 			onRevertFile: options.onRevertFile,

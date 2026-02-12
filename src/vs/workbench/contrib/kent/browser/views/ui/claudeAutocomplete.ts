@@ -38,7 +38,7 @@ export interface IAutocompleteCallbacks {
 /**
  * 내장 커맨드 목록 (프롬프트 삽입이 아닌 직접 실행)
  */
-const BUILTIN_COMMAND_IDS = new Set(['cost']);
+const BUILTIN_COMMAND_IDS = new Set(['cost', 'compact']);
 
 /**
  * 자동완성 매니저
@@ -256,6 +256,13 @@ export class AutocompleteManager {
 				icon: 'codicon-credit-card',
 				label: '/cost',
 				description: localize('cmdCost', "Show session token usage and cost"),
+				type: 'command'
+			},
+			{
+				id: 'compact',
+				icon: 'codicon-fold',
+				label: '/compact',
+				description: localize('cmdCompact', "Compress conversation to save context"),
 				type: 'command'
 			}
 		];

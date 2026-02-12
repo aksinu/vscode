@@ -137,6 +137,16 @@ export interface IClaudeService {
 	isAutoAcceptEnabled?(): boolean;
 
 	/**
+	 * Extended Thinking 토글
+	 */
+	setSessionThinking?(enabled: boolean): void;
+
+	/**
+	 * Extended Thinking 활성화 여부
+	 */
+	isThinkingEnabled?(): boolean;
+
+	/**
 	 * 현재 세션이 사용자 응답 대기 중인지 여부 (AskUser)
 	 */
 	isWaitingForUser?(): boolean;

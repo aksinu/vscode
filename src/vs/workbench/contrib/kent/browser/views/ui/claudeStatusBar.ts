@@ -19,6 +19,8 @@ export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 	openSessionSettings(): void;
 	cyclePermissionMode(): Promise<void>;
 	getPermissionMode(): ClaudePermissionMode;
+	toggleThinking(): void;
+	isThinkingEnabled(): boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 
 	private permissionModeButton: HTMLButtonElement | undefined;
+	private thinkingButton: HTMLButtonElement | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -50,6 +53,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		this.updateConnectionStatus(status);
 		this.updateExecutionMethod(status);
 		this.updatePermissionMode();
+		this.updateThinkingMode();
 		this.updateChatState(status);
 	}
 
@@ -67,6 +71,19 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		this.registerDisposable(addDisposableListener(this.permissionModeButton, EventType.CLICK, async () => {
 			await this.callbacks.cyclePermissionMode();
 			this.updatePermissionMode();
+		}));
+
+		// Extended Thinking 토글 버튼
+		this.thinkingButton = append(this.container, $('button.claude-thinking-toggle')) as HTMLButtonElement;
+		this.thinkingButton.title = localize('toggleThinking', "Toggle Extended Thinking");
+		const thinkingIcon = append(this.thinkingButton, $('span.claude-thinking-icon'));
+		thinkingIcon.textContent = '◇';
+		const thinkingText = append(this.thinkingButton, $('span.claude-thinking-text'));
+		thinkingText.textContent = 'Think';
+
+		this.registerDisposable(addDisposableListener(this.thinkingButton, EventType.CLICK, () => {
+			this.callbacks.toggleThinking();
+			this.updateThinkingMode();
 		}));
 
 		// 구분자
@@ -181,6 +198,26 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 				if (text) text.textContent = 'Default';
 				this.permissionModeButton.title = localize('permissionModeDefault', "Default mode - Click to switch to Plan");
 				break;
+		}
+	}
+
+	private updateThinkingMode(): void {
+		if (!this.thinkingButton) return;
+
+		const enabled = this.callbacks.isThinkingEnabled();
+		const icon = this.thinkingButton.querySelector('.claude-thinking-icon');
+		const text = this.thinkingButton.querySelector('.claude-thinking-text');
+
+		this.thinkingButton.classList.toggle('enabled', enabled);
+
+		if (enabled) {
+			if (icon) icon.textContent = '◆';
+			if (text) text.textContent = 'Think';
+			this.thinkingButton.title = localize('thinkingEnabled', "Extended Thinking ON - Click to disable");
+		} else {
+			if (icon) icon.textContent = '◇';
+			if (text) text.textContent = 'Think';
+			this.thinkingButton.title = localize('thinkingDisabled', "Extended Thinking OFF - Click to enable");
 		}
 	}
 

@@ -751,6 +751,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			: (this._configManager.getLocalConfig().autoAccept ?? false);
 	}
 
+	setSessionThinking(enabled: boolean): void {
+		this._chatManager.setSessionThinkingEnabled(enabled);
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Extended Thinking:', enabled ? 'ON' : 'OFF');
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
+	isThinkingEnabled(): boolean {
+		return this._chatManager.isSessionThinkingEnabled();
+	}
+
 	async continueLastSession(): Promise<void> {
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
 		this._chatManager.continueMode = true;

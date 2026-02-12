@@ -38,6 +38,7 @@ export class ChatManager extends Disposable {
 
 	// Session overrides
 	private _sessionModelOverride: string | undefined;
+	private _sessionThinkingEnabled: boolean = false;
 
 	constructor(
 		private readonly _configurationService: IConfigurationService,
@@ -324,8 +325,16 @@ export class ChatManager extends Disposable {
 			?? this._configurationService.getValue<string[]>('claude.disallowedTools');
 		const permissionMode = localConfig.permissionMode
 			?? this._configurationService.getValue<'default' | 'plan' | 'accept-edits'>('claude.permissionMode');
-		const betas = localConfig.betas
-			?? this._configurationService.getValue<string[]>('claude.betas');
+		let betas = localConfig.betas
+			?? this._configurationService.getValue<string[]>('claude.betas')
+			?? [];
+
+		// Extended Thinking 토글 반영
+		if (this._sessionThinkingEnabled && !betas.includes('interleaved-thinking')) {
+			betas = [...betas, 'interleaved-thinking'];
+		} else if (!this._sessionThinkingEnabled && betas.includes('interleaved-thinking')) {
+			betas = betas.filter(b => b !== 'interleaved-thinking');
+		}
 
 		return {
 			model: effectiveModel,
@@ -380,6 +389,14 @@ export class ChatManager extends Disposable {
 
 	getSessionModelOverride(): string | undefined {
 		return this._sessionModelOverride;
+	}
+
+	setSessionThinkingEnabled(enabled: boolean): void {
+		this._sessionThinkingEnabled = enabled;
+	}
+
+	isSessionThinkingEnabled(): boolean {
+		return this._sessionThinkingEnabled;
 	}
 
 	/**

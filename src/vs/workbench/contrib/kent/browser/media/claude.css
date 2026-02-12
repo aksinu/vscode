@@ -834,6 +834,81 @@
 	tab-size: 4;
 }
 
+/* ========== Markdown Code Block Enhancement (enhanceCodeBlocks) ========== */
+
+.claude-code-block-wrapper {
+	position: relative;
+	margin: 12px 0;
+	border-radius: 6px;
+	overflow: hidden;
+	border: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-textCodeBlock-background);
+}
+
+.claude-code-block-wrapper pre {
+	margin: 0;
+	padding: 12px;
+	overflow-x: auto;
+}
+
+.claude-code-block-wrapper code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size, 13px);
+	line-height: 1.5;
+}
+
+.claude-code-block-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background-color: var(--vscode-editorWidget-background);
+	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.claude-code-block-file {
+	font-size: 11px;
+	color: var(--vscode-textLink-foreground);
+	font-weight: 500;
+	margin-right: 4px;
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.claude-code-block-lang {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	margin-right: auto;
+}
+
+.claude-code-block-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font-size: 11px;
+	cursor: pointer;
+	border-radius: 4px;
+}
+
+.claude-code-block-btn:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.claude-code-block-btn.apply {
+	color: var(--vscode-button-foreground);
+	background-color: var(--vscode-button-secondaryBackground);
+}
+
+.claude-code-block-btn.apply:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
 /* ========== Context Tags ========== */
 
 .claude-message-context {
@@ -2775,6 +2850,48 @@
 
 .claude-permission-mode-toggle.mode-accept-edits:hover {
 	background: rgba(40, 167, 69, 0.1);
+}
+
+/* ========== Extended Thinking Toggle Button ========== */
+
+.claude-thinking-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: 1px solid var(--vscode-widget-border);
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 11px;
+	transition: all 0.15s ease;
+	margin-left: 4px;
+}
+
+.claude-thinking-toggle:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.claude-thinking-icon {
+	font-size: 10px;
+	line-height: 1;
+}
+
+.claude-thinking-text {
+	font-weight: 500;
+	letter-spacing: 0.3px;
+}
+
+/* Thinking enabled - cyan accent */
+.claude-thinking-toggle.enabled {
+	border-color: var(--vscode-terminal-ansiCyan);
+	color: var(--vscode-terminal-ansiCyan);
+}
+
+.claude-thinking-toggle.enabled:hover {
+	background: rgba(0, 188, 212, 0.1);
 }
 
 /* ========== Changes History Panel ========== */

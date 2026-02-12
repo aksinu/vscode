@@ -140,6 +140,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.quickInputService,
 			this.modelService,
 			this.textModelService,
+			this.fileService,
+			this.workspaceContextService,
 			{
 				registerDisposable: (d) => this._register(d)
 			}
@@ -159,7 +161,7 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		// 메시지 렌더러 생성
 		this.messageRenderer = this._register(this.instantiationService.createInstance(ClaudeMessageRenderer, {
-			onApplyCode: (code, language) => this.codeApplyManager.apply(code, language),
+			onApplyCode: (code, language, filePath) => this.codeApplyManager.apply(code, language, filePath),
 			onRespondToAskUser: (responses) => this.claudeService.respondToAskUser(responses),
 			onShowFileDiff: (fileChange) => this.claudeService.showFileDiff?.(fileChange),
 			onRevertFile: async (fileChange) => {
@@ -380,6 +382,8 @@ export class ClaudeChatViewPane extends ViewPane {
 				openSessionSettings: () => this.sessionSettingsPanel.open(this.container),
 				cyclePermissionMode: () => this.cyclePermissionMode(),
 				getPermissionMode: () => this.getPermissionMode(),
+				toggleThinking: () => this.toggleThinking(),
+				isThinkingEnabled: () => this.claudeService.isThinkingEnabled?.() ?? false,
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -1149,6 +1153,16 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 	}
 
+	// ========== Extended Thinking ==========
+
+	/**
+	 * Extended Thinking 토글
+	 */
+	private toggleThinking(): void {
+		const current = this.claudeService.isThinkingEnabled?.() ?? false;
+		this.claudeService.setSessionThinking?.(!current);
+	}
+
 	// ========== 입력 키 핸들링 ==========
 
 	/**
@@ -1192,6 +1206,9 @@ export class ClaudeChatViewPane extends ViewPane {
 		switch (commandId) {
 			case 'cost':
 				this.showCostSummary();
+				break;
+			case 'compact':
+				this.compactConversation();
 				break;
 		}
 	}
@@ -1254,6 +1271,69 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 
 		this.messageListManager?.appendInfoMessage(html);
+	}
+
+	/**
+	 * /compact - 대화 압축
+	 * 기존 대화를 요약하여 컨텍스트 토큰 절약
+	 */
+	private async compactConversation(): Promise<void> {
+		const messages = this.claudeService.getMessages();
+
+		if (messages.length < 4) {
+			this.messageListManager?.appendInfoMessage(
+				localize('compactTooFew', "Not enough messages to compact (minimum 4 messages needed).")
+			);
+			return;
+		}
+
+		// 대화 요약 프롬프트 생성
+		const conversationText = messages
+			.map(m => `[${m.role}]: ${m.content.substring(0, 500)}${m.content.length > 500 ? '...' : ''}`)
+			.join('\n\n');
+
+		const totalTokensBefore = messages
+			.filter(m => m.role === 'assistant')
+			.reduce((sum, m) => {
+				const assistantMsg = m as IAssistantMessage;
+				return sum + (assistantMsg.usage?.inputTokens || 0) + (assistantMsg.usage?.outputTokens || 0);
+			}, 0);
+
+		// 압축 중 표시
+		this.messageListManager?.appendInfoMessage(
+			`⏳ ${localize('compacting', "Compacting conversation...")} (${messages.length} messages)`
+		);
+
+		try {
+			// Claude에게 요약 요청
+			const compactPrompt = [
+				'Please provide a concise summary of our conversation so far.',
+				'Focus on: key decisions, code changes made, current state, and pending tasks.',
+				'Keep it structured and actionable. This summary will replace the conversation history to save context tokens.',
+				'',
+				'Conversation to summarize:',
+				conversationText
+			].join('\n');
+
+			await this.claudeService.sendMessage(compactPrompt, {
+				systemPrompt: 'You are a conversation summarizer. Provide a structured, concise summary. Use bullet points. Focus on facts and decisions, not pleasantries.'
+			});
+
+			// 완료 메시지
+			const formatTokens = (n: number): string => {
+				if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+				if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+				return String(n);
+			};
+
+			this.messageListManager?.appendInfoMessage(
+				`✅ ${localize('compactDone', "Conversation compacted")} — ${messages.length} messages summarized. Previous tokens: ${formatTokens(totalTokensBefore)}`
+			);
+		} catch (error) {
+			this.messageListManager?.appendInfoMessage(
+				`❌ ${localize('compactError', "Compact failed: {0}", String(error))}`
+			);
+		}
 	}
 
 	/**
