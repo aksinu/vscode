@@ -80,6 +80,13 @@ export class AssistantMessageRenderer {
 		this.renderToolInfo(message, messageElement, currentState, disposables);
 
 		// Ask 질문 (사용자 선택 대기 중일 때)
+		console.log('[DEBUG] AssistantMessageRenderer - AskUser check:', {
+			isWaitingForUser: message.isWaitingForUser,
+			hasAskUserRequest: !!message.askUserRequest,
+			askUserRequestId: message.askUserRequest?.id,
+			messageId: message.id,
+			isStreaming: message.isStreaming
+		});
 		if (message.isWaitingForUser && message.askUserRequest) {
 			this.renderAskUser(message.askUserRequest, messageElement, disposables);
 		}

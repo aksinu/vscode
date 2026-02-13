@@ -243,8 +243,12 @@ export class CLIEventHandler extends Disposable {
 		}
 
 		// AskUser 대기 중이면 상태 유지
-		if (sessionInteraction.isWaitingForUser() && sessionInteraction.getCurrentAskUserRequest()) {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI completed but waiting for user response');
+		const isWaiting = sessionInteraction.isWaitingForUser();
+		const askRequest = sessionInteraction.getCurrentAskUserRequest();
+		this.logService.info(CLIEventHandler.LOG_CATEGORY,
+			`[AskUser] handleComplete check: isWaitingForUser=${isWaiting}, hasAskRequest=${!!askRequest}, askRequestId=${askRequest?.id}`);
+		if (isWaiting && askRequest) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] CLI completed but waiting for user response - preserving asking state');
 			const waitingMessage: IClaudeMessage = {
 				id: message.getCurrentMessageId()!,
 				role: 'assistant',
@@ -258,10 +262,9 @@ export class CLIEventHandler extends Disposable {
 
 			message.updateSessionMessage(waitingMessage);
 			message.fireMessageUpdate(waitingMessage);
-			// setState('idle')은 chatStateManager.completeStreaming()을 호출하여
-			// asking 상태를 idle로 전이시킴. 그 후 waitForUser 상태를 복원해야 함.
-			this.getState().setState('idle');
-			sessionInteraction.setWaitingForUser(true); // chatStateManager의 asking 상태 복원
+			// AskUser 대기 중이므로 setState('idle') 호출하지 않음 — 'asking' 상태 유지
+			// (setState('idle')을 호출하면 chatStateManager.isWaitingForUser()가 false를 반환하여
+			//  메시지 재렌더링 시 AskUser UI가 사라지는 문제 발생)
 			sessionInteraction.saveSessions();
 			return;
 		}
