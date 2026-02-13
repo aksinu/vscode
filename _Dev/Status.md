@@ -8,14 +8,91 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | 🎯 **Phase 8 진행중** - 상태 관리 버그 수정 + 설정 패널 확장 |
-| **Status** | [x] 코드 완료, ⚠️ 컴파일 필요 |
+| **Phase** | 🎯 **Phase 9 완료** - CLI 기능 확장 + 에디터 통합 + Agent 모드 |
+| **Status** | [x] Backlog 전체 완료 (인라인/벡터검색/Agent), ⚠️ 컴파일 필요 |
 | **Build** | ⚠️ 컴파일 필요 |
 | **Updated** | 2026-02-12 |
 
 ---
 
 ## Latest Completion
+
+### [x] Agent 모드 구현 — 자율적 파일 생성/수정 (2026-02-12)
+
+**변경 파일 3개:**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `browser/views/ui/claudeStatusBar.ts` | Permission Mode 순환에 Agent(bypassPermissions) 추가, ⚡ 아이콘 |
+| `browser/views/ui/claudeAutocomplete.ts` | `/agent` 슬래시 커맨드 등록 |
+| `browser/views/chat/claudeChatView.ts` | `toggleAgentMode()` 구현, cyclePermissionMode 4단계 순환, /help·/status 업데이트 |
+
+**동작 흐름:**
+```
+상태바 클릭: default ○ → plan ◐ → accept-edits ● → agent ⚡ → default ○
+/agent 커맨드: 현재 모드 ↔ bypass-permissions 토글
+CLI 전달: --permission-mode bypassPermissions (기존 인프라 활용)
+```
+
+### [x] 슬래시 커맨드 확장 — CLI 레퍼런스 대비 미구현 커맨드 추가 (2026-02-12)
+
+**변경 파일 2개:**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `browser/views/ui/claudeAutocomplete.ts` | 7개 새 커맨드 autocomplete 등록 (`/config`, `/context`, `/export`, `/resume`, `/rename`, `/plan`, `/status`) |
+| `browser/views/chat/claudeChatView.ts` | 7개 커맨드 핸들러 구현 + `/help` 출력 업데이트 |
+
+**추가된 슬래시 커맨드:**
+```
+/config   — 설정 패널 열기
+/context  — 컨텍스트 사용량 시각화 (프로그레스 바)
+/export   — 대화 마크다운으로 클립보드 복사
+/resume   — QuickPick으로 이전 세션 재개
+/rename   — 현재 세션 이름 변경
+/plan     — Plan 권한 모드로 전환
+/status   — 연결, 모델, Thinking, Effort 상태 표시
+```
+
+### [x] CLI 미구현 기능 보완 (2026-02-12)
+
+**변경 파일 5개:**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `electron-main/claudeCLIInstance.ts` | `--max-tokens` CLI 인자 전달 추가 |
+| `browser/services/core/managers/chatManager.ts` | `buildCLIOptions()`에 `maxTokens` 로컬 설정 우선순위 반영 |
+| `browser/services/core/claudeService.ts` | `clearMessages()` 메서드 구현 (세션 메시지 클리어) |
+| `common/services/core/claude.ts` | `IClaudeService`에 `clearMessages?()` 추가 |
+| `common/config/claudeLocalConfig.ts` | `IClaudeLocalConfig`에 `maxTokens` 필드 추가 |
+| `browser/views/settings/claudeSettingsPanel.ts` | Max Tokens 설정 UI 추가 (100~128000) |
+
+### [x] 에디터 컨텍스트 메뉴 확장 — Claude 서브메뉴 (2026-02-12)
+
+**변경 파일 2개:**
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `browser/actions/claudeActions.ts` | Claude 서브메뉴 등록 (`MenuId.for`), Explain/Refactor/Find Issues 액션 추가, 기존 Ask/Attach를 서브메뉴로 이동 |
+| `browser/views/chat/claudeChatView.ts` | `sendWithContext()` 메서드 추가 — 선택 영역+프롬프트로 바로 전송 |
+
+**에디터 우클릭 메뉴 구조:**
+```
+우클릭 → Claude ▶
+           ├─ Explain Selection   (선택 있을 때)
+           ├─ Refactor Selection  (선택 있을 때)
+           ├─ Find Issues         (선택 있을 때)
+           ├─ Ask Claude...       (선택 있을 때, Ctrl+Shift+A)
+           └─ Add File to Claude  (항상)
+```
+
+### [x] P1 CLI 기능 구현 완료 (이전 세션)
+- `/cost` — 세션 토큰 비용 요약
+- `/compact` — 대화 압축 (컨텍스트 토큰 절약)
+- 프롬프트 히스토리 (↑↓) — 이전 입력 탐색
+- `@selection` 멘션 — 에디터 선택 영역 첨부
+- Extended Thinking 토글 — 상태바 Think 버튼
+- 코드 블록 Apply 강화 — 파일 경로 자동 감지 + 파일 직접 적용
 
 ### [x] 상태 관리 버그 수정 — Cancel 버튼 미표시 문제 (2026-02-12)
 
@@ -111,10 +188,15 @@ src/vs/workbench/contrib/kent/
 
 ## Next Steps
 
-### 🎯 Development Priority
-1. **사용자 피드백 문제 해결** - 파일 변경 UI 세션 지속성 이슈
-2. **Backlog 기능 구현** - 에디터 컨텍스트 메뉴 확장, 벡터 검색 등
-3. **안정성 개선** - 추가 테스트, 에러 핸들링 강화
+### 🎯 Backlog 전체 완료 ✅
+- ~~인라인 코드 제안~~ (P1) ✅
+- ~~벡터 검색 @codebase~~ (P2) ✅
+- ~~Agent 모드~~ (P2) ✅
+
+### 다음 방향
+- 안정화 및 버그 수정
+- 사용자 피드백 기반 개선
+- MCP 서버 연동 (차기)
 
 ### 빌드 & 실행
 ```bash

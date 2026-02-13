@@ -458,6 +458,14 @@ export class ClaudeMultiConnection extends Disposable {
 		return this.multiClient.validateModel(model);
 	}
 
+	/**
+	 * 코드 완성 요청 (인라인 제안용)
+	 */
+	async completeCode(prompt: string, model?: string): Promise<string> {
+		this.logService.debug(ClaudeMultiConnection.LOG_CATEGORY, 'completeCode request');
+		return this.multiClient.completeCode(prompt, model);
+	}
+
 	// ========== Multi-Session Methods ==========
 
 	/**

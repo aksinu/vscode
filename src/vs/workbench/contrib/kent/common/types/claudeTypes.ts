@@ -350,7 +350,7 @@ export interface IClaudeContext {
  */
 export interface IClaudeAttachment {
 	readonly id: string;
-	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics' | 'workspace' | 'image' | 'code-reference';
+	readonly type: 'file' | 'folder' | 'selection' | 'diagnostics' | 'workspace' | 'image' | 'code-reference' | 'codebase';
 	readonly uri?: URI;
 	readonly name: string;
 	readonly content?: string;

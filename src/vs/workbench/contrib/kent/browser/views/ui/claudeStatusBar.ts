@@ -21,6 +21,8 @@ export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 	getPermissionMode(): ClaudePermissionMode;
 	toggleThinking(): void;
 	isThinkingEnabled(): boolean;
+	cycleEffort(): void;
+	getEffort(): 'low' | 'medium' | 'high' | undefined;
 }
 
 /**
@@ -31,6 +33,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 
 	private permissionModeButton: HTMLButtonElement | undefined;
 	private thinkingButton: HTMLButtonElement | undefined;
+	private effortButton: HTMLButtonElement | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -54,6 +57,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		this.updateExecutionMethod(status);
 		this.updatePermissionMode();
 		this.updateThinkingMode();
+		this.updateEffortMode();
 		this.updateChatState(status);
 	}
 
@@ -84,6 +88,19 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		this.registerDisposable(addDisposableListener(this.thinkingButton, EventType.CLICK, () => {
 			this.callbacks.toggleThinking();
 			this.updateThinkingMode();
+		}));
+
+		// Effort Level 토글 버튼
+		this.effortButton = append(this.container, $('button.claude-effort-toggle')) as HTMLButtonElement;
+		this.effortButton.title = localize('cycleEffort', "Cycle effort level (low/medium/high)");
+		const effortIcon = append(this.effortButton, $('span.claude-effort-icon'));
+		effortIcon.textContent = '▬';
+		const effortText = append(this.effortButton, $('span.claude-effort-text'));
+		effortText.textContent = 'Auto';
+
+		this.registerDisposable(addDisposableListener(this.effortButton, EventType.CLICK, () => {
+			this.callbacks.cycleEffort();
+			this.updateEffortMode();
 		}));
 
 		// 구분자
@@ -177,7 +194,7 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		const text = this.permissionModeButton.querySelector('.claude-permission-mode-text');
 
 		// 모든 모드 클래스 제거
-		this.permissionModeButton.classList.remove('mode-default', 'mode-plan', 'mode-accept-edits');
+		this.permissionModeButton.classList.remove('mode-default', 'mode-plan', 'mode-accept-edits', 'mode-agent');
 
 		switch (mode) {
 			case 'plan':
@@ -190,7 +207,14 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 				this.permissionModeButton.classList.add('mode-accept-edits');
 				if (icon) icon.textContent = '●';
 				if (text) text.textContent = 'Accept';
-				this.permissionModeButton.title = localize('permissionModeAcceptEdits', "Accept-Edits mode - Click to switch to Default");
+				this.permissionModeButton.title = localize('permissionModeAcceptEdits', "Accept-Edits mode - Click to switch to Agent");
+				break;
+			case 'bypass-permissions':
+			case 'bypassPermissions':
+				this.permissionModeButton.classList.add('mode-agent');
+				if (icon) icon.textContent = '⚡';
+				if (text) text.textContent = 'Agent';
+				this.permissionModeButton.title = localize('permissionModeAgent', "Agent mode (autonomous) - Click to switch to Default");
 				break;
 			default: // 'default'
 				this.permissionModeButton.classList.add('mode-default');
@@ -218,6 +242,42 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 			if (icon) icon.textContent = '◇';
 			if (text) text.textContent = 'Think';
 			this.thinkingButton.title = localize('thinkingDisabled', "Extended Thinking OFF - Click to enable");
+		}
+	}
+
+	private updateEffortMode(): void {
+		if (!this.effortButton) return;
+
+		const effort = this.callbacks.getEffort();
+		const icon = this.effortButton.querySelector('.claude-effort-icon');
+		const text = this.effortButton.querySelector('.claude-effort-text');
+
+		this.effortButton.classList.remove('effort-low', 'effort-medium', 'effort-high');
+
+		switch (effort) {
+			case 'low':
+				this.effortButton.classList.add('effort-low');
+				if (icon) icon.textContent = '▽';
+				if (text) text.textContent = 'Low';
+				this.effortButton.title = localize('effortLow', "Effort: Low - Click to switch to Medium");
+				break;
+			case 'medium':
+				this.effortButton.classList.add('effort-medium');
+				if (icon) icon.textContent = '▬';
+				if (text) text.textContent = 'Med';
+				this.effortButton.title = localize('effortMedium', "Effort: Medium - Click to switch to High");
+				break;
+			case 'high':
+				this.effortButton.classList.add('effort-high');
+				if (icon) icon.textContent = '△';
+				if (text) text.textContent = 'High';
+				this.effortButton.title = localize('effortHigh', "Effort: High - Click to switch to Auto");
+				break;
+			default:
+				if (icon) icon.textContent = '▬';
+				if (text) text.textContent = 'Auto';
+				this.effortButton.title = localize('effortAuto', "Effort: Auto - Click to switch to Low");
+				break;
 		}
 	}
 

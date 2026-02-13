@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { Disposable } from '../../../../base/common/lifecycle.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
@@ -30,6 +31,13 @@ import { ClaudeSettingsService } from './services/settings/claudeSettingsService
 import { ClaudeChatViewPane } from './views/chat/claudeChatView.js';
 import { registerClaudeActions } from './actions/claudeActions.js';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
+import { ClaudeInlineCompletionsProvider } from './services/inline/claudeInlineCompletionsProvider.js';
+import { IClaudeCodebaseService } from '../common/types/claudeCodebaseService.js';
+import { ClaudeCodebaseService } from './services/codebase/claudeCodebaseService.js';
+import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions, IWorkbenchContribution } from '../../../common/contributions.js';
+import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
+import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import './media/claude.css';
 
 // ========== 서비스 등록 ==========
@@ -43,6 +51,7 @@ registerSingleton(IClaudeSessionService, ClaudeSessionService, InstantiationType
 registerSingleton(IClaudeUIService, ClaudeUIService, InstantiationType.Delayed);
 registerSingleton(IClaudeSettingsService, ClaudeSettingsService, InstantiationType.Delayed);
 registerSingleton(IClaudeService, ClaudeService, InstantiationType.Delayed);
+registerSingleton(IClaudeCodebaseService, ClaudeCodebaseService, InstantiationType.Delayed);
 
 // ========== View Container 등록 ==========
 
@@ -202,9 +211,50 @@ configurationRegistry.registerConfiguration({
 			minimum: 1,
 			maximum: 100,
 			description: localize('claude.maxSessions', "Maximum number of concurrent chat sessions (oldest session is removed when limit exceeded)")
+		},
+		'claude.inlineCompletions.enabled': {
+			type: 'boolean',
+			default: false,
+			description: localize('claude.inlineCompletions.enabled', "Enable Claude inline code completions (ghost text suggestions while typing)"),
+			scope: 1 // ConfigurationScope.APPLICATION
+		},
+		'claude.inlineCompletions.model': {
+			type: 'string',
+			default: '',
+			description: localize('claude.inlineCompletions.model', "Model to use for inline completions (leave empty to use default chat model). Faster models like Haiku are recommended."),
+			scope: 1 // ConfigurationScope.APPLICATION
 		}
 	}
 });
+
+// ========== 인라인 코드 제안 등록 ==========
+
+class ClaudeInlineCompletionsContribution extends Disposable implements IWorkbenchContribution {
+	static readonly ID = 'workbench.contrib.claude.inlineCompletions';
+
+	constructor(
+		@IClaudeService claudeService: IClaudeService,
+		@IConfigurationService configurationService: IConfigurationService,
+		@IClaudeLogService logService: IClaudeLogService,
+		@ILanguageFeaturesService languageFeaturesService: ILanguageFeaturesService
+	) {
+		super();
+
+		// 인라인 완성 프로바이더 생성 및 등록
+		this._register(new ClaudeInlineCompletionsProvider(
+			claudeService,
+			configurationService,
+			logService,
+			languageFeaturesService
+		));
+	}
+}
+
+const workbenchContributionsRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
+workbenchContributionsRegistry.registerWorkbenchContribution(
+	ClaudeInlineCompletionsContribution,
+	LifecyclePhase.Eventually
+);
 
 // ========== 액션 등록 ==========
 

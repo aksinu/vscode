@@ -6,8 +6,8 @@
 import { Schemas } from '../../../../../base/common/network.js';
 import { KeyCode, KeyMod } from '../../../../../base/common/keyCodes.js';
 import { URI } from '../../../../../base/common/uri.js';
-import { localize2 } from '../../../../../nls.js';
-import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
+import { localize, localize2 } from '../../../../../nls.js';
+import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { KeybindingWeight } from '../../../../../platform/keybinding/common/keybindingsRegistry.js';
@@ -21,6 +21,9 @@ import { IClaudeService } from '../../common/services/core/claude.js';
 import { IClaudeLogService } from '../../common/claudeLogService.js';
 import { CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../common/config/claudeContextKeys.js';
 import { ClaudeChatViewPane } from '../views/chat/claudeChatView.js';
+
+// Claude 에디터 컨텍스트 서브메뉴 ID
+const MENU_CLAUDE_EDITOR_CONTEXT = MenuId.for('claude.editorContext');
 
 // ========== 채팅창 열기 ==========
 
@@ -256,7 +259,7 @@ export class AskClaudeAboutSelection extends Action2 {
 	constructor() {
 		super({
 			id: AskClaudeAboutSelection.ID,
-			title: localize2('claude.askAboutSelection', "Ask Claude About Selection"),
+			title: localize2('claude.askAboutSelection', "Ask Claude..."),
 			category: localize2('claude', "Claude"),
 			f1: true,
 			keybinding: {
@@ -265,9 +268,9 @@ export class AskClaudeAboutSelection extends Action2 {
 				when: EditorContextKeys.hasNonEmptySelection
 			},
 			menu: [{
-				id: MenuId.EditorContext,
-				group: '1_claude',
-				order: 1,
+				id: MENU_CLAUDE_EDITOR_CONTEXT,
+				group: '1_actions',
+				order: 4,
 				when: EditorContextKeys.hasNonEmptySelection
 			}]
 		});
@@ -317,16 +320,13 @@ export class AttachCurrentFileToClaude extends Action2 {
 			category: localize2('claude', "Claude"),
 			f1: true,
 			menu: [{
-				id: MenuId.EditorContext,
-				group: '1_claude',
-				order: 2,
-				when: ContextKeyExpr.and(
-					EditorContextKeys.hasNonEmptySelection.negate(),
-					ContextKeyExpr.or(
-						ResourceContextKey.Scheme.isEqualTo(Schemas.file),
-						ResourceContextKey.Scheme.isEqualTo(Schemas.vscodeRemote),
-						ResourceContextKey.Scheme.isEqualTo(Schemas.untitled)
-					)
+				id: MENU_CLAUDE_EDITOR_CONTEXT,
+				group: '2_attach',
+				order: 1,
+				when: ContextKeyExpr.or(
+					ResourceContextKey.Scheme.isEqualTo(Schemas.file),
+					ResourceContextKey.Scheme.isEqualTo(Schemas.vscodeRemote),
+					ResourceContextKey.Scheme.isEqualTo(Schemas.untitled)
 				)
 			}, {
 				id: MenuId.EditorTitleContext,
@@ -363,6 +363,118 @@ export class AttachCurrentFileToClaude extends Action2 {
 	}
 }
 
+// ========== 선택 영역 Explain ==========
+
+class ExplainSelectionWithClaude extends Action2 {
+	static readonly ID = 'claude.explainSelection';
+
+	constructor() {
+		super({
+			id: ExplainSelectionWithClaude.ID,
+			title: localize2('claude.explainSelection', "Explain Selection"),
+			category: localize2('claude', "Claude"),
+			f1: false,
+			menu: [{
+				id: MENU_CLAUDE_EDITOR_CONTEXT,
+				group: '1_actions',
+				order: 1,
+				when: EditorContextKeys.hasNonEmptySelection
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await sendSelectionWithPrompt(accessor, 'Explain the following code in detail. Describe what it does, how it works, and any important patterns or concepts used.');
+	}
+}
+
+// ========== 선택 영역 Refactor ==========
+
+class RefactorSelectionWithClaude extends Action2 {
+	static readonly ID = 'claude.refactorSelection';
+
+	constructor() {
+		super({
+			id: RefactorSelectionWithClaude.ID,
+			title: localize2('claude.refactorSelection', "Refactor Selection"),
+			category: localize2('claude', "Claude"),
+			f1: false,
+			menu: [{
+				id: MENU_CLAUDE_EDITOR_CONTEXT,
+				group: '1_actions',
+				order: 2,
+				when: EditorContextKeys.hasNonEmptySelection
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await sendSelectionWithPrompt(accessor, 'Refactor the following code. Improve readability, reduce complexity, and follow best practices. Provide the refactored code with explanations of changes.');
+	}
+}
+
+// ========== 선택 영역 Find Issues ==========
+
+class FindIssuesWithClaude extends Action2 {
+	static readonly ID = 'claude.findIssues';
+
+	constructor() {
+		super({
+			id: FindIssuesWithClaude.ID,
+			title: localize2('claude.findIssues', "Find Issues"),
+			category: localize2('claude', "Claude"),
+			f1: false,
+			menu: [{
+				id: MENU_CLAUDE_EDITOR_CONTEXT,
+				group: '1_actions',
+				order: 3,
+				when: EditorContextKeys.hasNonEmptySelection
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await sendSelectionWithPrompt(accessor, 'Review the following code and find potential issues including bugs, security vulnerabilities, performance problems, and code smells. Provide specific fixes.');
+	}
+}
+
+// ========== 헬퍼: 선택 영역 + 프롬프트로 전송 ==========
+
+async function sendSelectionWithPrompt(accessor: ServicesAccessor, prompt: string): Promise<void> {
+	const viewsService = accessor.get(IViewsService);
+	const editorService = accessor.get(IEditorService);
+
+	const editor = editorService.activeTextEditorControl;
+	if (!editor) {
+		return;
+	}
+
+	const model = editor.getModel();
+	const selection = editor.getSelection();
+
+	if (!model || !selection || selection.isEmpty()) {
+		return;
+	}
+
+	if (!('getValueInRange' in model)) {
+		return;
+	}
+
+	const selectedText = (model as { getValueInRange: (range: typeof selection) => string }).getValueInRange(selection);
+	const fileName = editorService.activeEditor?.getName() || 'unknown';
+
+	// 언어 ID 가져오기
+	const language = ('getLanguageId' in model)
+		? (model as { getLanguageId: () => string }).getLanguageId()
+		: '';
+
+	// Claude 패널 열기 + 바로 전송
+	const view = await viewsService.openView(ClaudeChatViewPane.ID, true) as ClaudeChatViewPane | undefined;
+	if (view) {
+		view.sendWithContext(selectedText, fileName, language, prompt);
+	}
+}
+
 // ========== 로그 정리 ==========
 
 export class CleanupClaudeLogsAction extends Action2 {
@@ -391,11 +503,23 @@ export function registerClaudeActions(): void {
 	registerAction2(CancelClaudeRequestAction);
 	registerAction2(NewClaudeSessionAction);
 	registerAction2(FocusClaudeInputAction);
-	// 컨텍스트 메뉴 액션
+	// Explorer 컨텍스트 메뉴 액션
 	registerAction2(AttachFileToClaude);
 	registerAction2(AttachFolderToClaude);
+	// Editor 컨텍스트 서브메뉴 액션
+	registerAction2(ExplainSelectionWithClaude);
+	registerAction2(RefactorSelectionWithClaude);
+	registerAction2(FindIssuesWithClaude);
 	registerAction2(AskClaudeAboutSelection);
 	registerAction2(AttachCurrentFileToClaude);
 	// 로그 관리
 	registerAction2(CleanupClaudeLogsAction);
+
+	// Editor 컨텍스트에 Claude 서브메뉴 등록
+	MenuRegistry.appendMenuItem(MenuId.EditorContext, {
+		submenu: MENU_CLAUDE_EDITOR_CONTEXT,
+		title: localize('claude.editorMenu', "Claude"),
+		group: '1_claude',
+		order: 0,
+	});
 }

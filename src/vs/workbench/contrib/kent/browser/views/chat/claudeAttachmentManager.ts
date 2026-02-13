@@ -218,6 +218,27 @@ export class AttachmentManager extends Disposable {
 	}
 
 	/**
+	 * 코드베이스 검색 플레이스홀더 첨부 (@codebase)
+	 * 전송 시 사용자 프롬프트를 기반으로 BM25 검색이 실행됨
+	 */
+	addCodebaseSearch(): void {
+		// 이미 codebase 첨부가 있으면 무시
+		if (this._attachments.some(a => a.type === 'codebase')) {
+			return;
+		}
+
+		const attachment: IClaudeAttachment = {
+			id: generateUuid(),
+			type: 'codebase',
+			name: localize('codebaseSearch', "Codebase search"),
+			content: undefined
+		};
+
+		this._attachments.push(attachment);
+		this.updateUI();
+	}
+
+	/**
 	 * 에디터 선택 영역 첨부 (@selection)
 	 */
 	addSelection(fileName: string, selectedText: string, uri?: URI, languageId?: string, startLine?: number, endLine?: number): void {

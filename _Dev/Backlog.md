@@ -10,9 +10,10 @@
 |---|---------|----------|--------|------------|-------|
 | 1 | ~~세션 지속성 이슈 해결~~ | ~~P0~~ | **Done** | ~~Medium~~ | ✅ 해결됨 |
 | 2 | **모델 설정 리팩토링 + CLI 검증** | **P0** | **Done** | Medium | ✅ 글로벌/프로젝트 분리, CLI 검증 |
-| 3 | 에디터 컨텍스트 메뉴 확장 | P1 | Pending | Medium | 우클릭 서브메뉴 추가 |
-| 4 | 벡터 검색 (@codebase) | P2 | Research | High | 프로젝트 전체 벡터 검색 |
-| 5 | Agent 모드 | P2 | Design | High | 자율적 파일 생성/수정 |
+| 3 | ~~에디터 컨텍스트 메뉴 확장~~ | ~~P1~~ | **Done** | ~~Medium~~ | ✅ Claude 서브메뉴 (Explain/Refactor/FindIssues) |
+| 4 | ~~인라인 코드 제안~~ | ~~P1~~ | **Done** | ~~High~~ | ✅ 에디터 인라인 Claude 코드 제안 |
+| 5 | ~~벡터 검색 (@codebase)~~ | ~~P2~~ | **Done** | ~~High~~ | ✅ BM25 검색 + @codebase 멘션 |
+| 6 | ~~Agent 모드~~ | ~~P2~~ | **Done** | ~~High~~ | ✅ bypassPermissions + /agent 토글 |
 
 ---
 
@@ -32,46 +33,26 @@
 
 ## Pending Features
 
-### 3. 에디터 컨텍스트 메뉴 확장 (P1)
-
-**현재 상태**: 기본 구현됨
-- ✅ `AskClaudeAboutSelection` (Ctrl+Shift+A)
-- ✅ Explorer 파일/폴더 우클릭 메뉴
-
-**목표**: 더 풍부한 컨텍스트 메뉴 제공
-
-**메뉴 구조**:
-```
-우클릭 메뉴
-├─ ...기존 메뉴들...
-└─ Claude
-    ├─ Explain Selection
-    ├─ Refactor Selection
-    ├─ Find Issues
-    └─ Ask Claude...
-```
-
-**구현 항목**:
-- [ ] `menus.editor/context` contribution 등록
-- [ ] Submenu 그룹 생성 ("Claude")
-- [ ] 각 액션 구현 (`explainSelection`, `refactorSelection`, `findIssues`, `askAboutSelection`)
-- [ ] 선택 영역 정보 추출 + 프롬프트 자동 생성
+### ✅ 3. 에디터 컨텍스트 메뉴 확장 (P1) — Done (2026-02-12)
+- Claude 서브메뉴 등록 (`MenuId.for('claude.editorContext')`)
+- Explain Selection / Refactor Selection / Find Issues 액션
+- 선택 영역+프롬프트 바로 전송 (`sendWithContext`)
+- 기존 Ask Claude / Add File도 서브메뉴로 통합
 
 ---
 
-### 4. 벡터 검색 (@codebase) (P2)
+### ✅ 4. 인라인 코드 제안 (P1) — Done (2026-02-12)
+- 에디터 인라인 Claude 코드 제안 (`services/inline/`)
 
-**목표**: 프로젝트 전체 코드베이스를 벡터 검색하여 컨텍스트로 활용
+### ✅ 5. 벡터 검색 (@codebase) (P2) — Done (2026-02-12)
+- BM25 검색 엔진 + 파일 인덱서 (`services/codebase/`)
+- `@codebase` 멘션 → 전송 시 BM25 검색 → file 첨부 자동 변환
 
-**상태**: Research 단계
-
----
-
-### 5. Agent 모드 (P2)
-
-**목표**: 자율적 파일 생성/수정 에이전트
-
-**상태**: Design 단계
+### ✅ 6. Agent 모드 (P2) — Done (2026-02-12)
+- 상태바 Permission Mode 순환에 Agent 추가 (default → plan → accept-edits → agent)
+- `/agent` 슬래시 커맨드 (토글식: Agent ON/OFF)
+- `bypass-permissions` CLI 옵션 자동 전달
+- `/status`에 현재 모드 표시
 
 ---
 
@@ -84,4 +65,4 @@
 
 ---
 
-**Updated**: 2026-02-10
+**Updated**: 2026-02-12

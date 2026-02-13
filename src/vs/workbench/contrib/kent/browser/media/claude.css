@@ -256,13 +256,13 @@
 	margin-left: auto;
 }
 
-/* Ask 질문 */
+/* ========== AskUser 질문/선택 ========== */
 .claude-ask-user {
-	margin: 8px 0;
-	padding: 8px;
-	background-color: var(--vscode-inputValidation-infoBackground);
-	border: 1px solid var(--vscode-inputValidation-infoBorder);
-	border-radius: 4px;
+	margin-top: 16px;
+	padding: 16px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-focusBorder);
+	border-radius: 8px;
 }
 
 .claude-ask-auto-accepted {
@@ -274,34 +274,136 @@
 }
 
 .claude-ask-question {
-	margin-bottom: 8px;
+	margin-bottom: 16px;
+}
+
+.claude-ask-question:last-of-type {
+	margin-bottom: 0;
+}
+
+.claude-ask-header {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vscode-textLink-foreground);
+	margin-bottom: 6px;
 }
 
 .claude-ask-text {
-	margin-bottom: 8px;
+	font-size: 14px;
 	font-weight: 500;
 	color: var(--vscode-foreground);
+	margin-bottom: 12px;
+}
+
+.claude-ask-hint {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 8px;
+	font-style: italic;
 }
 
 .claude-ask-options {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .claude-ask-option {
-	padding: 4px 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	padding: 12px 16px;
 	background-color: var(--vscode-button-secondaryBackground);
 	color: var(--vscode-button-secondaryForeground);
 	border: 1px solid var(--vscode-widget-border);
-	border-radius: 4px;
+	border-radius: 6px;
 	cursor: pointer;
-	font-size: 12px;
-	transition: all 0.2s ease;
+	text-align: left;
+	transition: background-color 0.1s, border-color 0.1s;
 }
 
-.claude-ask-option:hover {
+.claude-ask-option:hover:not(:disabled) {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.claude-ask-option.selected {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.claude-ask-option:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.claude-ask-option-label {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.claude-ask-option-desc {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-ask-option.selected .claude-ask-option-desc {
+	color: var(--vscode-button-foreground);
+	opacity: 0.85;
+}
+
+/* Submit 버튼 */
+.claude-ask-submit-container {
+	margin-top: 16px;
+	padding-top: 12px;
+	border-top: 1px solid var(--vscode-widget-border);
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+}
+
+.claude-ask-submit-status {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-ask-submit {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 24px;
+	font-size: 13px;
+	font-weight: 500;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	opacity: 0.5;
+	transition: all 0.15s ease;
+}
+
+.claude-ask-submit:disabled {
+	cursor: default;
+}
+
+.claude-ask-submit.ready {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	opacity: 1;
+}
+
+.claude-ask-submit.ready:hover {
 	background-color: var(--vscode-button-hoverBackground);
+}
+
+.claude-ask-submit.submitted {
+	opacity: 0.6;
 }
 
 /* 사용량 정보 */
@@ -1337,102 +1439,6 @@
 .claude-message-waiting {
 	color: var(--vscode-descriptionForeground);
 	font-style: italic;
-}
-
-/* ========== AskUser ========== */
-
-.claude-ask-user {
-	margin-top: 16px;
-	padding: 16px;
-	background-color: var(--vscode-input-background);
-	border: 1px solid var(--vscode-focusBorder);
-	border-radius: 8px;
-}
-
-.claude-ask-user-question {
-	margin-bottom: 16px;
-}
-
-.claude-ask-user-question:last-child {
-	margin-bottom: 0;
-}
-
-.claude-ask-user-header {
-	font-size: 11px;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	color: var(--vscode-textLink-foreground);
-	margin-bottom: 6px;
-}
-
-.claude-ask-user-text {
-	font-size: 14px;
-	font-weight: 500;
-	color: var(--vscode-foreground);
-	margin-bottom: 12px;
-}
-
-.claude-ask-user-options {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-.claude-ask-user-option {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 4px;
-	padding: 12px 16px;
-	background-color: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
-	border: 1px solid var(--vscode-widget-border);
-	border-radius: 6px;
-	cursor: pointer;
-	text-align: left;
-	transition: background-color 0.1s, border-color 0.1s;
-}
-
-.claude-ask-user-option:hover {
-	background-color: var(--vscode-button-secondaryHoverBackground);
-	border-color: var(--vscode-focusBorder);
-}
-
-.claude-ask-user-option:active {
-	background-color: var(--vscode-button-background);
-	color: var(--vscode-button-foreground);
-}
-
-.claude-ask-user-option-label {
-	font-size: 13px;
-	font-weight: 500;
-}
-
-.claude-ask-user-option-desc {
-	font-size: 12px;
-	color: var(--vscode-descriptionForeground);
-}
-
-.claude-ask-user-other {
-	margin-top: 12px;
-	display: flex;
-	gap: 8px;
-}
-
-.claude-ask-user-other-input {
-	flex: 1;
-	padding: 8px 12px;
-	background-color: var(--vscode-input-background);
-	color: var(--vscode-input-foreground);
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 4px;
-	font-size: 13px;
-}
-
-.claude-ask-user-other-input:focus {
-	outline: none;
-	border-color: var(--vscode-focusBorder);
 }
 
 /* ========== Message Queue (Pending) ========== */
@@ -3562,39 +3568,6 @@
 .claude-tool-summary-count {
 	font-size: 11px;
 	color: var(--vscode-descriptionForeground);
-}
-
-/* Ask 질문 스타일 */
-.claude-ask-section {
-	margin-top: 12px;
-	padding: 12px;
-	background: var(--vscode-inputValidation-infoBackground);
-	border: 1px solid var(--vscode-inputValidation-infoBorder);
-	border-radius: 4px;
-}
-
-.claude-ask-question {
-	font-weight: 600;
-	margin-bottom: 8px;
-}
-
-.claude-ask-options {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
-.claude-ask-option {
-	padding: 8px;
-	background: var(--vscode-button-secondaryBackground);
-	border: 1px solid var(--vscode-button-secondaryBorder);
-	border-radius: 4px;
-	cursor: pointer;
-	transition: background-color 0.1s;
-}
-
-.claude-ask-option:hover {
-	background: var(--vscode-button-secondaryHoverBackground);
 }
 
 /* 메시지 상태별 스타일 */

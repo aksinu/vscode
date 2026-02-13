@@ -293,6 +293,64 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 	}
 
 	/**
+	 * 코드 완성 요청 (인라인 제안용)
+	 * claude -p "<prompt>" --max-turns 1 --output-format text 로 실행
+	 */
+	async completeCode(prompt: string, model?: string): Promise<string> {
+		debugLog('[ProcessManager] completeCode, prompt length:', prompt.length);
+
+		return new Promise((resolve) => {
+			try {
+				const cleanEnv = { ...process.env };
+				delete cleanEnv.NODE_OPTIONS;
+				delete cleanEnv.ELECTRON_RUN_AS_NODE;
+				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
+				const args = ['-p', prompt, '--max-turns', '1'];
+				if (model) {
+					args.push('--model', model);
+				}
+
+				const proc = spawn('claude', args, {
+					shell: true,
+					env: cleanEnv,
+					timeout: 30000
+				});
+
+				let stdout = '';
+				let stderr = '';
+
+				proc.stdout?.on('data', (data: Buffer) => {
+					stdout += data.toString();
+				});
+
+				proc.stderr?.on('data', (data: Buffer) => {
+					stderr += data.toString();
+				});
+
+				proc.on('close', (code) => {
+					debugLog('[ProcessManager] completeCode closed, code:', code);
+					if (code === 0 && stdout.trim()) {
+						resolve(stdout.trim());
+					} else {
+						debugLog('[ProcessManager] completeCode failed:', stderr);
+						resolve('');
+					}
+				});
+
+				proc.on('error', (error) => {
+					debugLog('[ProcessManager] completeCode error:', error.message);
+					resolve('');
+				});
+
+			} catch (error) {
+				debugLog('[ProcessManager] completeCode exception:', error);
+				resolve('');
+			}
+		});
+	}
+
+	/**
 	 * 특정 인스턴스 제거
 	 */
 	destroyInstance(chatId: string): void {

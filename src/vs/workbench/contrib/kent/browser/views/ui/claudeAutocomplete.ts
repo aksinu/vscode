@@ -30,6 +30,7 @@ export interface IAutocompleteCallbacks {
 	onAttachFile(uri: URI): Promise<void>;
 	onAttachWorkspace(): void;
 	onAttachSelection(): void;
+	onAttachCodebase(): void;
 	onCommandSelected(prompt: string): void;
 	onBuiltinCommand(commandId: string): void;
 	registerDisposable<T extends IDisposable>(disposable: T): T;
@@ -38,7 +39,7 @@ export interface IAutocompleteCallbacks {
 /**
  * 내장 커맨드 목록 (프롬프트 삽입이 아닌 직접 실행)
  */
-const BUILTIN_COMMAND_IDS = new Set(['cost', 'compact']);
+const BUILTIN_COMMAND_IDS = new Set(['cost', 'compact', 'help', 'clear', 'model', 'config', 'context', 'export', 'resume', 'rename', 'plan', 'agent', 'status']);
 
 /**
  * 자동완성 매니저
@@ -175,6 +176,13 @@ export class AutocompleteManager {
 				label: '@workspace',
 				description: localize('mentionWorkspace', "Include workspace context"),
 				type: 'mention'
+			},
+			{
+				id: 'codebase',
+				icon: 'codicon-search',
+				label: '@codebase',
+				description: localize('mentionCodebase', "Search and attach relevant code files"),
+				type: 'mention'
 			}
 		];
 
@@ -263,6 +271,83 @@ export class AutocompleteManager {
 				icon: 'codicon-fold',
 				label: '/compact',
 				description: localize('cmdCompact', "Compress conversation to save context"),
+				type: 'command'
+			},
+			{
+				id: 'help',
+				icon: 'codicon-question',
+				label: '/help',
+				description: localize('cmdHelp', "Show available commands and shortcuts"),
+				type: 'command'
+			},
+			{
+				id: 'clear',
+				icon: 'codicon-clear-all',
+				label: '/clear',
+				description: localize('cmdClear', "Clear conversation and start fresh"),
+				type: 'command'
+			},
+			{
+				id: 'model',
+				icon: 'codicon-hubot',
+				label: '/model',
+				description: localize('cmdModel', "Change model for current session"),
+				type: 'command'
+			},
+			{
+				id: 'config',
+				icon: 'codicon-settings-gear',
+				label: '/config',
+				description: localize('cmdConfig', "Open settings panel"),
+				type: 'command'
+			},
+			{
+				id: 'context',
+				icon: 'codicon-dashboard',
+				label: '/context',
+				description: localize('cmdContext', "Show current context usage"),
+				type: 'command'
+			},
+			{
+				id: 'export',
+				icon: 'codicon-export',
+				label: '/export',
+				description: localize('cmdExport', "Export conversation to clipboard"),
+				type: 'command'
+			},
+			{
+				id: 'resume',
+				icon: 'codicon-history',
+				label: '/resume',
+				description: localize('cmdResume', "Resume a previous session"),
+				type: 'command'
+			},
+			{
+				id: 'rename',
+				icon: 'codicon-tag',
+				label: '/rename',
+				description: localize('cmdRename', "Rename current session"),
+				type: 'command'
+			},
+			{
+				id: 'plan',
+				icon: 'codicon-map',
+				label: '/plan',
+				description: localize('cmdPlan', "Switch to plan permission mode"),
+				type: 'command'
+			},
+			{
+				id: 'agent',
+				icon: 'codicon-zap',
+				label: '/agent',
+				description: localize('cmdAgent', "Toggle agent mode (autonomous file editing)"),
+				type: 'command'
+			},
+			{
+				id: 'status',
+				icon: 'codicon-info',
+				label: '/status',
+				description: localize('cmdStatus', "Show version, model, and connection info"),
 				type: 'command'
 			}
 		];
@@ -392,6 +477,8 @@ export class AutocompleteManager {
 			this.callbacks.onAttachSelection();
 		} else if (item.id === 'workspace') {
 			await this.callbacks.onAttachWorkspace();
+		} else if (item.id === 'codebase') {
+			this.callbacks.onAttachCodebase();
 		}
 	}
 

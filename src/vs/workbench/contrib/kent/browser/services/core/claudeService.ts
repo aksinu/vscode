@@ -651,6 +651,14 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._sessionService.clearHistory();
 	}
 
+	clearMessages(): void {
+		const session = this._sessionService.getCurrentSession();
+		if (session) {
+			session.messages.length = 0;
+			this._sessionService.saveSessions();
+		}
+	}
+
 	// ========== Session ==========
 
 	startNewSession(): IClaudeSession {
@@ -761,6 +769,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._chatManager.isSessionThinkingEnabled();
 	}
 
+	setSessionEffort(effort: 'low' | 'medium' | 'high' | undefined): void {
+		this._chatManager.setSessionEffort(effort);
+		this.logService.info(ClaudeService.LOG_CATEGORY, 'Effort level:', effort || 'default');
+		this._uiService.fireStatusInfoChange(this.getStatusInfo());
+	}
+
+	getSessionEffort(): 'low' | 'medium' | 'high' | undefined {
+		return this._chatManager.getSessionEffort();
+	}
+
 	async continueLastSession(): Promise<void> {
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
 		this._chatManager.continueMode = true;
@@ -838,6 +856,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	async validateModel(model: string): Promise<{ valid: boolean; error?: string }> {
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'Validating model via CLI:', model);
 		return this._multiConnection.validateModel(model);
+	}
+
+	async completeCode(prompt: string, model?: string): Promise<string> {
+		return this._multiConnection.completeCode(prompt, model);
 	}
 
 	// ========== File Snapshot / Diff ==========

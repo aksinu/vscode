@@ -178,6 +178,12 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.agents) {
 			claudeArgs.push('--agents', options.agents);
 		}
+		if (options?.effort) {
+			claudeArgs.push('--effort', options.effort);
+		}
+		if (options?.maxTokens !== undefined && options.maxTokens > 0) {
+			claudeArgs.push('--max-tokens', String(options.maxTokens));
+		}
 
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
 		debugLog(`[Instance:${this.chatId}] Spawning:`, spawnCommand, spawnArgs.join(' '));

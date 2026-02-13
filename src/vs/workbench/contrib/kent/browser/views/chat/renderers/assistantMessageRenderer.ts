@@ -273,6 +273,10 @@ export class AssistantMessageRenderer {
 
 	/**
 	 * Ask 질문 렌더링
+	 * - 각 질문별 선택 상태 추적
+	 * - multiSelect: 여러 옵션 토글 선택
+	 * - 단일 선택: 라디오 방식 (하나만 선택)
+	 * - Submit 버튼으로 모든 답변 한 번에 전송
 	 */
 	private renderAskUser(askRequest: IClaudeAskUserRequest, container: HTMLElement, disposables: DisposableStore): void {
 		const askContainer = append(container, $('.claude-ask-user'));
@@ -285,41 +289,151 @@ export class AssistantMessageRenderer {
 			return;
 		}
 
+		const totalQuestions = askRequest.questions.length;
+		// 각 질문별 선택 상태 추적: Map<questionIndex, selectedLabels[]>
+		const selections = new Map<number, string[]>();
+		let submitted = false;
+
+		let submitButton: HTMLButtonElement;
+		let submitStatusText: HTMLSpanElement;
+
+		const updateSubmitButton = () => {
+			if (!submitButton) { return; }
+			// 모든 질문에 최소 1개 이상 선택되었는지 확인
+			let answeredCount = 0;
+			for (let i = 0; i < totalQuestions; i++) {
+				const sel = selections.get(i);
+				if (sel && sel.length > 0) {
+					answeredCount++;
+				}
+			}
+			const allAnswered = answeredCount === totalQuestions;
+			submitButton.disabled = !allAnswered || submitted;
+			if (allAnswered && !submitted) {
+				submitButton.classList.add('ready');
+			} else {
+				submitButton.classList.remove('ready');
+			}
+			// 선택 진행 상태 텍스트
+			if (submitStatusText && !submitted) {
+				if (totalQuestions > 1) {
+					submitStatusText.textContent = localize('selectionProgress', "{0}/{1} answered", answeredCount, totalQuestions);
+				} else {
+					submitStatusText.textContent = allAnswered ? '' : localize('selectOption', "Select an option above");
+				}
+			}
+		};
+
 		// 질문들 렌더링
-		for (const question of askRequest.questions) {
+		askRequest.questions.forEach((question, qIndex) => {
+			selections.set(qIndex, []);
+
 			const questionContainer = append(askContainer, $('.claude-ask-question'));
+
+			// 헤더 (있으면)
+			if (question.header) {
+				const headerEl = append(questionContainer, $('.claude-ask-header'));
+				headerEl.textContent = question.header;
+			}
 
 			// 질문 텍스트
 			const questionText = append(questionContainer, $('.claude-ask-text'));
 			questionText.textContent = question.question;
 
+			// multiSelect 힌트
+			if (question.multiSelect) {
+				const hint = append(questionContainer, $('.claude-ask-hint'));
+				hint.textContent = localize('multiSelectHint', "(Multiple selection allowed)");
+			}
+
 			// 옵션 버튼들
 			const optionsContainer = append(questionContainer, $('.claude-ask-options'));
 			for (const option of question.options) {
 				const button = append(optionsContainer, $('button.claude-ask-option'));
-				button.textContent = option.label;
+
+				// 레이블 + 설명 구조
+				const labelSpan = append(button, $('span.claude-ask-option-label'));
+				labelSpan.textContent = option.label;
 				if (option.description) {
-					button.title = option.description;
+					const descSpan = append(button, $('span.claude-ask-option-desc'));
+					descSpan.textContent = option.description;
 				}
 
 				const clickHandler = () => {
-					// 선택된 옵션 시각적 표시
-					const allButtons = optionsContainer.querySelectorAll('.claude-ask-option');
-					allButtons.forEach(btn => btn.classList.remove('selected'));
-					button.classList.add('selected');
+					if (submitted) { return; }
 
-					// 모든 버튼 비활성화 (중복 클릭 방지)
-					allButtons.forEach(btn => (btn as HTMLButtonElement).disabled = true);
+					const currentSel = selections.get(qIndex) || [];
 
-					// 응답 전송
-					if (this._options.onRespondToAskUser) {
-						this._options.onRespondToAskUser([option.label]);
+					if (question.multiSelect) {
+						// multiSelect: 토글 방식
+						const idx = currentSel.indexOf(option.label);
+						if (idx >= 0) {
+							currentSel.splice(idx, 1);
+							button.classList.remove('selected');
+						} else {
+							currentSel.push(option.label);
+							button.classList.add('selected');
+						}
+					} else {
+						// 단일 선택: 라디오 방식
+						const allButtons = optionsContainer.querySelectorAll('.claude-ask-option');
+						allButtons.forEach(btn => btn.classList.remove('selected'));
+						button.classList.add('selected');
+						currentSel.length = 0;
+						currentSel.push(option.label);
 					}
+
+					selections.set(qIndex, currentSel);
+					updateSubmitButton();
 				};
 				button.addEventListener('click', clickHandler);
 				disposables.add({ dispose: () => button.removeEventListener('click', clickHandler) });
 			}
-		}
+		});
+
+		// Submit 버튼 영역
+		const realSubmitContainer = append(askContainer, $('.claude-ask-submit-container'));
+		submitStatusText = append(realSubmitContainer, $('span.claude-ask-submit-status'));
+		submitButton = append(realSubmitContainer, $('button.claude-ask-submit')) as HTMLButtonElement;
+		append(submitButton, $('.codicon.codicon-send'));
+		submitButton.appendChild(document.createTextNode(' ' + localize('submitAnswer', "Submit")));
+		submitButton.disabled = true;
+
+		const submitHandler = () => {
+			if (submitted || !submitButton || submitButton.disabled) { return; }
+			submitted = true;
+
+			// 모든 옵션 버튼 비활성화
+			askContainer.querySelectorAll('.claude-ask-option').forEach(btn => {
+				(btn as HTMLButtonElement).disabled = true;
+			});
+			submitButton.disabled = true;
+			submitButton.classList.remove('ready');
+			submitButton.classList.add('submitted');
+			// 아이콘 + 텍스트 변경
+			while (submitButton.firstChild) { submitButton.removeChild(submitButton.firstChild); }
+			append(submitButton, $('.codicon.codicon-check'));
+			submitButton.appendChild(document.createTextNode(' ' + localize('submitted', "Submitted")));
+			if (submitStatusText) {
+				submitStatusText.textContent = '';
+			}
+
+			// 각 질문의 선택을 모아서 전송
+			const responses: string[] = [];
+			for (let i = 0; i < totalQuestions; i++) {
+				const sel = selections.get(i) || [];
+				responses.push(sel.join(', '));
+			}
+
+			if (this._options.onRespondToAskUser) {
+				this._options.onRespondToAskUser(responses);
+			}
+		};
+		submitButton.addEventListener('click', submitHandler);
+		disposables.add({ dispose: () => submitButton?.removeEventListener('click', submitHandler) });
+
+		// 초기 상태 업데이트
+		updateSubmitButton();
 	}
 
 	/**

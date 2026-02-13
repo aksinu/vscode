@@ -23,6 +23,8 @@ import { IThemeService } from '../../../../../../platform/theme/common/themeServ
 import { IViewPaneOptions, ViewPane } from '../../../../../browser/parts/views/viewPane.js';
 import { IViewDescriptorService } from '../../../../../common/views.js';
 import { IClaudeService } from '../../../common/services/core/claude.js';
+import { IClaudeCodebaseService } from '../../../common/types/claudeCodebaseService.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { IAssistantMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
@@ -129,7 +131,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@ITextModelService private readonly textModelService: ITextModelService,
 		@ISCMService private readonly scmService: ISCMService,
-		@ITerminalService private readonly terminalService: ITerminalService
+		@ITerminalService private readonly terminalService: ITerminalService,
+		@IClaudeCodebaseService private readonly codebaseService: IClaudeCodebaseService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -384,6 +387,8 @@ export class ClaudeChatViewPane extends ViewPane {
 				getPermissionMode: () => this.getPermissionMode(),
 				toggleThinking: () => this.toggleThinking(),
 				isThinkingEnabled: () => this.claudeService.isThinkingEnabled?.() ?? false,
+				cycleEffort: () => this.cycleEffort(),
+				getEffort: () => this.claudeService.getSessionEffort?.(),
 				registerDisposable: (d) => this._register(d)
 			}
 		));
@@ -503,7 +508,7 @@ export class ClaudeChatViewPane extends ViewPane {
 			onNewSession: () => this.createNewSession(),
 			onSwitchSession: (sessionId) => this.switchToSession(sessionId),
 			onDeleteSession: (sessionId) => this.deleteSession(sessionId),
-			onRenameSession: (sessionId, newName) => this.renameSession(sessionId, newName)
+			onRenameSession: (sessionId, newName) => this.renameSessionById(sessionId, newName)
 		}));
 
 		// 오른쪽 버튼들을 담을 컨테이너
@@ -698,6 +703,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				onAttachFile: (uri) => this.attachmentManager.addFile(uri),
 				onAttachWorkspace: () => this.attachWorkspaceContext(),
 				onAttachSelection: () => this.attachEditorSelection(),
+				onAttachCodebase: () => this.attachCodebaseContext(),
 				onCommandSelected: (prompt) => this.sessionInputManager.setCommandPrompt(prompt),
 				onBuiltinCommand: (commandId) => this.handleBuiltinCommand(commandId),
 				registerDisposable: (d) => this._register(d)
@@ -770,6 +776,11 @@ export class ClaudeChatViewPane extends ViewPane {
 			context = {
 				attachments: [...this.sessionInputManager.attachments.attachments]
 			};
+		}
+
+		// @codebase 첨부 처리: 플레이스홀더를 실제 검색 결과로 변환
+		if (context?.attachments?.some(a => a.type === 'codebase')) {
+			context = await this.resolveCodebaseAttachments(content, context);
 		}
 
 		// 입력 초기화 (첨부파일 복사 후에 호출)
@@ -926,6 +937,59 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.attachmentManager.addWorkspace(workspaceFolder.name, workspaceFolder.uri);
 	}
 
+	/**
+	 * 코드베이스 검색 컨텍스트 첨부
+	 * @codebase 멘션 시 호출 — 플레이스홀더 첨부 추가, 전송 시 BM25 검색 실행
+	 */
+	private attachCodebaseContext(): void {
+		this.attachmentManager.addCodebaseSearch();
+	}
+
+	/**
+	 * @codebase 플레이스홀더를 실제 검색 결과 파일 첨부로 변환
+	 */
+	private async resolveCodebaseAttachments(
+		query: string,
+		context: { attachments?: IClaudeAttachment[] }
+	): Promise<{ attachments?: IClaudeAttachment[] }> {
+		const attachments = context.attachments || [];
+		const resolved: IClaudeAttachment[] = [];
+
+		for (const attachment of attachments) {
+			if (attachment.type === 'codebase') {
+				// BM25 검색 실행
+				try {
+					const results = await this.codebaseService.search(query, 8);
+					for (const result of results) {
+						// 검색 결과 파일을 file 첨부로 변환
+						try {
+							const fileContent = await this.fileService.readFile(result.uri);
+							let content = fileContent.value.toString();
+							if (content.length > 30000) {
+								content = content.substring(0, 30000) + '\n... (truncated)';
+							}
+							resolved.push({
+								id: generateUuid(),
+								type: 'file',
+								uri: result.uri,
+								name: `[codebase] ${result.relativePath}`,
+								content
+							});
+						} catch {
+							// 파일 읽기 실패 시 무시
+						}
+					}
+				} catch {
+					// 검색 실패 시 codebase 첨부 무시
+				}
+			} else {
+				resolved.push(attachment);
+			}
+		}
+
+		return { attachments: resolved.length > 0 ? resolved : undefined };
+	}
+
 	// ========== 전송/취소 버튼 ==========
 
 	private updateSendButton(inProgress: boolean): void {
@@ -1020,7 +1084,7 @@ export class ClaudeChatViewPane extends ViewPane {
 	/**
 	 * 세션 이름 변경
 	 */
-	private renameSession(sessionId: string, newName: string): void {
+	private renameSessionById(sessionId: string, newName: string): void {
 		this.claudeService.renameSession?.(sessionId, newName);
 		this.sessionTabs?.render();
 	}
@@ -1072,6 +1136,18 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 	}
 
+	/**
+	 * 선택 영역 + 프롬프트로 바로 전송 (컨텍스트 메뉴 Explain/Refactor/FindIssues)
+	 * @param selectedText 선택된 텍스트
+	 * @param fileName 파일 이름
+	 * @param language 언어 ID
+	 * @param prompt 전송할 프롬프트
+	 */
+	public sendWithContext(selectedText: string, fileName: string, language: string, prompt: string): void {
+		const message = `${prompt}\n\n\`${fileName}\`:\n\`\`\`${language}\n${selectedText}\n\`\`\``;
+		this.claudeService.sendMessage(message);
+	}
+
 	// ========== Changes History ==========
 
 	/**
@@ -1104,12 +1180,14 @@ export class ClaudeChatViewPane extends ViewPane {
 	}
 
 	/**
-	 * Permission Mode 순환 (default → plan → accept-edits → default)
+	 * Permission Mode 순환 (default → plan → accept-edits → bypass-permissions → default)
 	 */
 	private async cyclePermissionMode(): Promise<void> {
-		const modes: ClaudePermissionMode[] = ['default', 'plan', 'accept-edits'];
+		const modes: ClaudePermissionMode[] = ['default', 'plan', 'accept-edits', 'bypass-permissions'];
 		const current = this.getPermissionMode();
-		const nextIndex = (modes.indexOf(current) + 1) % modes.length;
+		// bypassPermissions → bypass-permissions 정규화
+		const normalizedCurrent = current === 'bypassPermissions' ? 'bypass-permissions' : current;
+		const nextIndex = (modes.indexOf(normalizedCurrent) + 1) % modes.length;
 		const nextMode = modes[nextIndex];
 
 		// 로컬 설정 파일 업데이트
@@ -1163,6 +1241,21 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.claudeService.setSessionThinking?.(!current);
 	}
 
+	/**
+	 * Effort 레벨 순환: Auto → Low → Medium → High → Auto
+	 */
+	private cycleEffort(): void {
+		const current = this.claudeService.getSessionEffort?.();
+		let next: 'low' | 'medium' | 'high' | undefined;
+		switch (current) {
+			case undefined: next = 'low'; break;
+			case 'low': next = 'medium'; break;
+			case 'medium': next = 'high'; break;
+			case 'high': next = undefined; break;
+		}
+		this.claudeService.setSessionEffort?.(next);
+	}
+
 	// ========== 입력 키 핸들링 ==========
 
 	/**
@@ -1209,6 +1302,39 @@ export class ClaudeChatViewPane extends ViewPane {
 				break;
 			case 'compact':
 				this.compactConversation();
+				break;
+			case 'help':
+				this.showHelp();
+				break;
+			case 'clear':
+				this.clearConversation();
+				break;
+			case 'model':
+				this.showModelPicker();
+				break;
+			case 'config':
+				this.openConfig();
+				break;
+			case 'context':
+				this.showContext();
+				break;
+			case 'export':
+				this.exportConversation();
+				break;
+			case 'resume':
+				this.resumeSession();
+				break;
+			case 'rename':
+				this.renameSession();
+				break;
+			case 'plan':
+				this.switchToPlanMode();
+				break;
+			case 'agent':
+				this.toggleAgentMode();
+				break;
+			case 'status':
+				this.showStatus();
 				break;
 		}
 	}
@@ -1334,6 +1460,367 @@ export class ClaudeChatViewPane extends ViewPane {
 				`❌ ${localize('compactError', "Compact failed: {0}", String(error))}`
 			);
 		}
+	}
+
+	/**
+	 * /help - 사용 가능한 명령어 및 단축키 표시
+	 */
+	private showHelp(): void {
+		let html = `<strong>Available Commands</strong><br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Prompts</strong><br>`;
+		html += `<strong>/explain</strong> — Explain selected code<br>`;
+		html += `<strong>/fix</strong> — Find and fix bugs<br>`;
+		html += `<strong>/test</strong> — Generate unit tests<br>`;
+		html += `<strong>/refactor</strong> — Refactor code<br>`;
+		html += `<strong>/docs</strong> — Generate documentation<br>`;
+		html += `<strong>/optimize</strong> — Optimize performance<br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Session</strong><br>`;
+		html += `<strong>/cost</strong> — Show session token usage<br>`;
+		html += `<strong>/compact</strong> — Compress conversation<br>`;
+		html += `<strong>/clear</strong> — Clear conversation<br>`;
+		html += `<strong>/model</strong> — Change model<br>`;
+		html += `<strong>/export</strong> — Export conversation to clipboard<br>`;
+		html += `<strong>/resume</strong> — Resume a previous session<br>`;
+		html += `<strong>/rename</strong> — Rename current session<br>`;
+		html += `<strong>/context</strong> — Show context usage<br>`;
+		html += `<strong>/status</strong> — Show connection and model info<br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Settings</strong><br>`;
+		html += `<strong>/config</strong> — Open settings panel<br>`;
+		html += `<strong>/plan</strong> — Switch to plan mode<br>`;
+		html += `<strong>/agent</strong> — Toggle agent mode (autonomous)<br>`;
+		html += `<strong>/help</strong> — Show this help<br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Mentions</strong><br>`;
+		html += `<strong>@file</strong> — Attach a file<br>`;
+		html += `<strong>@selection</strong> — Attach editor selection<br>`;
+		html += `<strong>@workspace</strong> — Include workspace context<br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Shortcuts</strong><br>`;
+		html += `<strong>↑/↓</strong> — Navigate prompt history<br>`;
+		html += `<strong>Enter</strong> — Send message<br>`;
+		html += `<strong>Shift+Enter</strong> — New line<br>`;
+
+		this.messageListManager?.appendInfoMessage(html);
+	}
+
+	/**
+	 * /clear - 대화 초기화
+	 */
+	private clearConversation(): void {
+		const messages = this.claudeService.getMessages();
+		if (messages.length === 0) {
+			this.messageListManager?.appendInfoMessage(
+				localize('clearEmpty', "Conversation is already empty.")
+			);
+			return;
+		}
+
+		// 메시지 목록 UI 클리어
+		this.messageListManager?.clearMessages();
+
+		// 세션 메시지 클리어
+		this.claudeService.clearMessages?.();
+
+		this.messageListManager?.appendInfoMessage(
+			`✅ ${localize('clearDone', "Conversation cleared")} — ${messages.length} messages removed.`
+		);
+	}
+
+	/**
+	 * /model - QuickPick으로 모델 변경
+	 */
+	private async showModelPicker(): Promise<void> {
+		const models = getAvailableClaudeModels();
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		const currentModel = statusInfo?.model || '';
+
+		const items = models.map(m => ({
+			label: getModelDisplayName(m) || m,
+			description: m === currentModel ? '(current)' : undefined,
+			id: m
+		}));
+
+		const picked = await this.quickInputService.pick(items, {
+			placeHolder: localize('pickModel', "Select a model for this session"),
+			canPickMany: false
+		});
+
+		if (picked) {
+			const selectedId = (picked as { id: string }).id;
+			this.claudeService.setSessionModel?.(selectedId);
+			const displayName = getModelDisplayName(selectedId);
+			this.messageListManager?.appendInfoMessage(
+				`✅ ${localize('modelChanged', "Model changed to {0}", displayName)}`
+			);
+		}
+	}
+
+	/**
+	 * /config - 설정 패널 열기
+	 */
+	private openConfig(): void {
+		if (this.settingsPanel && this.container) {
+			this.settingsPanel.open(this.container);
+		}
+	}
+
+	/**
+	 * /context - 현재 컨텍스트 사용량 표시
+	 */
+	private showContext(): void {
+		const messages = this.claudeService.getMessages();
+		const statusInfo = this.claudeService.getStatusInfo?.();
+
+		let totalInputTokens = 0;
+		let totalOutputTokens = 0;
+		let totalCacheReadTokens = 0;
+		let totalCacheCreationTokens = 0;
+
+		for (const msg of messages) {
+			if (msg.role === 'assistant') {
+				const assistantMsg = msg as IAssistantMessage;
+				if (assistantMsg.usage) {
+					totalInputTokens += assistantMsg.usage.inputTokens || 0;
+					totalOutputTokens += assistantMsg.usage.outputTokens || 0;
+					totalCacheReadTokens += assistantMsg.usage.cacheReadTokens || 0;
+					totalCacheCreationTokens += assistantMsg.usage.cacheCreationTokens || 0;
+				}
+			}
+		}
+
+		const totalTokens = totalInputTokens + totalOutputTokens;
+		const maxContext = 200000; // Claude 기본 컨텍스트 윈도우
+		const usagePercent = Math.min(100, (totalInputTokens / maxContext) * 100);
+
+		// 시각적 바 생성
+		const barLength = 20;
+		const filledLength = Math.round((usagePercent / 100) * barLength);
+		const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+
+		const formatTokens = (n: number): string => {
+			if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+			if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+			return String(n);
+		};
+
+		let html = `<strong>Context Usage</strong><br>`;
+		html += `Model: ${statusInfo?.model ? getModelDisplayName(statusInfo.model) : 'Unknown'}<br>`;
+		html += `───────────────<br>`;
+		html += `[${bar}] ${usagePercent.toFixed(1)}%<br>`;
+		html += `Input: ${formatTokens(totalInputTokens)} / ${formatTokens(maxContext)}<br>`;
+		html += `Output: ${formatTokens(totalOutputTokens)}<br>`;
+		if (totalCacheReadTokens > 0) {
+			html += `Cache read: ${formatTokens(totalCacheReadTokens)}<br>`;
+		}
+		if (totalCacheCreationTokens > 0) {
+			html += `Cache creation: ${formatTokens(totalCacheCreationTokens)}<br>`;
+		}
+		html += `Total: ${formatTokens(totalTokens)}<br>`;
+		html += `Messages: ${messages.length}`;
+
+		this.messageListManager?.appendInfoMessage(html);
+	}
+
+	/**
+	 * /export - 대화 내보내기 (클립보드)
+	 */
+	private async exportConversation(): Promise<void> {
+		const messages = this.claudeService.getMessages();
+
+		if (messages.length === 0) {
+			this.messageListManager?.appendInfoMessage(
+				localize('exportEmpty', "No messages to export.")
+			);
+			return;
+		}
+
+		// 마크다운 형식으로 변환
+		const lines: string[] = [];
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		lines.push(`# Claude Conversation`);
+		lines.push(`Model: ${statusInfo?.model ? getModelDisplayName(statusInfo.model) : 'Unknown'}`);
+		lines.push(`Date: ${new Date().toISOString()}`);
+		lines.push(`Messages: ${messages.length}`);
+		lines.push('');
+		lines.push('---');
+		lines.push('');
+
+		for (const msg of messages) {
+			const role = msg.role === 'user' ? '**User**' : '**Claude**';
+			lines.push(`### ${role}`);
+			lines.push('');
+			lines.push(msg.content);
+			lines.push('');
+		}
+
+		const exportText = lines.join('\n');
+
+		try {
+			await navigator.clipboard.writeText(exportText);
+			this.messageListManager?.appendInfoMessage(
+				`✅ ${localize('exportDone', "Conversation exported to clipboard")} — ${messages.length} messages`
+			);
+		} catch {
+			this.messageListManager?.appendInfoMessage(
+				`❌ ${localize('exportFailed', "Failed to copy to clipboard")}`
+			);
+		}
+	}
+
+	/**
+	 * /resume - 이전 세션 재개
+	 */
+	private async resumeSession(): Promise<void> {
+		const sessions = this.claudeService.getSessions();
+
+		if (sessions.length <= 1) {
+			this.messageListManager?.appendInfoMessage(
+				localize('resumeNoSessions', "No other sessions available to resume.")
+			);
+			return;
+		}
+
+		const activeSessionId = this.claudeService.getCurrentSession?.()?.id;
+		const items = sessions
+			.filter(s => s.id !== activeSessionId)
+			.map(s => ({
+				label: s.title || s.id.substring(0, 8),
+				description: `${s.messages?.length || 0} messages`,
+				id: s.id
+			}));
+
+		const picked = await this.quickInputService.pick(items, {
+			placeHolder: localize('pickSession', "Select a session to resume"),
+			canPickMany: false
+		});
+
+		if (picked) {
+			const sessionId = (picked as { id: string }).id;
+			this.claudeService.switchSession?.(sessionId);
+			this.messageListManager?.clearMessages();
+
+			// 선택된 세션의 메시지 복원
+			const messages = this.claudeService.getMessages();
+			for (const msg of messages) {
+				this.messageListManager?.appendMessage(msg);
+			}
+
+			this.updateWelcomeVisibility();
+			this.messageListManager?.appendInfoMessage(
+				`✅ ${localize('resumeDone', "Resumed session: {0}", (picked as { label: string }).label)}`
+			);
+		}
+	}
+
+	/**
+	 * /rename - 현재 세션 이름 변경
+	 */
+	private async renameSession(): Promise<void> {
+		const currentSession = this.claudeService.getCurrentSession?.();
+
+		if (!currentSession) {
+			this.messageListManager?.appendInfoMessage(
+				localize('renameNoSession', "No active session to rename.")
+			);
+			return;
+		}
+
+		const newName = await this.quickInputService.input({
+			placeHolder: localize('enterSessionName', "Enter new session name"),
+			value: currentSession.title || '',
+			prompt: localize('renamePrompt', "Rename session")
+		});
+
+		if (newName !== undefined && newName.trim()) {
+			const success = this.claudeService.renameSession?.(currentSession.id, newName.trim());
+			if (success) {
+				this.messageListManager?.appendInfoMessage(
+					`✅ ${localize('renameDone', "Session renamed to \"{0}\"", newName.trim())}`
+				);
+			}
+		}
+	}
+
+	/**
+	 * /plan - Plan 모드로 전환
+	 */
+	private async switchToPlanMode(): Promise<void> {
+		const currentMode = this.getPermissionMode();
+
+		if (currentMode === 'plan') {
+			this.messageListManager?.appendInfoMessage(
+				localize('alreadyPlanMode', "Already in Plan mode.")
+			);
+			return;
+		}
+
+		await this.updateLocalConfigPermissionMode('plan');
+
+		this.messageListManager?.appendInfoMessage(
+			`✅ ${localize('planMode', "Switched to Plan mode")} — Claude will show plans before executing.`
+		);
+	}
+
+	/**
+	 * /agent - Agent 모드 토글 (bypass-permissions)
+	 */
+	private async toggleAgentMode(): Promise<void> {
+		const currentMode = this.getPermissionMode();
+		const isAgent = currentMode === 'bypass-permissions' || currentMode === 'bypassPermissions';
+
+		if (isAgent) {
+			// Agent 모드 해제 → default로 복귀
+			await this.updateLocalConfigPermissionMode('default');
+			this.messageListManager?.appendInfoMessage(
+				`✅ ${localize('agentModeOff', "Agent mode OFF")} — Switched to Default mode.`
+			);
+		} else {
+			// Agent 모드 활성화
+			await this.updateLocalConfigPermissionMode('bypass-permissions');
+			this.messageListManager?.appendInfoMessage(
+				`⚡ ${localize('agentModeOn', "Agent mode ON")} — Claude will autonomously edit files and run commands.`
+			);
+		}
+	}
+
+	/**
+	 * /status - 상태 정보 표시
+	 */
+	private showStatus(): void {
+		const statusInfo = this.claudeService.getStatusInfo?.();
+		const sessions = this.claudeService.getSessions();
+		const currentSession = this.claudeService.getCurrentSession?.();
+		const messages = this.claudeService.getMessages();
+
+		let html = `<strong>Status</strong><br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Connection:</strong> ${statusInfo?.connectionStatus || 'unknown'}<br>`;
+		html += `<strong>Model:</strong> ${statusInfo?.model ? getModelDisplayName(statusInfo.model) : 'not set'}<br>`;
+		html += `<strong>Execution:</strong> ${statusInfo?.executionMethod || 'CLI'}<br>`;
+		html += `───────────────<br>`;
+		html += `<strong>Session:</strong> ${currentSession?.title || currentSession?.id?.substring(0, 8) || 'none'}<br>`;
+		html += `<strong>Messages:</strong> ${messages.length}<br>`;
+		html += `<strong>Sessions:</strong> ${sessions.length}<br>`;
+
+		// Permission Mode 상태
+		const permMode = this.getPermissionMode();
+		const permModeDisplay = (permMode === 'bypass-permissions' || permMode === 'bypassPermissions') ? 'Agent' :
+			permMode === 'accept-edits' ? 'Accept-Edits' :
+				permMode === 'plan' ? 'Plan' : 'Default';
+		html += `<strong>Mode:</strong> ${permModeDisplay}<br>`;
+
+		// Thinking 상태
+		const thinkingEnabled = this.claudeService.isThinkingEnabled?.() || false;
+		html += `<strong>Thinking:</strong> ${thinkingEnabled ? 'ON' : 'OFF'}<br>`;
+
+		// Effort 상태
+		const effort = this.claudeService.getSessionEffort?.();
+		html += `<strong>Effort:</strong> ${effort || 'Auto'}<br>`;
+
+		this.messageListManager?.appendInfoMessage(html);
 	}
 
 	/**

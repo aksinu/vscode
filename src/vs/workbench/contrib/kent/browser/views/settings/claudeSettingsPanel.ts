@@ -163,6 +163,16 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxBudgetUsd: value }; }
 		});
 
+		// Max Tokens 설정
+		this.createNumberSetting(content, {
+			label: localize('maxTokens', "Max Tokens"),
+			description: localize('maxTokensDesc', "Maximum output tokens per response (CLI --max-tokens)"),
+			value: this.currentConfig.maxTokens ?? 16000,
+			min: 100,
+			max: 128000,
+			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxTokens: value }; }
+		});
+
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
 

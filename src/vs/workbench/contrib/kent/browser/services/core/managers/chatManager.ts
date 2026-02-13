@@ -39,6 +39,7 @@ export class ChatManager extends Disposable {
 	// Session overrides
 	private _sessionModelOverride: string | undefined;
 	private _sessionThinkingEnabled: boolean = false;
+	private _sessionEffort: 'low' | 'medium' | 'high' | undefined;
 
 	constructor(
 		private readonly _configurationService: IConfigurationService,
@@ -320,6 +321,8 @@ export class ChatManager extends Disposable {
 			?? this._configurationService.getValue<number>('claude.maxBudgetUsd');
 		const fallbackModel = localConfig.fallbackModel
 			?? this._configurationService.getValue<string>('claude.fallbackModel');
+		const maxTokens = localConfig.maxTokens
+			?? this._configurationService.getValue<number>('claude.maxTokens');
 		const appendSystemPrompt = this._configurationService.getValue<string>('claude.appendSystemPrompt');
 		const disallowedTools = localConfig.disallowedTools
 			?? this._configurationService.getValue<string[]>('claude.disallowedTools');
@@ -343,6 +346,7 @@ export class ChatManager extends Disposable {
 			executable: localConfig.executable,
 			continueLastSession,
 			// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
+			maxTokens,
 			maxTurns,
 			maxBudgetUsd,
 			fallbackModel,
@@ -353,7 +357,8 @@ export class ChatManager extends Disposable {
 			// 로컬 설정 전용 옵션
 			addDirs: localConfig.addDirs,
 			mcpConfig: localConfig.mcpConfig,
-			agents: localConfig.agents
+			agents: localConfig.agents,
+			effort: this._sessionEffort
 		};
 	}
 
@@ -397,6 +402,14 @@ export class ChatManager extends Disposable {
 
 	isSessionThinkingEnabled(): boolean {
 		return this._sessionThinkingEnabled;
+	}
+
+	setSessionEffort(effort: 'low' | 'medium' | 'high' | undefined): void {
+		this._sessionEffort = effort;
+	}
+
+	getSessionEffort(): 'low' | 'medium' | 'high' | undefined {
+		return this._sessionEffort;
 	}
 
 	/**

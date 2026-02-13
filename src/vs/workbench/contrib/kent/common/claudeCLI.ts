@@ -172,6 +172,15 @@ export interface IClaudeCLIRequestOptions {
 	 * @description 에이전트 정의 파일의 경로입니다.
 	 */
 	readonly agents?: string;
+
+	/**
+	 * 추론 노력 수준
+	 * @description Claude의 추론 노력 수준을 설정합니다.
+	 *              - 'low': 빠른 응답, 간단한 작업
+	 *              - 'medium': 균형 잡힌 응답
+	 *              - 'high': 깊은 추론, 복잡한 작업
+	 */
+	readonly effort?: 'low' | 'medium' | 'high';
 }
 
 /**
@@ -282,6 +291,11 @@ export interface IClaudeCLIMultiService {
 	 * 모델 유효성 검증 (CLI 실행)
 	 */
 	validateModel(model: string): Promise<{ valid: boolean; error?: string }>;
+
+	/**
+	 * 코드 완성 요청 (인라인 제안용, one-shot -p 모드)
+	 */
+	completeCode(prompt: string, model?: string): Promise<string>;
 
 	/**
 	 * 특정 chatId의 인스턴스 제거

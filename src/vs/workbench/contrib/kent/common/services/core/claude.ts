@@ -89,6 +89,11 @@ export interface IClaudeService {
 	 */
 	clearHistory(): void;
 
+	/**
+	 * 현재 세션의 메시지 클리어 (UI에서 /clear 커맨드용)
+	 */
+	clearMessages?(): void;
+
 	// ========== Session ==========
 
 	/**
@@ -145,6 +150,16 @@ export interface IClaudeService {
 	 * Extended Thinking 활성화 여부
 	 */
 	isThinkingEnabled?(): boolean;
+
+	/**
+	 * 추론 노력 수준 설정
+	 */
+	setSessionEffort?(effort: 'low' | 'medium' | 'high' | undefined): void;
+
+	/**
+	 * 현재 추론 노력 수준
+	 */
+	getSessionEffort?(): 'low' | 'medium' | 'high' | undefined;
 
 	/**
 	 * 현재 세션이 사용자 응답 대기 중인지 여부 (AskUser)
@@ -243,6 +258,11 @@ export interface IClaudeService {
 	 * 모델 유효성 검증 (CLI 실행)
 	 */
 	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
+
+	/**
+	 * 코드 완성 요청 (인라인 제안용, one-shot -p 모드)
+	 */
+	completeCode?(prompt: string, model?: string): Promise<string>;
 
 	// ========== File Changes ==========
 
