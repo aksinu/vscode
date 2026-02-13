@@ -186,13 +186,13 @@ export class AssistantMessageRenderer {
 		currentState: ChatSessionState,
 		disposables: DisposableStore
 	): void {
-		// 현재 실행 중인 툴
-		if (message.currentToolAction && (message.isStreaming || currentState === 'responding')) {
+		// 현재 실행 중인 툴 (status가 'running'인 경우에만 스피너 표시)
+		if (message.currentToolAction && message.currentToolAction.status === 'running' && (message.isStreaming || currentState === 'responding')) {
 			this.renderCurrentTool(message.currentToolAction, container);
 		}
 
-		// 완료된 툴들의 요약 (스트리밍 완료 후)
-		if (message.toolActions && message.toolActions.length > 0 && !message.isStreaming) {
+		// 완료된 툴들의 요약 (스트리밍 완료 후 또는 현재 툴이 완료된 경우)
+		if (message.toolActions && message.toolActions.length > 0 && (!message.isStreaming || (message.currentToolAction && message.currentToolAction.status !== 'running'))) {
 			this.renderToolSummary(message.toolActions, container, disposables);
 		}
 	}

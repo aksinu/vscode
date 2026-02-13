@@ -309,6 +309,7 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			debugLog(' Registering close handler...');
 			this._process.on('close', (code, signal) => {
 				debugLog(' Process closed with code:', code, 'signal:', signal);
+				debugLog(' stderr buffer:', stderrBuffer);
 				this._isRunning = false;
 				this._stdinOpen = false;
 				this._process = undefined;
@@ -324,9 +325,13 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 					this._onDidComplete.fire();
 					resolve();
 				} else {
-					const errorMsg = signal
+					const baseMsg = signal
 						? `Claude CLI terminated by signal ${signal}`
 						: `Claude CLI exited with code ${code}`;
+					const stderrInfo = stderrBuffer.trim();
+					const errorMsg = stderrInfo
+						? `${baseMsg}\n${stderrInfo}`
+						: baseMsg;
 					debugLog(' Process failed:', errorMsg);
 					this._onDidError.fire(errorMsg);
 					reject(new Error(errorMsg));

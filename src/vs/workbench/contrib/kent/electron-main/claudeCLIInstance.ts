@@ -178,9 +178,7 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.effort) {
 			claudeArgs.push('--effort', options.effort);
 		}
-		if (options?.maxTokens !== undefined && options.maxTokens > 0) {
-			claudeArgs.push('--max-tokens', String(options.maxTokens));
-		}
+		// NOTE: --max-tokens는 Claude CLI에서 지원하지 않는 옵션이므로 전달하지 않음
 
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
 		debugLog(`[Instance:${this.chatId}] Spawning:`, spawnCommand, spawnArgs.join(' '));
@@ -275,6 +273,7 @@ export class ClaudeCLIInstance extends Disposable {
 
 			this._process.on('close', (code, signal) => {
 				debugLog(`[Instance:${this.chatId}] Process closed, code:`, code, 'signal:', signal);
+				debugLog(`[Instance:${this.chatId}] stderr buffer:`, stderrBuffer);
 				this._isRunning = false;
 				this._stdinOpen = false;
 				this._process = undefined;
@@ -287,9 +286,13 @@ export class ClaudeCLIInstance extends Disposable {
 					this._onDidComplete.fire();
 					resolve();
 				} else {
-					const errorMsg = signal
+					const baseMsg = signal
 						? `Claude CLI terminated by signal ${signal}`
 						: `Claude CLI exited with code ${code}`;
+					const stderrInfo = stderrBuffer.trim();
+					const errorMsg = stderrInfo
+						? `${baseMsg}\n${stderrInfo}`
+						: baseMsg;
 					debugLog(`[Instance:${this.chatId}] Process failed:`, errorMsg);
 					this._onDidError.fire(errorMsg);
 					reject(new Error(errorMsg));

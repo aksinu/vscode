@@ -35,7 +35,8 @@ ProjectRoot/
 │       └── quality-team.md     # 품질 팀 (reviewer 기반)
 │
 ├── _Dev/                  # 개발 문서
-│   ├── Status.md          # 현재 진행 상태 ★ 작업 시작 시 확인
+│   ├── Status.md          # 현재 Sprint 상태 (30~50줄) ★ 작업 시작 시 확인
+│   ├── StatusHistory.md   # 완료된 Sprint/작업 히스토리
 │   ├── Backlog.md         # 차세대 기능 백로그
 │   └── Specs/             # 설계 명세 (핵심 SPEC만 유지)
 │       ├── SPEC_001_ChatArchitecture.md
@@ -52,9 +53,10 @@ ProjectRoot/
 
 ### 작업 시작
 ```
-1. _Dev/Status.md → 현재 상태 확인
-2. 필요시 관련 가이드/스펙 참조
-3. 기존 VS Code 코드 패턴 파악
+1. _Dev/Status.md → 현재 상태 확인 (30~50줄로 빠르게 파악)
+2. 과거 맥락 필요 시 → _Dev/StatusHistory.md 끝에서부터 읽기
+3. 필요시 관련 가이드/스펙 참조
+4. 기존 VS Code 코드 패턴 파악
 ```
 
 ### 작업 중
@@ -67,8 +69,9 @@ ProjectRoot/
 
 ### 작업 완료
 ```
-1. _Dev/Status.md 업데이트
-2. 변경사항 요약 기록
+1. _Dev/Status.md 업데이트 (30~50줄 유지)
+2. Sprint 완료 시 → Status.md 내용을 StatusHistory.md 맨 아래로 이동
+3. 변경사항 요약 기록
 ```
 
 ### 커밋 메시지
@@ -179,15 +182,23 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 
 ## 📋 Documentation Management Rules
 
-### Status.md - 핵심 상태만 유지
+### Status.md + StatusHistory.md (분리 운영)
 ```
-🎯 목적: AI 에이전트가 빠르게 현재 상태 파악
-📏 규모: 100줄 내외로 간소화 (상세 이력 X)
-📝 내용:
-  - 현재 Phase/진행상황
-  - 최신 아키텍처 개요
-  - 핵심 이슈 3개 이하
+📌 Status.md (30~50줄, 현재 Sprint만)
+  - 현재 Sprint/Phase 목표
+  - 진행 중인 태스크 (3개 이하)
+  - 핵심 이슈/블로커
   - 다음 우선순위 작업
+
+📚 StatusHistory.md (계속 증가 OK)
+  - 완료된 Sprint/Phase 기록
+  - 과거 작업 이력 (최신이 맨 아래)
+  - 필요시 참조용
+
+📖 읽기 규칙:
+  - 작업 시작 시: Status.md만 읽으면 OK (30~50줄)
+  - 과거 맥락 필요 시: StatusHistory.md를 끝에서부터 읽기
+  - Status.md에 Sprint 완료 시 → 해당 내용을 StatusHistory.md로 이동
 ```
 
 ### Specs/ - 핵심 명세만 보관
