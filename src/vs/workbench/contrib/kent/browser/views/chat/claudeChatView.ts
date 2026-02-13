@@ -25,7 +25,7 @@ import { IViewDescriptorService } from '../../../../../common/views.js';
 import { IClaudeService } from '../../../common/services/core/claude.js';
 import { IClaudeCodebaseService } from '../../../common/types/claudeCodebaseService.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
-import { IAssistantMessage, IClaudeAttachment, IClaudeQueuedMessage, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
+import { IAssistantMessage, IClaudeAttachment, IClaudeQueuedMessage, ChatSessionState, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
@@ -214,6 +214,10 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.updateLoadingState(state === 'sending'); // 스트리밍 중에는 로딩 숨김
 			this.updateSendButton(inProgress);
 
+			// 메시지 렌더러에 세션 상태 동기화
+			const sessionState: ChatSessionState = state === 'streaming' ? 'responding' : (state as ChatSessionState);
+			this.messageRenderer.updateSessionState(sessionState);
+
 			// 에러 상태 시 연결 오버레이 표시 및 입력 비활성화
 			if (state === 'error') {
 				this.viewConnectionManager?.handleConnectionLost();
@@ -367,9 +371,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.sessionSettingsPanel = this._register(new SessionSettingsPanel({
 			getCurrentSettings: () => this.sessionSettings,
 			onSave: (settings) => this.applySessionSettings(settings),
-			onContinue: () => this.continueLastSession(),
 			getAvailableModels: () => this.getAvailableModels(),
-			onCommit: () => this.gitCommitManager.handleCommitChanges(),
+			onCommit: (message) => this.gitCommitManager.handleCommitChanges(message),
 			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit(),
 			validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
 		}));
@@ -483,14 +486,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		}
 
 		this.notificationService.info(localize('sessionSettingsSaved', "Session settings saved"));
-	}
-
-	/**
-	 * 마지막 세션 이어서 시작 (--continue)
-	 */
-	private continueLastSession(): void {
-		this.claudeService.continueLastSession?.();
-		this.notificationService.info(localize('continuingSession', "Continuing last session..."));
 	}
 
 	/**

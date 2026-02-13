@@ -100,9 +100,6 @@ export interface IClaudeCLIRequestOptions {
 	/** 세션 재개용 ID (--resume) */
 	readonly resumeSessionId?: string;
 
-	/** 마지막 세션 계속 여부 (--continue) */
-	readonly continueLastSession?: boolean;
-
 	/** 실행 설정 (로컬 설정에서 로드) */
 	readonly executable?: IClaudeExecutableConfig;
 

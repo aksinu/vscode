@@ -34,8 +34,6 @@ export class ChatManager extends Disposable {
 	// Legacy 단일 상태 (하위 호환성)
 	private _currentMessageId: string | undefined;
 	private _accumulatedContent: string = '';
-	private _continueMode = false;
-
 	// Session overrides
 	private _sessionModelOverride: string | undefined;
 	private _sessionThinkingEnabled: boolean = false;
@@ -102,32 +100,6 @@ export class ChatManager extends Disposable {
 			this._logService.info(ChatManager.LOG_CATEGORY, `📤 DIRECT SEND - Current state: ${currentState}, sending directly`);
 		}
 
-		// --continue 플래그 감지 (텍스트 또는 버튼)
-		let continueLastSession = this._continueMode;
-		let actualContent = content;
-
-		// 버튼으로 continue 모드 활성화된 경우 초기화
-		if (this._continueMode) {
-			this._continueMode = false;
-			this._logService.info(ChatManager.LOG_CATEGORY, 'Continue mode (button) activated');
-		}
-
-		if (content.trim().startsWith('--continue') || content.trim().startsWith('-c ')) {
-			continueLastSession = true;
-			// --continue 이후의 텍스트를 프롬프트로 사용
-			actualContent = content.trim()
-				.replace(/^--continue\s*/, '')
-				.replace(/^-c\s*/, '')
-				.trim();
-
-			// 프롬프트가 없으면 빈 문자열 (CLI가 이전 대화 로드)
-			if (!actualContent) {
-				actualContent = '';
-			}
-
-			this._logService.info(ChatManager.LOG_CATEGORY, 'Continue mode detected, prompt:', actualContent || '(empty)');
-		}
-
 		// 파일 스냅샷 매니저 초기화 - 새 명령 시작
 		const workingDir = this._configManager.getWorkingDirectory();
 		this._fileService.startCommand(workingDir);
@@ -149,19 +121,12 @@ export class ChatManager extends Disposable {
 		// 사용자 메시지 저장
 		this._sessionService.saveSessions();
 
-		// 프롬프트 구성 - continue 모드가 아닐 때만 컨텍스트 포함
-		let prompt: string;
-		if (continueLastSession) {
-			// continue 모드: actualContent만 사용 (빈 문자열 가능)
-			prompt = actualContent;
-		} else {
-			// 일반 모드: 이전 대화 컨텍스트 포함
-			prompt = this._contextBuilder.buildPromptWithContext(
-				content,
-				this._sessionService.getMessages(),
-				options?.context
-			);
-		}
+		// 프롬프트 구성 - 이전 대화 컨텍스트 포함
+		const prompt = this._contextBuilder.buildPromptWithContext(
+			content,
+			this._sessionService.getMessages(),
+			options?.context
+		);
 
 		// 스트리밍 메시지 생성 (헬퍼 메서드로 중복 제거)
 		const messageId = generateUuid();
@@ -207,7 +172,7 @@ export class ChatManager extends Disposable {
 			this._logService.debug(ChatManager.LOG_CATEGORY, 'Calling sendPrompt...');
 
 			// CLI 옵션 빌드
-			const cliOptions = this.buildCLIOptions(options, continueLastSession);
+			const cliOptions = this.buildCLIOptions(options);
 
 			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
 			const currentSessionId = this._sessionService.getCurrentSession()?.id;
@@ -304,7 +269,7 @@ export class ChatManager extends Disposable {
 	/**
 	 * CLI 옵션 빌드
 	 */
-	private buildCLIOptions(options?: IClaudeSendRequestOptions, continueLastSession: boolean = false): IClaudeCLIRequestOptions {
+	private buildCLIOptions(options?: IClaudeSendRequestOptions): IClaudeCLIRequestOptions {
 		const localConfig = this._configManager.getLocalConfig();
 
 		// 모델 우선순위: options > session override > local config > VS Code config
@@ -344,7 +309,6 @@ export class ChatManager extends Disposable {
 			systemPrompt: options?.systemPrompt || this._configurationService.getValue<string>('claude.systemPrompt'),
 			workingDir: this._configManager.getWorkingDirectory(),
 			executable: localConfig.executable,
-			continueLastSession,
 			// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
 			maxTokens,
 			maxTurns,
@@ -378,14 +342,6 @@ export class ChatManager extends Disposable {
 
 	appendContent(text: string): void {
 		this._accumulatedContent += text;
-	}
-
-	get continueMode(): boolean {
-		return this._continueMode;
-	}
-
-	set continueMode(value: boolean) {
-		this._continueMode = value;
 	}
 
 	setSessionModelOverride(model: string | undefined): void {

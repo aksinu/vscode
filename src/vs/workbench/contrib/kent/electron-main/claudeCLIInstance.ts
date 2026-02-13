@@ -125,9 +125,6 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.resumeSessionId) {
 			claudeArgs.push('--resume', options.resumeSessionId);
 			debugLog(`[Instance:${this.chatId}] Resuming session:`, options.resumeSessionId);
-		} else if (options?.continueLastSession) {
-			claudeArgs.push('--continue');
-			debugLog(`[Instance:${this.chatId}] Continuing last session`);
 		}
 
 		if (options?.model) {

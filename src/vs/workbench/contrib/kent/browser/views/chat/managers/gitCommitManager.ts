@@ -41,7 +41,7 @@ export class GitCommitManager {
 	/**
 	 * 변경사항 커밋 처리
 	 */
-	async handleCommitChanges(): Promise<void> {
+	async handleCommitChanges(commitMessage: string): Promise<void> {
 		try {
 			// 변경된 파일 목록 가져오기
 			const changesHistory = this.claudeService.getSessionChangesHistory?.();
@@ -49,9 +49,6 @@ export class GitCommitManager {
 				this.notificationService.warn(localize('noChangesToCommit', "No changes to commit"));
 				return;
 			}
-
-			// 커밋 메시지 생성
-			const commitMessage = await this.generateCommitMessage(changesHistory.filesSummary);
 
 			// Git 커밋 실행
 			await this.executeGitCommit(changesHistory.filesSummary, commitMessage);
@@ -63,59 +60,6 @@ export class GitCommitManager {
 			this.notificationService.error(
 				localize('commitFailed', "Failed to commit changes: {0}", String(error))
 			);
-		}
-	}
-
-	/**
-	 * 커밋 메시지 자동 생성 (토큰 절약을 위해 간단하게)
-	 */
-	async generateCommitMessage(fileChanges: IClaudeFileChangeSummaryItem[]): Promise<string> {
-		const fileCount = fileChanges.length;
-
-		// 파일 분석
-		const extensions = new Set<string>();
-		const directories = new Set<string>();
-		fileChanges.forEach(f => {
-			const filePath = f.filePath || '';
-			const fileName = filePath.split('/').pop() || filePath;
-			const ext = fileName.split('.').pop();
-			if (ext) extensions.add(ext.toLowerCase());
-
-			const dir = filePath.split('/').slice(-2, -1)[0];
-			if (dir) directories.add(dir);
-		});
-
-		// 파일 타입에 따른 액션 결정
-		let action = 'Update';
-		if (extensions.has('md') && extensions.size === 1) {
-			action = 'Update documentation';
-		} else if (extensions.has('ts') || extensions.has('js')) {
-			action = 'Implement';
-		} else if (extensions.has('css') && extensions.size === 1) {
-			action = 'Style';
-		} else if (extensions.has('json') && extensions.size === 1) {
-			action = 'Configure';
-		}
-
-		// 디렉토리 기반 범위 결정
-		let scope = '';
-		if (directories.has('chat') || directories.has('views')) {
-			scope = ' chat UI';
-		} else if (directories.has('browser')) {
-			scope = ' UI components';
-		} else if (directories.has('services') || directories.has('service')) {
-			scope = ' services';
-		} else if (directories.has('managers')) {
-			scope = ' managers';
-		} else if (directories.has('common')) {
-			scope = ' core functionality';
-		}
-
-		// 메시지 구성 (파일 경로 없이 작업 요약만)
-		if (fileCount === 1) {
-			return `${action}${scope}`;
-		} else {
-			return `${action}${scope} (${fileCount} files)`;
 		}
 	}
 

@@ -167,11 +167,6 @@ export interface IClaudeService {
 	isWaitingForUser?(): boolean;
 
 	/**
-	 * 마지막 세션 이어서 시작 (--continue)
-	 */
-	continueLastSession?(): Promise<void>;
-
-	/**
 	 * 특정 세션이 실행 중인지 확인
 	 */
 	isSessionRunning?(sessionId: string): boolean;

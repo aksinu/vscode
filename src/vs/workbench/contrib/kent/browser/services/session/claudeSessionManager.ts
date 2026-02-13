@@ -371,7 +371,16 @@ export class ClaudeSessionManager extends Disposable {
 
 		const msgIndex = targetSession.messages.findIndex((m: IClaudeMessage) => m.id === message.id);
 		if (msgIndex !== -1) {
-			(targetSession.messages as IClaudeMessage[])[msgIndex] = message;
+			const existing = targetSession.messages[msgIndex];
+			// merge: 기존 메시지 프로퍼티를 유지하면서 새 값으로 덮어씌움
+			// workStartTime, usage 등 초기에만 설정되는 필드가 사라지는 것을 방지
+			const merged = { ...existing };
+			for (const key of Object.keys(message) as Array<keyof IClaudeMessage>) {
+				if (message[key] !== undefined) {
+					(merged as any)[key] = message[key];
+				}
+			}
+			(targetSession.messages as IClaudeMessage[])[msgIndex] = merged;
 			return true;
 		}
 		return false;

@@ -155,6 +155,20 @@
 	color: var(--vscode-descriptionForeground);
 }
 
+.claude-message-footer-time {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-top: 6px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.claude-footer-separator {
+	opacity: 0.5;
+}
+
 .claude-assistant-content {
 	margin-bottom: 8px;
 	line-height: 1.6;
@@ -2703,19 +2717,31 @@
 	background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.claude-settings-btn.continue {
+
+.claude-commit-section {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	width: 100%;
-	justify-content: center;
-	background: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
-	margin-top: 8px;
+	flex: 1;
 }
 
-.claude-settings-btn.continue:hover {
-	background: var(--vscode-button-secondaryHoverBackground);
+.claude-commit-input {
+	flex: 1;
+	padding: 5px 8px;
+	border: 1px solid var(--vscode-input-border, transparent);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border-radius: 4px;
+	font-size: 12px;
+	outline: none;
+}
+
+.claude-commit-input:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.claude-commit-input:disabled {
+	opacity: 0.5;
 }
 
 .claude-settings-btn.commit {
@@ -2725,6 +2751,7 @@
 	background: var(--vscode-gitDecoration-modifiedResourceForeground);
 	color: white;
 	border: 1px solid var(--vscode-gitDecoration-modifiedResourceForeground);
+	white-space: nowrap;
 }
 
 .claude-settings-btn.commit:hover {
@@ -2737,25 +2764,6 @@
 	border-color: var(--vscode-descriptionForeground);
 	opacity: 0.5;
 	cursor: not-allowed;
-}
-
-/* Settings Section */
-.claude-settings-section {
-	margin-top: 16px;
-	padding-top: 16px;
-	border-top: 1px solid var(--vscode-widget-border);
-}
-
-.claude-settings-section-title {
-	font-weight: 500;
-	margin-bottom: 4px;
-	color: var(--vscode-foreground);
-}
-
-.claude-settings-section-desc {
-	font-size: 12px;
-	color: var(--vscode-descriptionForeground);
-	margin-bottom: 8px;
 }
 
 /* Warning Message */

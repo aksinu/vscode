@@ -23,9 +23,8 @@ export interface ISessionSettings {
 export interface ISessionSettingsPanelCallbacks {
 	getCurrentSettings(): ISessionSettings;
 	onSave(settings: ISessionSettings): void;
-	onContinue(): void;
 	getAvailableModels(): string[];
-	onCommit?(): Promise<void>;
+	onCommit?(message: string): Promise<void>;
 	hasChangesToCommit?(): boolean;
 	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
 }
@@ -123,43 +122,53 @@ export class SessionSettingsPanel extends Disposable {
 			onChange: (checked) => { this.currentSettings.autoAccept = checked; }
 		});
 
-		// Continue 섹션
-		const continueSection = append(content, $('.claude-settings-section'));
-		const continueTitle = append(continueSection, $('.claude-settings-section-title'));
-		continueTitle.textContent = localize('continueSession', "Continue Previous Session");
-
-		const continueDesc = append(continueSection, $('.claude-settings-section-desc'));
-		continueDesc.textContent = localize('continueDesc', "Resume the last Claude session with --continue flag");
-
-		const continueBtn = append(continueSection, $('button.claude-settings-btn.continue'));
-		const continueIcon = append(continueBtn, $('span.codicon.codicon-history'));
-		continueIcon.setAttribute('aria-hidden', 'true');
-		append(continueBtn, document.createTextNode(' ' + localize('continue', "Continue Last Session")));
-		this.disposables.push(addDisposableListener(continueBtn, EventType.CLICK, () => {
-			this.callbacks.onContinue();
-			this.close();
-		}));
-
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
 
-		// 커밋 버튼 (조건부 표시)
+		// 커밋 섹션 (조건부 표시)
 		if (this.callbacks.onCommit && this.callbacks.hasChangesToCommit?.()) {
-			const commitBtn = append(footer, $('button.claude-settings-btn.commit')) as HTMLButtonElement;
-			commitBtn.textContent = localize('commit', "Commit Changes");
+			const commitSection = append(footer, $('.claude-commit-section'));
+
+			const commitInput = append(commitSection, $('input.claude-commit-input')) as HTMLInputElement;
+			commitInput.type = 'text';
+			commitInput.placeholder = localize('commitMessagePlaceholder', "Commit message...");
+
+			const commitBtn = append(commitSection, $('button.claude-settings-btn.commit')) as HTMLButtonElement;
+			commitBtn.textContent = localize('commit', "Commit");
 			commitBtn.title = localize('commitTooltip', "Commit modified files to git");
-			this.disposables.push(addDisposableListener(commitBtn, EventType.CLICK, async () => {
+			commitBtn.disabled = true;
+
+			// 입력값에 따라 버튼 활성화
+			this.disposables.push(addDisposableListener(commitInput, EventType.INPUT, () => {
+				commitBtn.disabled = !commitInput.value.trim();
+			}));
+
+			// Enter 키로 커밋
+			this.disposables.push(addDisposableListener(commitInput, EventType.KEY_DOWN, (e: KeyboardEvent) => {
+				if (e.key === 'Enter' && commitInput.value.trim()) {
+					e.stopPropagation();
+					commitBtn.click();
+				}
+			}));
+
+			const doCommit = async () => {
+				const message = commitInput.value.trim();
+				if (!message) { return; }
 				try {
 					commitBtn.disabled = true;
+					commitInput.disabled = true;
 					commitBtn.textContent = localize('committing', "Committing...");
-					await this.callbacks.onCommit!();
+					await this.callbacks.onCommit!(message);
 					this.close();
 				} catch (error) {
 					commitBtn.disabled = false;
-					commitBtn.textContent = localize('commit', "Commit Changes");
+					commitInput.disabled = false;
+					commitBtn.textContent = localize('commit', "Commit");
 					console.error('[SessionSettings] Commit failed:', error);
 				}
-			}));
+			};
+
+			this.disposables.push(addDisposableListener(commitBtn, EventType.CLICK, doCommit));
 		}
 
 		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));

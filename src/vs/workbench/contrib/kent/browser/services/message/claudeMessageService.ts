@@ -247,7 +247,9 @@ export class ClaudeMessageService extends Disposable implements IClaudeMessageSe
 	}
 
 	fireMessageUpdate(message: IClaudeMessage): void {
-		this._onDidUpdateMessage.fire(message);
+		// 세션에 저장된 merged 메시지를 사용 (workStartTime 등 보존)
+		const storedMessage = this.findMessage(message.id);
+		this._onDidUpdateMessage.fire(storedMessage || message);
 	}
 
 	fireQueueChange(queuedMessages: IClaudeQueuedMessage[]): void {

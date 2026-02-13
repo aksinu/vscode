@@ -779,11 +779,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		return this._chatManager.getSessionEffort();
 	}
 
-	async continueLastSession(): Promise<void> {
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Continuing last session...');
-		this._chatManager.continueMode = true;
-	}
-
 	isSessionRunning(sessionId: string): boolean {
 		// ChatStateManager를 통해 상태 확인
 		return !this._chatStateManager.isInputEnabled(sessionId);

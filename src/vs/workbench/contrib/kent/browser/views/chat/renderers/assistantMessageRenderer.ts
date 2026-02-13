@@ -107,10 +107,8 @@ export class AssistantMessageRenderer {
 			this.renderSystemMessage(message, messageElement);
 		}
 
-		// 경과 시간 (우하단, 항상 표시)
-		if (message.workStartTime) {
-			this.renderElapsedTime(message, messageElement, disposables);
-		}
+		// 우하단 시간 정보 (전송 시간 + 경과 시간)
+		this.renderFooterTime(message, messageElement, disposables);
 
 		return disposables;
 	}
@@ -799,13 +797,30 @@ export class AssistantMessageRenderer {
 	}
 
 	/**
-	 * 경과 시간 표시 (메시지 우하단, 항상 표시)
+	 * 우하단 시간 정보: 전송 시간 + 경과 시간
 	 */
-	private renderElapsedTime(message: IAssistantMessage, container: HTMLElement, disposables: DisposableStore): void {
-		const elapsedElement = append(container, $('.claude-elapsed-time'));
-		const clockIcon = append(elapsedElement, $('.codicon.codicon-clock'));
+	private renderFooterTime(message: IAssistantMessage, container: HTMLElement, disposables: DisposableStore): void {
+		const footerElement = append(container, $('.claude-message-footer-time'));
+
+		// 전송 시간 (항상 표시)
+		const timeSpan = append(footerElement, $('span.claude-footer-timestamp'));
+		timeSpan.textContent = this.formatTime(message.timestamp);
+
+		// 경과 시간 (workStartTime이 있을 때)
+		if (message.workStartTime) {
+			const separator = append(footerElement, $('span.claude-footer-separator'));
+			separator.textContent = '·';
+			this.renderElapsedTimeInline(message, footerElement, disposables);
+		}
+	}
+
+	/**
+	 * 경과 시간 표시 (인라인)
+	 */
+	private renderElapsedTimeInline(message: IAssistantMessage, container: HTMLElement, disposables: DisposableStore): void {
+		const clockIcon = append(container, $('.codicon.codicon-clock'));
 		clockIcon.style.fontSize = '11px';
-		const timeSpan = append(elapsedElement, $('span'));
+		const timeSpan = append(container, $('span'));
 
 		const updateElapsed = () => {
 			timeSpan.textContent = this.calculateWorkDuration(message);
@@ -813,12 +828,11 @@ export class AssistantMessageRenderer {
 
 		updateElapsed();
 
-		// 스트리밍 중이면 실시간 업데이트
 		if (message.isStreaming) {
 			const updateInterval = setInterval(() => {
 				if (!message.isStreaming) {
 					clearInterval(updateInterval);
-					updateElapsed(); // 최종 시간 반영
+					updateElapsed();
 					return;
 				}
 				updateElapsed();
@@ -827,6 +841,7 @@ export class AssistantMessageRenderer {
 			disposables.add({ dispose: () => clearInterval(updateInterval) });
 		}
 	}
+
 
 	private calculateWorkDuration(message: IAssistantMessage): string {
 		if (!message.workStartTime) return '';
