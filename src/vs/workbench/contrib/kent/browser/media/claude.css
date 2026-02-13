@@ -2766,6 +2766,66 @@
 	cursor: not-allowed;
 }
 
+/* Git Section (커밋 + 푸시 묶음) */
+.claude-git-section {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+}
+
+/* PUSH 버튼 */
+.claude-settings-btn.push {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--vscode-gitDecoration-untrackedResourceForeground);
+	color: white;
+	border: 1px solid var(--vscode-gitDecoration-untrackedResourceForeground);
+	white-space: nowrap;
+}
+
+.claude-settings-btn.push:hover {
+	opacity: 0.85;
+}
+
+.claude-settings-btn.push:disabled {
+	background: var(--vscode-descriptionForeground);
+	border-color: var(--vscode-descriptionForeground);
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Push 확인 다이얼로그 */
+.claude-push-dialog {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-editorWidget-border);
+	border-radius: 4px;
+	margin-top: 6px;
+	width: 100%;
+}
+
+.claude-push-dialog-message {
+	flex: 1;
+	font-size: 12px;
+	color: var(--vscode-foreground);
+}
+
+.claude-push-dialog-buttons {
+	display: flex;
+	gap: 4px;
+}
+
+.claude-settings-btn.small {
+	padding: 2px 10px;
+	font-size: 11px;
+	min-height: unset;
+}
+
 /* Warning Message */
 .claude-settings-warning {
 	font-size: 12px;

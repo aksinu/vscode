@@ -26,6 +26,8 @@ export interface ISessionSettingsPanelCallbacks {
 	getAvailableModels(): string[];
 	onCommit?(message: string): Promise<void>;
 	hasChangesToCommit?(): boolean;
+	onPush?(): Promise<void>;
+	hasPushableCommits?(): Promise<boolean>;
 	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
 }
 
@@ -125,9 +127,12 @@ export class SessionSettingsPanel extends Disposable {
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
 
+		// Git 섹션 (커밋 + 푸시)
+		const gitSection = append(footer, $('.claude-git-section'));
+
 		// 커밋 섹션 (조건부 표시)
 		if (this.callbacks.onCommit && this.callbacks.hasChangesToCommit?.()) {
-			const commitSection = append(footer, $('.claude-commit-section'));
+			const commitSection = append(gitSection, $('.claude-commit-section'));
 
 			const commitInput = append(commitSection, $('input.claude-commit-input')) as HTMLInputElement;
 			commitInput.type = 'text';
@@ -169,6 +174,31 @@ export class SessionSettingsPanel extends Disposable {
 			};
 
 			this.disposables.push(addDisposableListener(commitBtn, EventType.CLICK, doCommit));
+		}
+
+		// PUSH 버튼 (항상 표시)
+		if (this.callbacks.onPush) {
+			const pushBtn = append(gitSection, $('button.claude-settings-btn.push')) as HTMLButtonElement;
+			pushBtn.textContent = localize('push', "Push");
+			pushBtn.title = localize('pushTooltip', "Push commits to remote");
+
+			const doPush = async () => {
+				try {
+					// 푸시할 커밋이 있는지 확인
+					const hasPushable = await this.callbacks.hasPushableCommits?.();
+					if (!hasPushable) {
+						// 푸시할 게 없음 → 알림
+						this.showPushDialog(gitSection, pushBtn, 'none');
+						return;
+					}
+					// 푸시할 게 있음 → 확인 다이얼로그
+					this.showPushDialog(gitSection, pushBtn, 'confirm');
+				} catch (error) {
+					console.error('[SessionSettings] Push check failed:', error);
+				}
+			};
+
+			this.disposables.push(addDisposableListener(pushBtn, EventType.CLICK, doPush));
 		}
 
 		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));
@@ -420,5 +450,61 @@ export class SessionSettingsPanel extends Disposable {
 		}));
 
 		return item;
+	}
+
+	/**
+	 * Push 확인/알림 다이얼로그 표시
+	 */
+	private showPushDialog(container: HTMLElement, pushBtn: HTMLButtonElement, mode: 'confirm' | 'none'): void {
+		// 기존 다이얼로그 제거
+		const existing = container.querySelector('.claude-push-dialog');
+		if (existing) { existing.remove(); }
+
+		const dialog = append(container, $('.claude-push-dialog'));
+
+		if (mode === 'none') {
+			// 푸시할 커밋 없음
+			const msg = append(dialog, $('.claude-push-dialog-message'));
+			msg.textContent = localize('noPushableCommits', "No commits to push");
+
+			const okBtn = append(dialog, $('button.claude-settings-btn.secondary.small')) as HTMLButtonElement;
+			okBtn.textContent = localize('ok', "OK");
+			this.disposables.push(addDisposableListener(okBtn, EventType.CLICK, () => {
+				dialog.remove();
+			}));
+		} else {
+			// 푸시 확인
+			const msg = append(dialog, $('.claude-push-dialog-message'));
+			msg.textContent = localize('confirmPush', "Push commits to remote?");
+
+			const btnGroup = append(dialog, $('.claude-push-dialog-buttons'));
+
+			const noBtn = append(btnGroup, $('button.claude-settings-btn.secondary.small')) as HTMLButtonElement;
+			noBtn.textContent = localize('no', "No");
+			this.disposables.push(addDisposableListener(noBtn, EventType.CLICK, () => {
+				dialog.remove();
+			}));
+
+			const yesBtn = append(btnGroup, $('button.claude-settings-btn.primary.small')) as HTMLButtonElement;
+			yesBtn.textContent = localize('yes', "Yes");
+			this.disposables.push(addDisposableListener(yesBtn, EventType.CLICK, async () => {
+				try {
+					yesBtn.disabled = true;
+					noBtn.disabled = true;
+					pushBtn.disabled = true;
+					pushBtn.textContent = localize('pushing', "Pushing...");
+					await this.callbacks.onPush!();
+					dialog.remove();
+					this.close();
+				} catch (error) {
+					yesBtn.disabled = false;
+					noBtn.disabled = false;
+					pushBtn.disabled = false;
+					pushBtn.textContent = localize('push', "Push");
+					msg.textContent = localize('pushError', "Push failed. Try again?");
+					console.error('[SessionSettings] Push failed:', error);
+				}
+			}));
+		}
 	}
 }

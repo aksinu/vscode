@@ -374,6 +374,8 @@ export class ClaudeChatViewPane extends ViewPane {
 			getAvailableModels: () => this.getAvailableModels(),
 			onCommit: (message) => this.gitCommitManager.handleCommitChanges(message),
 			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit(),
+			onPush: () => this.gitCommitManager.handlePush(),
+			hasPushableCommits: () => this.gitCommitManager.hasPushableCommits(),
 			validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
 		}));
 

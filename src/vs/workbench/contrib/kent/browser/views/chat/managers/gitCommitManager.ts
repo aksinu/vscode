@@ -143,6 +143,92 @@ export class GitCommitManager {
 	}
 
 	/**
+	 * 푸시할 커밋이 있는지 확인
+	 */
+	async hasPushableCommits(): Promise<boolean> {
+		try {
+			const workspaceFolder = this.workspaceContextService.getWorkspace()?.folders?.[0];
+			if (!workspaceFolder) {
+				return false;
+			}
+
+			const result = await this.executeGitCommandViaTerminalWithOutput('git log @{u}..HEAD --oneline', workspaceFolder.uri.fsPath);
+			return result.success && !!result.output?.trim();
+		} catch {
+			// upstream이 없는 경우 등 → 로컬 커밋이 있는지만 확인
+			try {
+				const workspaceFolder = this.workspaceContextService.getWorkspace()?.folders?.[0];
+				if (!workspaceFolder) { return false; }
+				const result = await this.executeGitCommandViaTerminalWithOutput('git log --oneline -1', workspaceFolder.uri.fsPath);
+				return result.success && !!result.output?.trim();
+			} catch {
+				return false;
+			}
+		}
+	}
+
+	/**
+	 * Git push 실행
+	 */
+	async handlePush(): Promise<void> {
+		try {
+			const workspaceFolder = this.workspaceContextService.getWorkspace()?.folders?.[0];
+			if (!workspaceFolder) {
+				this.notificationService.error(localize('noWorkspace', "No workspace folder found"));
+				return;
+			}
+
+			// SCM API로 push 시도
+			const repositories = Array.from(this.scmService.repositories);
+			const gitRepo = repositories.find(repo =>
+				repo.provider.rootUri?.toString() === workspaceFolder.uri.toString()
+			);
+
+			if (gitRepo) {
+				const provider = gitRepo.provider as any;
+				if (provider.push) {
+					await provider.push();
+					this.notificationService.info(localize('pushSuccess', "Push completed successfully"));
+					return;
+				}
+			}
+
+			// 폴백: 터미널로 push
+			const result = await this.executeGitCommandViaTerminal('git push', workspaceFolder.uri.fsPath);
+			if (result.success) {
+				this.notificationService.info(localize('pushSuccess', "Push completed successfully"));
+			} else {
+				throw new Error(result.error || 'Push failed');
+			}
+		} catch (error) {
+			this.notificationService.error(
+				localize('pushFailed', "Failed to push: {0}", String(error))
+			);
+			throw error;
+		}
+	}
+
+	/**
+	 * 터미널을 통한 Git 명령 실행 (출력 캡처 - child_process 사용)
+	 */
+	private executeGitCommandViaTerminalWithOutput(command: string, workingDirectory: string): Promise<{ success: boolean; output?: string; error?: string }> {
+		return new Promise((resolve) => {
+			try {
+				const { exec } = require('child_process') as typeof import('child_process');
+				exec(command, { cwd: workingDirectory, timeout: 5000 }, (error, stdout, stderr) => {
+					if (error) {
+						resolve({ success: false, error: stderr || error.message });
+					} else {
+						resolve({ success: true, output: stdout.trim() });
+					}
+				});
+			} catch (error) {
+				resolve({ success: false, error: String(error) });
+			}
+		});
+	}
+
+	/**
 	 * 터미널을 통한 Git 명령 실행 (폴백)
 	 */
 	private async executeGitCommandViaTerminal(command: string, workingDirectory: string): Promise<{ success: boolean; output?: string; error?: string }> {
