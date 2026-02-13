@@ -230,6 +230,8 @@ export interface IClaudeAskUserRequest {
 	readonly autoAccepted?: boolean;
 	/** 자동 선택된 옵션 */
 	readonly autoAcceptedOption?: string;
+	/** input_request 이벤트인지 (stdin으로 응답 필요) */
+	readonly isInputRequest?: boolean;
 }
 
 /**

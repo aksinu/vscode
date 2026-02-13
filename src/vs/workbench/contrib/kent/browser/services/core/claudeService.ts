@@ -471,10 +471,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			if (isCurrentSession) {
 				this._cliEventHandler.handleComplete().then(() => {
-					this._state = 'idle';
-					this._uiService.fireStateChange('idle');
-					// ChatStateManager에도 상태 반영
-					this._chatStateManager.completeStreaming(event.chatId);
+					// AskUser 대기 중이면 asking 상태 유지
+					if (this._isWaitingForUser) {
+						this._state = 'idle';
+						this._uiService.fireStateChange('idle');
+						this._chatStateManager.waitForUser(event.chatId);
+					} else {
+						this._state = 'idle';
+						this._uiService.fireStateChange('idle');
+						this._chatStateManager.completeStreaming(event.chatId);
+					}
 				}).catch(error => {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
 					this._state = 'idle';

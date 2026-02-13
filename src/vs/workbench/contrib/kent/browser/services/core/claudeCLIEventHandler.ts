@@ -258,7 +258,10 @@ export class CLIEventHandler extends Disposable {
 
 			message.updateSessionMessage(waitingMessage);
 			message.fireMessageUpdate(waitingMessage);
+			// setState('idle')은 chatStateManager.completeStreaming()을 호출하여
+			// asking 상태를 idle로 전이시킴. 그 후 waitForUser 상태를 복원해야 함.
 			this.getState().setState('idle');
+			sessionInteraction.setWaitingForUser(true); // chatStateManager의 asking 상태 복원
 			sessionInteraction.saveSessions();
 			return;
 		}
@@ -355,27 +358,44 @@ export class CLIEventHandler extends Disposable {
 	 */
 	async respondToAskUser(responses: string[]): Promise<void> {
 		const sessionInteraction = this.getSessionInteraction();
+		const askRequest = sessionInteraction.getCurrentAskUserRequest();
 
-		if (!sessionInteraction.isWaitingForUser() || !sessionInteraction.getCurrentAskUserRequest()) {
+		if (!sessionInteraction.isWaitingForUser() || !askRequest) {
 			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Not waiting for user input');
 			return;
 		}
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'User responded:', responses);
-		const cliSessionId = sessionInteraction.getCliSessionId();
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'CLI session ID for resume:', cliSessionId);
 
-		// 상태 리셋
-		sessionInteraction.setWaitingForUser(false);
-		sessionInteraction.setCurrentAskUserRequest(undefined);
+		const isInputRequest = askRequest.isInputRequest === true;
+		const cliSessionId = sessionInteraction.getCliSessionId();
+		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'isInputRequest:', isInputRequest, 'CLI session ID:', cliSessionId);
 
 		// 응답 텍스트
 		const responseText = responses.join(', ');
 
-		if (cliSessionId) {
-			// --resume 옵션으로 세션 재개
+		if (isInputRequest) {
+			// input_request: 기존 CLI 프로세스의 stdin으로 응답 전송
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Sending user input via stdin:', responseText);
+
+			// 상태 리셋
+			sessionInteraction.setWaitingForUser(false);
+			sessionInteraction.setCurrentAskUserRequest(undefined);
+			this.updateCurrentMessage();
+			this.getState().setState('streaming');
+
+			try {
+				await this.getConnection().getChannel().call('sendUserInput', [responseText]);
+			} catch (error) {
+				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'sendUserInput failed:', error);
+			}
+		} else if (cliSessionId) {
+			// AskUserQuestion (tool_use): --resume 옵션으로 세션 재개
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Resuming session with response:', responseText);
 
+			// 상태 리셋
+			sessionInteraction.setWaitingForUser(false);
+			sessionInteraction.setCurrentAskUserRequest(undefined);
 			this.updateCurrentMessage();
 			this.getState().setState('streaming');
 
@@ -389,7 +409,10 @@ export class CLIEventHandler extends Disposable {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Resume failed:', error);
 			}
 		} else {
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'No session ID, sending as new message');
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'No session ID and not input_request - cannot respond');
+			// 상태 리셋
+			sessionInteraction.setWaitingForUser(false);
+			sessionInteraction.setCurrentAskUserRequest(undefined);
 			this.updateCurrentMessage();
 		}
 	}
@@ -577,7 +600,8 @@ export class CLIEventHandler extends Disposable {
 				id: generateUuid(),
 				questions,
 				autoAccepted: true,
-				autoAcceptedOption: firstOption
+				autoAcceptedOption: firstOption,
+				isInputRequest: true
 			} as IClaudeAskUserRequest & { autoAccepted?: boolean; autoAcceptedOption?: string });
 			this.updateCurrentMessage();
 
@@ -594,7 +618,8 @@ export class CLIEventHandler extends Disposable {
 
 		sessionInteraction.setCurrentAskUserRequest({
 			id: generateUuid(),
-			questions
+			questions,
+			isInputRequest: true
 		});
 		sessionInteraction.setWaitingForUser(true);
 
