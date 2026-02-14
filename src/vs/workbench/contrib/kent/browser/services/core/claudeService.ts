@@ -471,10 +471,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			if (isCurrentSession) {
 				this._cliEventHandler.handleComplete().then(() => {
-					// AskUser 대기 중이면 asking 상태 유지
+					// AskUser 대기 중이면 asking 상태 유지 (idle로 바꾸면 AskUser UI가 사라짐)
 					if (this._isWaitingForUser) {
-						this._state = 'idle';
-						this._uiService.fireStateChange('idle');
+						// state를 idle로 바꾸지 않음 — AskUser UI가 활성화된 상태 유지
 						this._chatStateManager.waitForUser(event.chatId);
 					} else {
 						this._state = 'idle';

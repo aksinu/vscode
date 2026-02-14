@@ -87,6 +87,9 @@ export class CLIEventHandler extends Disposable {
 	private _dataOperationQueue: (() => Promise<void>)[] = [];
 	private _isProcessingDataQueue = false;
 
+	// handleData 호출 추적 (handleComplete가 모든 handleData 완료를 기다리기 위함)
+	private _pendingHandleDataPromises: Set<Promise<void>> = new Set();
+
 	private readonly callbacks?: ICLIEventHandlerCallbacks;
 	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
 	private readonly _context?: ICLIEventHandlerContext;
@@ -158,6 +161,17 @@ export class CLIEventHandler extends Disposable {
 	async handleData(event: IClaudeCLIStreamEvent): Promise<void> {
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'handleData:', event.type, event.subtype || '');
 
+		// handleComplete가 이 호출의 완료를 기다릴 수 있도록 Promise 추적
+		const dataPromise = this._handleDataInternal(event);
+		this._pendingHandleDataPromises.add(dataPromise);
+		dataPromise.finally(() => {
+			this._pendingHandleDataPromises.delete(dataPromise);
+		});
+		return dataPromise;
+	}
+
+	private async _handleDataInternal(event: IClaudeCLIStreamEvent): Promise<void> {
+
 		// 데이터를 받으면 연결된 것으로 판단
 		this.getConnection().confirmConnected();
 
@@ -226,6 +240,15 @@ export class CLIEventHandler extends Disposable {
 	 */
 	async handleComplete(): Promise<void> {
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete started, waiting for pending operations...');
+
+		// 진행 중인 handleData 호출이 완료될 때까지 대기 (race condition 방지)
+		// handleData가 아직 enqueueDataOperation을 호출하기 전일 수 있으므로,
+		// handleData Promise 자체를 먼저 기다려야 함
+		if (this._pendingHandleDataPromises.size > 0) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY,
+				`[FileChanges] Waiting for ${this._pendingHandleDataPromises.size} pending handleData calls...`);
+			await Promise.all([...this._pendingHandleDataPromises]);
+		}
 
 		// 진행 중인 데이터 처리 작업이 완료될 때까지 대기 (race condition 방지)
 		while (this._isProcessingDataQueue || this._dataOperationQueue.length > 0) {
