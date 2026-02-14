@@ -317,11 +317,12 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 
 				// 정상 종료 조건:
 				// 1. code === 0
-				// 2. code === null이지만 이미 result를 받은 경우 (시그널에 의한 정상 종료)
-				const isSuccess = code === 0 || (code === null && this._receivedResult);
+				// 2. result 이벤트를 이미 받은 경우 (exit code와 무관)
+				//    → Claude CLI가 AskUser 등으로 code 1 종료되더라도 result 수신 시 정상 완료
+				const isSuccess = code === 0 || this._receivedResult;
 
 				if (isSuccess) {
-					debugLog(' Process completed successfully (receivedResult:', this._receivedResult, ')');
+					debugLog(` Process completed successfully (code: ${code}, receivedResult: ${this._receivedResult})`);
 					this._onDidComplete.fire();
 					resolve();
 				} else {

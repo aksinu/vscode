@@ -518,6 +518,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const currentSessionId = this._sessionService.getCurrentSession()?.id;
 			console.log('[ClaudeService] CLI error for session:', event.chatId, event.error);
 
+			// AskUser 대기 중이면 에러를 무시하고 대기 상태 유지
+			// (CLI가 AskUser 후 exit code 1로 종료되는 케이스 방어)
+			if (event.chatId === currentSessionId) {
+				const isWaiting = this._isWaitingForUser ||
+					this._chatStateManager.isWaitingForUser(event.chatId) ||
+					!!this._currentAskUserRequest;
+				if (isWaiting) {
+					console.log('[ClaudeService] CLI error ignored - waiting for user input (AskUser active)');
+					return;
+				}
+			}
+
 			this._multiSessionManager.handleSessionError(event.chatId);
 
 			if (event.chatId === currentSessionId) {
@@ -626,7 +638,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		}
 
 		const lastMessage = session.messages[session.messages.length - 1];
-		if (lastMessage.isWaitingForUser && lastMessage.askUserRequest) {
+		if (lastMessage.role === 'assistant' && lastMessage.isWaitingForUser && lastMessage.askUserRequest) {
 			this.logService.info(ClaudeService.LOG_CATEGORY, 'Restoring AskUser state from saved session');
 			// 런타임 상태 복구
 			this._isWaitingForUser = true;
@@ -637,7 +649,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const sessionState = this._sessionService.getCurrentSessionState();
 			if (sessionState) {
 				sessionState.isWaitingForUser = true;
-				sessionState.currentAskUserRequest = lastMessage.askUserRequest;
 				// cliSessionId도 복구 (resume에 필요)
 				if (lastMessage.cliSessionId) {
 					sessionState.cliSessionId = lastMessage.cliSessionId;

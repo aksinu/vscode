@@ -279,10 +279,13 @@ export class ClaudeCLIInstance extends Disposable {
 				this._process = undefined;
 				this.cleanupPromptFile();
 
-				const isSuccess = code === 0 || (code === null && this._receivedResult);
+				// result 이벤트를 이미 받았으면 exit code와 무관하게 정상 종료로 처리
+				// Claude CLI가 AskUser 등의 이유로 code 1로 종료되더라도
+				// result를 받았으면 정상 완료임
+				const isSuccess = code === 0 || this._receivedResult || (code === null && this._receivedResult);
 
 				if (isSuccess) {
-					debugLog(`[Instance:${this.chatId}] Process completed successfully`);
+					debugLog(`[Instance:${this.chatId}] Process completed successfully (code: ${code}, receivedResult: ${this._receivedResult})`);
 					this._onDidComplete.fire();
 					resolve();
 				} else {

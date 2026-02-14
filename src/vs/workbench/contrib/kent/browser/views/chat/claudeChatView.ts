@@ -25,7 +25,7 @@ import { IViewDescriptorService } from '../../../../../common/views.js';
 import { IClaudeService } from '../../../common/services/core/claude.js';
 import { IClaudeCodebaseService } from '../../../common/types/claudeCodebaseService.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
-import { IAssistantMessage, IClaudeAttachment, IClaudeQueuedMessage, ChatSessionState, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
+import { IAssistantMessage, IClaudeAttachment, IClaudeAskUserRequest, IClaudeQueuedMessage, ChatSessionState, getAvailableClaudeModels, getModelDisplayName } from '../../../common/types/claudeTypes.js';
 import { CONTEXT_CLAUDE_INPUT_FOCUSED, CONTEXT_CLAUDE_PANEL_FOCUSED, CONTEXT_CLAUDE_REQUEST_IN_PROGRESS } from '../../../common/config/claudeContextKeys.js';
 import { IEditorService } from '../../../../../services/editor/common/editorService.js';
 import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
@@ -165,7 +165,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 메시지 렌더러 생성
 		this.messageRenderer = this._register(this.instantiationService.createInstance(ClaudeMessageRenderer, {
 			onApplyCode: (code, language, filePath) => this.codeApplyManager.apply(code, language, filePath),
-			onRespondToAskUser: (responses, askRequest) => this.claudeService.respondToAskUser(responses, askRequest),
+			onRespondToAskUser: (responses: string[], askRequest?: IClaudeAskUserRequest) => this.claudeService.respondToAskUser(responses, askRequest),
 			onShowFileDiff: (fileChange) => this.claudeService.showFileDiff?.(fileChange),
 			onRevertFile: async (fileChange) => {
 				if (this.claudeService.revertFile) {

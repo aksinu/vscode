@@ -181,11 +181,10 @@ export class ChatManager extends Disposable {
 			}
 
 			this._logService.debug(ChatManager.LOG_CATEGORY, 'Using multi-session sendPrompt for sessionId:', currentSessionId);
-			const timeoutMs = 15 * 60 * 1000; // 15분
-			await Promise.race([
-				this._multiConnection.sendPrompt(currentSessionId, prompt, cliOptions),
-				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('sendPrompt timeout after 15 minutes')), timeoutMs))
-			]);
+			// 타임아웃 없이 CLI 프로세스 완료까지 대기
+			// Claude CLI는 복잡한 작업에 수십 분 이상 걸릴 수 있으므로
+			// 프로세스 자체 종료 또는 사용자 취소에 의존
+			await this._multiConnection.sendPrompt(currentSessionId, prompt, cliOptions);
 			this._logService.debug(ChatManager.LOG_CATEGORY, 'sendPrompt completed, accumulated content:', this._accumulatedContent.substring(0, 100));
 
 			// 완료 후 최종 메시지 반환

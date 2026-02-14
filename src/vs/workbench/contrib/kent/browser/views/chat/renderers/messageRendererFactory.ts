@@ -8,6 +8,7 @@ import {
 	IClaudeMessage,
 	IUserMessage,
 	IAssistantMessage,
+	IClaudeAskUserRequest,
 	ChatSessionState
 } from '../../../../common/types/claudeTypes.js';
 import { UserMessageRenderer } from './userMessageRenderer.js';
@@ -16,7 +17,7 @@ import { IClaudeFileChange } from '../../../../common/types/claudeTypes.js';
 
 export interface IMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string, filePath?: string) => void;
-	readonly onRespondToAskUser?: (responses: string[]) => void;
+	readonly onRespondToAskUser?: (responses: string[], askRequest?: IClaudeAskUserRequest) => void;
 	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
 	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
 	readonly onRevertAllFiles?: () => Promise<number>;
