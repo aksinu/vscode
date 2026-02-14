@@ -10,7 +10,7 @@
 |------|-------|
 | **Phase** | Phase 9 완료 — CLI 기능 확장 + 에디터 통합 + Agent 모드 |
 | **Build** | ⚠️ 컴파일 필요 |
-| **Updated** | 2026-02-13 |
+| **Updated** | 2026-02-14 |
 
 ---
 
@@ -28,6 +28,7 @@ src/vs/workbench/contrib/kent/
 
 ## Active Issues
 
+- [x] AskUser 선택지 클릭 안됨 + Submit 버튼 사라짐 — CLI 완료 시 asking 상태가 idle로 덮어써지는 타이밍 문제 (4파일 수정)
 - [ ] CLI exit code 1 에러 — Windows에서 `shell: true` + 긴 인자 문제 (조사 중)
 
 ---

@@ -312,6 +312,8 @@ export interface IAssistantMessage extends IClaudeMessageBase {
 	/** 사용자에 의한 취소 */
 	readonly isCanceled?: boolean;
 	readonly cancelTime?: number;
+	/** CLI 세션 ID (AskUser resume에 필요) */
+	readonly cliSessionId?: string;
 }
 
 /**

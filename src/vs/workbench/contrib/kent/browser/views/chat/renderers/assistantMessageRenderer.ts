@@ -26,7 +26,7 @@ import {
  */
 export interface IAssistantMessageRendererOptions {
 	readonly onApplyCode?: (code: string, language: string, filePath?: string) => void;
-	readonly onRespondToAskUser?: (responses: string[]) => void;
+	readonly onRespondToAskUser?: (responses: string[], askRequest?: IClaudeAskUserRequest) => void;
 	readonly onShowFileDiff?: (fileChange: IClaudeFileChange) => void;
 	readonly onRevertFile?: (fileChange: IClaudeFileChange) => Promise<boolean>;
 	readonly onAcceptFile?: (fileChange: IClaudeFileChange) => void;
@@ -80,14 +80,9 @@ export class AssistantMessageRenderer {
 		this.renderToolInfo(message, messageElement, currentState, disposables);
 
 		// Ask 질문 (사용자 선택 대기 중일 때)
-		console.log('[DEBUG] AssistantMessageRenderer - AskUser check:', {
-			isWaitingForUser: message.isWaitingForUser,
-			hasAskUserRequest: !!message.askUserRequest,
-			askUserRequestId: message.askUserRequest?.id,
-			messageId: message.id,
-			isStreaming: message.isStreaming
-		});
-		if (message.isWaitingForUser && message.askUserRequest) {
+		// isWaitingForUser가 false여도 askUserRequest가 있으면 렌더링 (타이밍 문제 방어)
+		// 자동 승인된 경우나 이미 응답된 경우는 renderAskUser 내부에서 처리
+		if (message.askUserRequest) {
 			this.renderAskUser(message.askUserRequest, messageElement, disposables);
 		}
 
@@ -431,7 +426,7 @@ export class AssistantMessageRenderer {
 			}
 
 			if (this._options.onRespondToAskUser) {
-				this._options.onRespondToAskUser(responses);
+				this._options.onRespondToAskUser(responses, askRequest);
 			}
 		};
 		submitButton.addEventListener('click', submitHandler);

@@ -165,7 +165,7 @@ export class ClaudeChatViewPane extends ViewPane {
 		// 메시지 렌더러 생성
 		this.messageRenderer = this._register(this.instantiationService.createInstance(ClaudeMessageRenderer, {
 			onApplyCode: (code, language, filePath) => this.codeApplyManager.apply(code, language, filePath),
-			onRespondToAskUser: (responses) => this.claudeService.respondToAskUser(responses),
+			onRespondToAskUser: (responses, askRequest) => this.claudeService.respondToAskUser(responses, askRequest),
 			onShowFileDiff: (fileChange) => this.claudeService.showFileDiff?.(fileChange),
 			onRevertFile: async (fileChange) => {
 				if (this.claudeService.revertFile) {
@@ -225,6 +225,11 @@ export class ClaudeChatViewPane extends ViewPane {
 
 			// idle 상태로 변경 시 추가 확인
 			if (state === 'idle') {
+				// AskUser 대기 중이면 idle 전환을 무시 (UI 리셋 방지)
+				if (this.claudeService.isWaitingForUser?.()) {
+					console.log('[ClaudeChatView] State is idle but isWaitingForUser=true, skipping UI reset');
+					return;
+				}
 				console.log('[ClaudeChatView] State is idle, ensuring UI is reset');
 				// Cancel 버튼이 확실히 숨겨지도록 강제 업데이트
 				if (this.stopButton) {

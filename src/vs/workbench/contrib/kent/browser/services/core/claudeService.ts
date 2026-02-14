@@ -210,6 +210,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 세션 초기화
 		this._sessionService.initialize();
 
+		// AskUser 대기 상태 복구 (세션 복원 시)
+		this.restoreAskUserState();
+
 		// 큐 복원
 		this.loadQueue();
 
@@ -471,10 +474,23 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 			if (isCurrentSession) {
 				this._cliEventHandler.handleComplete().then(() => {
-					// AskUser 대기 중이면 asking 상태 유지 (idle로 바꾸면 AskUser UI가 사라짐)
-					if (this._isWaitingForUser) {
+					// handleComplete 내부에서 AskUser 대기 중이면 조기 반환하며 상태를 유지함
+					// 여기서는 handleComplete 완료 후 최종 상태만 확인
+					// Legacy 필드 + ChatStateManager 둘 다 체크 (세션 복원 등 동기화 이슈 방지)
+					const isWaitingLegacy = this._isWaitingForUser;
+					const isWaitingChatState = this._chatStateManager.isWaitingForUser(event.chatId);
+					const askRequest = this._currentAskUserRequest;
+					const isWaiting = isWaitingLegacy || isWaitingChatState || !!askRequest;
+
+					this.logService.info(ClaudeService.LOG_CATEGORY,
+						`[AskUser] onDidCompleteAny check: legacy=${isWaitingLegacy}, chatState=${isWaitingChatState}, askRequest=${!!askRequest}`);
+
+					if (isWaiting) {
 						// state를 idle로 바꾸지 않음 — AskUser UI가 활성화된 상태 유지
 						this._chatStateManager.waitForUser(event.chatId);
+						this._isWaitingForUser = true; // Legacy 동기화
+						this.logService.info(ClaudeService.LOG_CATEGORY,
+							'[AskUser] Preserving asking state after handleComplete');
 					} else {
 						this._state = 'idle';
 						this._uiService.fireStateChange('idle');
@@ -484,7 +500,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI complete:', error);
 					this._state = 'idle';
 					this._uiService.fireStateChange('idle');
-					// 🔧 BUG FIX: 에러 발생 시에도 completeStreaming 호출하여 큐 처리 보장
+					// 에러 발생 시에도 completeStreaming 호출하여 큐 처리 보장
 					this._chatStateManager.completeStreaming(event.chatId);
 					this._chatStateManager.setError(event.chatId, String(error));
 					this._multiSessionManager.handleSessionError(event.chatId);
@@ -596,8 +612,39 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	// ========== AskUser Response ==========
 
-	async respondToAskUser(responses: string[]): Promise<void> {
-		return this._cliEventHandler.respondToAskUser(responses);
+	async respondToAskUser(responses: string[], askRequestFromUI?: import('../../../common/types/claudeTypes.js').IClaudeAskUserRequest): Promise<void> {
+		return this._cliEventHandler.respondToAskUser(responses, askRequestFromUI);
+	}
+
+	/**
+	 * 세션 복원 시 마지막 메시지가 AskUser 대기 중이면 런타임 상태 복구
+	 */
+	private restoreAskUserState(): void {
+		const session = this._sessionService.getCurrentSession();
+		if (!session || session.messages.length === 0) {
+			return;
+		}
+
+		const lastMessage = session.messages[session.messages.length - 1];
+		if (lastMessage.isWaitingForUser && lastMessage.askUserRequest) {
+			this.logService.info(ClaudeService.LOG_CATEGORY, 'Restoring AskUser state from saved session');
+			// 런타임 상태 복구
+			this._isWaitingForUser = true;
+			this._currentAskUserRequest = lastMessage.askUserRequest;
+			// ChatStateManager에도 반영
+			this._chatStateManager.waitForUser(session.id);
+			// SessionState에도 반영
+			const sessionState = this._sessionService.getCurrentSessionState();
+			if (sessionState) {
+				sessionState.isWaitingForUser = true;
+				sessionState.currentAskUserRequest = lastMessage.askUserRequest;
+				// cliSessionId도 복구 (resume에 필요)
+				if (lastMessage.cliSessionId) {
+					sessionState.cliSessionId = lastMessage.cliSessionId;
+					this._cliSessionId = lastMessage.cliSessionId;
+				}
+			}
+		}
 	}
 
 	// ========== Rate Limit Handling ==========

@@ -38,7 +38,10 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 			if (sessionId && this.claudeService._chatStateManager) {
 				switch (state) {
 					case 'idle':
-						this.claudeService._chatStateManager.completeStreaming(sessionId);
+						// AskUser 대기 중이면 idle로 전환하지 않음 (asking 상태 보존)
+						if (!this.claudeService._chatStateManager.isWaitingForUser(sessionId)) {
+							this.claudeService._chatStateManager.completeStreaming(sessionId);
+						}
 						break;
 					case 'streaming':
 						// startStreaming은 messageId가 필요해서 여기서는 호출하지 않음

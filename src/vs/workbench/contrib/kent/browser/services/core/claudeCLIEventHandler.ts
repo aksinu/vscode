@@ -280,7 +280,8 @@ export class CLIEventHandler extends Disposable {
 				isStreaming: false,
 				toolActions: [...toolAction.getToolActions()],
 				askUserRequest: sessionInteraction.getCurrentAskUserRequest(),
-				isWaitingForUser: true
+				isWaitingForUser: true,
+				cliSessionId: sessionInteraction.getCliSessionId()
 			};
 
 			message.updateSessionMessage(waitingMessage);
@@ -382,13 +383,27 @@ export class CLIEventHandler extends Disposable {
 	/**
 	 * AskUser 질문에 응답
 	 */
-	async respondToAskUser(responses: string[]): Promise<void> {
+	async respondToAskUser(responses: string[], askRequestFromUI?: IClaudeAskUserRequest): Promise<void> {
 		const sessionInteraction = this.getSessionInteraction();
-		const askRequest = sessionInteraction.getCurrentAskUserRequest();
+		let askRequest = sessionInteraction.getCurrentAskUserRequest();
 
-		if (!sessionInteraction.isWaitingForUser() || !askRequest) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Not waiting for user input');
+		// 세션 복원 후에는 런타임 상태가 초기화되어 있을 수 있음
+		// UI에서 전달받은 askRequest로 복구 시도
+		if (!askRequest && askRequestFromUI) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Restoring askRequest from UI (session was restored)');
+			askRequest = askRequestFromUI;
+			sessionInteraction.setCurrentAskUserRequest(askRequest);
+		}
+
+		if (!askRequest) {
+			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'No askRequest available - cannot respond');
 			return;
+		}
+
+		// isWaitingForUser가 false인 경우 (세션 복원 등) 자동 복구
+		if (!sessionInteraction.isWaitingForUser()) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Auto-restoring waitingForUser state (was false, askRequest exists)');
+			sessionInteraction.setWaitingForUser(true);
 		}
 
 		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'User responded:', responses);
