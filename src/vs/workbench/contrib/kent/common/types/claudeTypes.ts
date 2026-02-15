@@ -232,6 +232,8 @@ export interface IClaudeAskUserRequest {
 	readonly autoAcceptedOption?: string;
 	/** input_request 이벤트인지 (stdin으로 응답 필요) */
 	readonly isInputRequest?: boolean;
+	/** IDE 재시작으로 만료된 AskUser (응답 불가) */
+	readonly expired?: boolean;
 }
 
 /**

@@ -289,6 +289,14 @@ export class AssistantMessageRenderer {
 			return;
 		}
 
+		// 만료된 AskUser (IDE 재시작으로 CLI 세션 상실)
+		if (askRequest.expired) {
+			const expiredElement = append(askContainer, $('.claude-ask-expired'));
+			append(expiredElement, $('.codicon.codicon-warning'));
+			expiredElement.appendChild(document.createTextNode(' ' + localize('askExpired', "This question expired (session ended). Please send a new message to continue.")));
+			return;
+		}
+
 		const totalQuestions = askRequest.questions.length;
 		// 각 질문별 선택 상태 추적: Map<questionIndex, selectedLabels[]>
 		const selections = new Map<number, string[]>();

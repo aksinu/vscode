@@ -287,6 +287,15 @@
 	font-size: 12px;
 }
 
+.claude-ask-expired {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--vscode-editorWarning-foreground);
+	font-size: 12px;
+	opacity: 0.8;
+}
+
 .claude-ask-question {
 	margin-bottom: 16px;
 }

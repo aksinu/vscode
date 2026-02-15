@@ -210,8 +210,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 세션 초기화
 		this._sessionService.initialize();
 
-		// AskUser 대기 상태 복구 (세션 복원 시)
-		this.restoreAskUserState();
+		// AskUser 만료 처리 (재시작 시 CLI 세션이 없으므로 응답 불가)
+		this.expireAskUserState();
 
 		// 큐 복원
 		this.loadQueue();
@@ -629,9 +629,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	/**
-	 * 세션 복원 시 마지막 메시지가 AskUser 대기 중이면 런타임 상태 복구
+	 * IDE 재시작 시 AskUser 대기 상태 만료 처리
+	 * CLI 세션이 없으므로 응답 불가 — 만료 표시로 변경
 	 */
-	private restoreAskUserState(): void {
+	private expireAskUserState(): void {
 		const session = this._sessionService.getCurrentSession();
 		if (!session || session.messages.length === 0) {
 			return;
@@ -639,22 +640,18 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		const lastMessage = session.messages[session.messages.length - 1];
 		if (lastMessage.role === 'assistant' && lastMessage.isWaitingForUser && lastMessage.askUserRequest) {
-			this.logService.info(ClaudeService.LOG_CATEGORY, 'Restoring AskUser state from saved session');
-			// 런타임 상태 복구
-			this._isWaitingForUser = true;
-			this._currentAskUserRequest = lastMessage.askUserRequest;
-			// ChatStateManager에도 반영
-			this._chatStateManager.waitForUser(session.id);
-			// SessionState에도 반영
-			const sessionState = this._sessionService.getCurrentSessionState();
-			if (sessionState) {
-				sessionState.isWaitingForUser = true;
-				// cliSessionId도 복구 (resume에 필요)
-				if (lastMessage.cliSessionId) {
-					sessionState.cliSessionId = lastMessage.cliSessionId;
-					this._cliSessionId = lastMessage.cliSessionId;
-				}
-			}
+			this.logService.info(ClaudeService.LOG_CATEGORY, 'Expiring AskUser state (CLI session lost after restart)');
+			// AskUser를 만료 상태로 변경
+			const expiredMessage: import('../../../common/types/claudeTypes.js').IAssistantMessage = {
+				...lastMessage,
+				isWaitingForUser: false,
+				askUserRequest: {
+					...lastMessage.askUserRequest,
+					expired: true,
+				},
+			};
+			// 세션 데이터만 업데이트 (ChatView가 로드 시 이미 만료된 데이터를 읽음)
+			this._sessionService.updateMessage(expiredMessage);
 		}
 	}
 
