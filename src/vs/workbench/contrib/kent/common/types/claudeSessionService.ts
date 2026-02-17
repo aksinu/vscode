@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { IClaudeSession, ClaudeServiceState, IClaudeMessage, IClaudeToolAction, IClaudeQueuedMessage } from './claudeTypes.js';
+import { IClaudeSession, ClaudeServiceState, IClaudeMessage, IClaudeToolAction, IClaudeQueuedMessage, IClaudeAskUserRequest } from './claudeTypes.js';
 
 export interface ISessionState {
 	state: ClaudeServiceState;
@@ -17,6 +17,7 @@ export interface ISessionState {
 	waitingMessageIds: Set<string>;
 	pendingRequests: IClaudeQueuedMessage[];
 	cliSessionId: string | undefined;
+	currentAskUserRequest?: IClaudeAskUserRequest;
 }
 
 export const IClaudeSessionService = createDecorator<IClaudeSessionService>('claudeSessionService');

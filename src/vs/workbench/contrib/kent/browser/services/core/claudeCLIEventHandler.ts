@@ -226,6 +226,17 @@ export class CLIEventHandler extends Disposable {
 			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage, 'subagents:', subagents);
 		}
 
+		// assistant 이벤트의 tool_use 블록을 큐를 통해 처리 (race condition 방지)
+		const toolUseBlocks = this.extractToolUseBlocks(event);
+		for (const block of toolUseBlocks) {
+			await this.enqueueDataOperation(() => this.handleToolUse({
+				type: 'tool_use',
+				tool_use_id: block.tool_use_id,
+				tool_name: block.tool_name,
+				tool_input: block.tool_input
+			}));
+		}
+
 		// 텍스트 컨텐츠 추출
 		const text = this.extractText(event);
 
@@ -293,7 +304,7 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
-		// 최종 메시지
+		// 최종 메시지 (currentToolAction을 명시적으로 undefined 설정 — merge 시 기존 값 제거)
 		const finalMessage: IClaudeMessage = {
 			id: message.getCurrentMessageId()!,
 			role: 'assistant',
@@ -301,6 +312,7 @@ export class CLIEventHandler extends Disposable {
 			timestamp: Date.now(),
 			isStreaming: false,
 			toolActions: [...toolAction.getToolActions()],
+			currentToolAction: undefined,
 			usage: sessionInteraction.getUsage()
 		};
 
@@ -406,11 +418,13 @@ export class CLIEventHandler extends Disposable {
 			sessionInteraction.setWaitingForUser(true);
 		}
 
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'User responded:', responses);
+		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] respondToAskUser called with responses:', responses);
 
 		const isInputRequest = askRequest.isInputRequest === true;
 		const cliSessionId = sessionInteraction.getCliSessionId();
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'isInputRequest:', isInputRequest, 'CLI session ID:', cliSessionId);
+		const currentMessageId = this.getMessage().getCurrentMessageId();
+		this.logService.info(CLIEventHandler.LOG_CATEGORY,
+			`[AskUser] isInputRequest: ${isInputRequest}, cliSessionId: ${cliSessionId}, currentMessageId: ${currentMessageId}`);
 
 		// 응답 텍스트
 		const responseText = responses.join(', ');
@@ -429,6 +443,9 @@ export class CLIEventHandler extends Disposable {
 				await this.getConnection().getChannel().call('sendUserInput', [responseText]);
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'sendUserInput failed:', error);
+				// 에러 시 상태 복구
+				this.getState().setState('idle');
+				this.handleError(`User input failed: ${error}`);
 			}
 		} else if (cliSessionId) {
 			// AskUserQuestion (tool_use): --resume 옵션으로 세션 재개
@@ -448,13 +465,27 @@ export class CLIEventHandler extends Disposable {
 				await this.getConnection().getChannel().call('sendPrompt', [responseText, cliOptions]);
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Resume failed:', error);
+				// 에러 시 상태 복구 — idle로 전환하여 사용자가 다시 시도할 수 있도록
+				this.getState().setState('idle');
+				this.handleError(`AskUser resume failed: ${error}`);
 			}
 		} else {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'No session ID and not input_request - cannot respond');
-			// 상태 리셋
+			// cliSessionId 없음 — 새 프롬프트로 응답 전송 (세션 복구 실패 fallback)
+			this.logService.warn(CLIEventHandler.LOG_CATEGORY, 'No session ID - sending as new prompt (fallback)');
+
 			sessionInteraction.setWaitingForUser(false);
 			sessionInteraction.setCurrentAskUserRequest(undefined);
 			this.updateCurrentMessage();
+			this.getState().setState('streaming');
+
+			try {
+				await this.getConnection().getChannel().call('sendPrompt', [responseText, {}]);
+			} catch (error) {
+				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Fallback sendPrompt failed:', error);
+				// 에러 시 상태 복구
+				this.getState().setState('idle');
+				this.handleError(`Send failed: ${error}`);
+			}
 		}
 	}
 
@@ -469,7 +500,11 @@ export class CLIEventHandler extends Disposable {
 		}
 
 		if (this.getMessage().getCurrentMessageId() && this.getSessionInteraction().hasCurrentSession()) {
-			this.getMessage().setAccumulatedContent('');
+			// AskUser resume 시 기존 content를 보존 (빈 문자열로 리셋하지 않음)
+			const existingContent = this.getMessage().getAccumulatedContent();
+			if (!existingContent) {
+				this.getMessage().setAccumulatedContent('');
+			}
 			this.updateCurrentMessage();
 		}
 	}
@@ -704,6 +739,30 @@ export class CLIEventHandler extends Disposable {
 		}
 	}
 
+	/**
+	 * assistant 이벤트의 content 블록에서 tool_use 블록 추출
+	 * (extractText와 분리하여 큐를 통해 순서 보장)
+	 */
+	private extractToolUseBlocks(event: IClaudeCLIStreamEvent): Array<{ tool_use_id: string; tool_name: string; tool_input: Record<string, unknown> | undefined }> {
+		const blocks: Array<{ tool_use_id: string; tool_name: string; tool_input: Record<string, unknown> | undefined }> = [];
+
+		if (event.type === 'assistant' && event.message) {
+			if (typeof event.message === 'object' && event.message.content) {
+				for (const block of event.message.content) {
+					if (block.type === 'tool_use' && block.name) {
+						blocks.push({
+							tool_use_id: generateUuid(),
+							tool_name: block.name,
+							tool_input: block.input
+						});
+					}
+				}
+			}
+		}
+
+		return blocks;
+	}
+
 	private extractText(event: IClaudeCLIStreamEvent): string {
 		let text = '';
 
@@ -712,14 +771,8 @@ export class CLIEventHandler extends Disposable {
 				for (const block of event.message.content) {
 					if (block.type === 'text' && block.text) {
 						text += block.text;
-					} else if (block.type === 'tool_use' && block.name) {
-						this.handleToolUse({
-							type: 'tool_use',
-							tool_use_id: generateUuid(),
-							tool_name: block.name,
-							tool_input: block.input
-						});
 					}
+					// tool_use 블록은 extractToolUseBlocks()에서 별도 처리
 				}
 			} else if (typeof event.message === 'string') {
 				text = event.message;

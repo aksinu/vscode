@@ -374,10 +374,14 @@ export class ClaudeSessionManager extends Disposable {
 			const existing = targetSession.messages[msgIndex];
 			// merge: 기존 메시지 프로퍼티를 유지하면서 새 값으로 덮어씌움
 			// workStartTime, usage 등 초기에만 설정되는 필드가 사라지는 것을 방지
+			const preserveIfMissing = new Set(['workStartTime', 'usage', 'workEndTime']);
 			const merged = { ...existing };
 			for (const key of Object.keys(message) as Array<keyof IClaudeMessage>) {
 				if (message[key] !== undefined) {
 					(merged as any)[key] = message[key];
+				} else if (!preserveIfMissing.has(key)) {
+					// 명시적으로 undefined가 설정된 상태성 필드는 제거 (currentToolAction 등)
+					(merged as any)[key] = undefined;
 				}
 			}
 			(targetSession.messages as IClaudeMessage[])[msgIndex] = merged;

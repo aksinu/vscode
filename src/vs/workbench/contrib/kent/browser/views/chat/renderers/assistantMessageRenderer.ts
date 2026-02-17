@@ -92,15 +92,7 @@ export class AssistantMessageRenderer {
 		}
 
 		// 파일 변경사항 (완료 후)
-		console.log('[DEBUG] AssistantMessageRenderer - fileChanges check:', {
-			isStreaming: message.isStreaming,
-			hasFileChanges: !!message.fileChanges,
-			changesLength: message.fileChanges?.changes?.length || 0,
-			fileChanges: message.fileChanges
-		});
-
 		if (!message.isStreaming && message.fileChanges && message.fileChanges.changes.length > 0) {
-			console.log('[DEBUG] AssistantMessageRenderer - Rendering fileChanges!', message.fileChanges);
 			this.renderFileChanges(message.fileChanges, messageElement, disposables, readOnly);
 		}
 
@@ -135,7 +127,8 @@ export class AssistantMessageRenderer {
 		roleElement.textContent = 'Claude';
 
 		// 상태 표시 (responding, asking 등)
-		if (message.isStreaming || currentState !== 'idle') {
+		// isStreaming이 false면 완료된 메시지이므로 상태 표시 불필요
+		if (message.isStreaming && currentState !== 'idle') {
 			const stateElement = append(header, $('.claude-assistant-state'));
 			stateElement.textContent = this.getStateDisplayText(currentState, message);
 		}
@@ -166,16 +159,25 @@ export class AssistantMessageRenderer {
 		} else if (message.content) {
 			// 정상 Markdown 컨텐츠
 			this.renderMarkdownContent(message.content, contentElement, disposables);
-		} else if (message.isStreaming || currentState === 'responding') {
-			// 응답 대기 중
+		} else if (message.isStreaming && (currentState === 'responding' || currentState === 'sending')) {
+			// 응답 대기 중 (isStreaming이 true인 경우에만 스피너 표시)
 			const waitingElement = append(contentElement, $('.claude-waiting'));
 			append(waitingElement, $('.codicon.codicon-loading.codicon-modifier-spin'));
 			waitingElement.appendChild(document.createTextNode(' ' + localize('waitingForResponse', "Thinking...")));
-		} else if (currentState === 'sending') {
+		} else if (message.isStreaming && currentState === 'sending') {
 			// 전송 중
 			const sendingElement = append(contentElement, $('.claude-sending'));
 			append(sendingElement, $('.codicon.codicon-loading.codicon-modifier-spin'));
 			sendingElement.appendChild(document.createTextNode(' ' + localize('sendingRequest', "Sending request...")));
+		} else if (message.toolActions && message.toolActions.length > 0) {
+			// 텍스트 없이 도구만 사용한 경우 — 작업 완료 메시지 표시
+			const doneElement = append(contentElement, $('.claude-tool-only-message'));
+			const toolCount = message.toolActions.length;
+			doneElement.textContent = localize('toolOnlyCompleted', "Used {0} tool(s) to complete the task.", toolCount);
+		} else if (message.fileChanges && message.fileChanges.changes.length > 0) {
+			// 텍스트와 도구 액션 모두 없지만 파일 변경사항이 있는 경우
+			const doneElement = append(contentElement, $('.claude-tool-only-message'));
+			doneElement.textContent = localize('fileChangesCompleted', "Completed file changes.");
 		}
 	}
 
@@ -188,8 +190,8 @@ export class AssistantMessageRenderer {
 		currentState: ChatSessionState,
 		disposables: DisposableStore
 	): void {
-		// 현재 실행 중인 툴 (status가 'running'인 경우에만 스피너 표시)
-		if (message.currentToolAction && message.currentToolAction.status === 'running' && (message.isStreaming || currentState === 'responding')) {
+		// 현재 실행 중인 툴 (status가 'running'이고 스트리밍 중인 경우에만 스피너 표시)
+		if (message.currentToolAction && message.currentToolAction.status === 'running' && message.isStreaming) {
 			this.renderCurrentTool(message.currentToolAction, container);
 		}
 

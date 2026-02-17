@@ -625,6 +625,42 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// ========== AskUser Response ==========
 
 	async respondToAskUser(responses: string[], askRequestFromUI?: import('../../../common/types/claudeTypes.js').IClaudeAskUserRequest): Promise<void> {
+		// cliSessionId가 없으면 마지막 메시지에서 복구 시도
+		if (!this._cliSessionId) {
+			const sessionState = this._sessionService.getCurrentSessionState();
+			// sessionState에서 먼저 복구 시도
+			if (sessionState?.cliSessionId) {
+				this._cliSessionId = sessionState.cliSessionId;
+				this.logService.info(ClaudeService.LOG_CATEGORY, '[AskUser] Restored cliSessionId from sessionState:', this._cliSessionId);
+			} else {
+				// 메시지에서 복구 시도
+				const session = this._sessionService.getCurrentSession();
+				if (session) {
+					for (let i = session.messages.length - 1; i >= 0; i--) {
+						const msg = session.messages[i];
+						if (msg.role === 'assistant' && msg.cliSessionId) {
+							const restoredId = msg.cliSessionId;
+							this.logService.info(ClaudeService.LOG_CATEGORY, '[AskUser] Restored cliSessionId from message:', restoredId);
+							this._cliSessionId = restoredId;
+							if (sessionState) {
+								sessionState.cliSessionId = restoredId;
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// currentAskUserRequest도 복구 (세션 복원 등으로 런타임 상태가 초기화된 경우)
+		if (!this._currentAskUserRequest && askRequestFromUI) {
+			this._currentAskUserRequest = askRequestFromUI;
+			const sessionState = this._sessionService.getCurrentSessionState();
+			if (sessionState) {
+				sessionState.currentAskUserRequest = askRequestFromUI;
+			}
+		}
+
 		return this._cliEventHandler.respondToAskUser(responses, askRequestFromUI);
 	}
 
@@ -1156,10 +1192,9 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] currentMessageId: ${savedMessageId}, found: ${!!currentMessage}`);
 
 			if (currentMessage) {
-				const updatedMessage: IClaudeMessage = {
-					...currentMessage,
-					fileChanges: changesSummary
-				};
+				const updatedMessage: IClaudeMessage = currentMessage.role === 'assistant'
+					? { ...currentMessage, fileChanges: changesSummary, currentToolAction: undefined, isStreaming: false }
+					: { ...currentMessage, fileChanges: changesSummary };
 				this._sessionService.updateMessage(updatedMessage);
 				this._messageService.fireMessageUpdate(updatedMessage);
 				this.logService.info(ClaudeService.LOG_CATEGORY, `[FileChanges] Message updated with ${changesSummary.changes.length} file changes`);
