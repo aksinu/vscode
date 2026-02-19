@@ -258,10 +258,11 @@ export class CLIEventHandler extends Disposable {
 
 		// AskUser 응답으로 새 프로세스가 이미 시작된 경우, 이전 프로세스의 handleComplete는 무시
 		// (respondToAskUser가 상태를 이미 리셋하고 새 스트리밍을 시작했으므로 stale 이벤트)
+		// flag은 respondToAskUser에서 sendPrompt가 resolve된 후에만 리셋됨
+		// → 이렇게 해야 resume 중 발생하는 모든 stale handleComplete를 확실히 무시
 		if (this._askUserResumeInProgress) {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY,
 				'[AskUser] handleComplete skipped - AskUser resume already in progress (stale completion from previous process)');
-			this._askUserResumeInProgress = false;
 			return false;
 		}
 
@@ -430,6 +431,13 @@ export class CLIEventHandler extends Disposable {
 	 * AskUser 질문에 응답
 	 */
 	async respondToAskUser(responses: string[], askRequestFromUI?: IClaudeAskUserRequest): Promise<void> {
+		// 이미 resume 진행 중이면 중복 호출 무시 (더블 클릭 방어)
+		if (this._askUserResumeInProgress) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY,
+				'[AskUser] respondToAskUser ignored - resume already in progress');
+			return;
+		}
+
 		const sessionInteraction = this.getSessionInteraction();
 		let askRequest = sessionInteraction.getCurrentAskUserRequest();
 
@@ -506,6 +514,8 @@ export class CLIEventHandler extends Disposable {
 				}
 
 				// 이전 프로세스의 stale handleComplete가 도착해도 무시하도록 플래그 설정
+				// handleComplete에서는 이 flag을 리셋하지 않음 — sendPrompt resolve 후에만 리셋
+				// → resume 중 발생하는 모든 handleComplete를 확실히 무시
 				this._askUserResumeInProgress = true;
 
 				const cliOptions: IClaudeCLIRequestOptions = {
@@ -514,10 +524,12 @@ export class CLIEventHandler extends Disposable {
 
 				await channel.call('sendPrompt', [responseText, cliOptions]);
 
-				// sendPrompt가 resolve된 후 — CLI가 즉시 complete된 경우
-				// handleComplete에서 이미 cliSessionId가 클리어되었을 수 있음
-				// 정상적인 resume라면 CLI가 새 스트리밍을 시작하며 새 session_id를 설정함
-				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed');
+				// sendPrompt가 resolve된 후 — resume 프로세스가 완료됨
+				// onDidComplete 이벤트는 이미 도착했지만 flag으로 스킵되었으므로,
+				// flag을 리셋하고 직접 handleComplete를 호출하여 최종 상태 정리
+				this._askUserResumeInProgress = false;
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed, calling handleComplete');
+				await this.handleComplete();
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume failed:', error);
 				this._askUserResumeInProgress = false;
