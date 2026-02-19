@@ -473,7 +473,15 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
 
 			if (isCurrentSession) {
-				this._cliEventHandler.handleComplete().then(() => {
+				this._cliEventHandler.handleComplete().then((wasProcessed) => {
+					// handleComplete가 false를 반환하면 stale completion (AskUser resume이 이미 진행 중)
+					// → 상태 변경하지 않음 (새 스트리밍이 이미 시작됨)
+					if (!wasProcessed) {
+						this.logService.info(ClaudeService.LOG_CATEGORY,
+							'[AskUser] Skipping post-handleComplete state update - stale completion from previous process');
+						return;
+					}
+
 					// handleComplete 내부에서 AskUser 대기 중이면 조기 반환하며 상태를 유지함
 					// 여기서는 handleComplete 완료 후 최종 상태만 확인
 					// Legacy 필드 + ChatStateManager 둘 다 체크 (세션 복원 등 동기화 이슈 방지)

@@ -164,7 +164,10 @@ export class SessionSettingsPanel extends Disposable {
 					commitInput.disabled = true;
 					commitBtn.textContent = localize('committing', "Committing...");
 					await this.callbacks.onCommit!(message);
-					this.close();
+					// 커밋 성공 → 입력 초기화, 커밋 섹션 숨기기
+					commitInput.value = '';
+					commitSection.style.display = 'none';
+					commitBtn.textContent = localize('committed', "Committed!");
 				} catch (error) {
 					commitBtn.disabled = false;
 					commitInput.disabled = false;

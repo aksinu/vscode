@@ -2694,6 +2694,7 @@
 /* Footer Buttons */
 .claude-settings-footer {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 8px;
 	padding: 16px 20px;
@@ -2736,6 +2737,7 @@
 
 .claude-commit-input {
 	flex: 1;
+	min-width: 150px;
 	padding: 5px 8px;
 	border: 1px solid var(--vscode-input-border, transparent);
 	background: var(--vscode-input-background);
@@ -2781,6 +2783,9 @@
 	align-items: center;
 	gap: 6px;
 	flex: 1;
+	min-width: 0;
+	order: -1;
+	width: 100%;
 }
 
 /* PUSH 버튼 */

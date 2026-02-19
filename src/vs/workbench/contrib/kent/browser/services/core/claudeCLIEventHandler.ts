@@ -90,6 +90,9 @@ export class CLIEventHandler extends Disposable {
 	// handleData 호출 추적 (handleComplete가 모든 handleData 완료를 기다리기 위함)
 	private _pendingHandleDataPromises: Set<Promise<void>> = new Set();
 
+	// AskUser 응답으로 새 프로세스가 시작됨 → stale handleComplete 무시용
+	private _askUserResumeInProgress = false;
+
 	private readonly callbacks?: ICLIEventHandlerCallbacks;
 	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
 	private readonly _context?: ICLIEventHandlerContext;
@@ -248,9 +251,19 @@ export class CLIEventHandler extends Disposable {
 
 	/**
 	 * CLI 완료 이벤트 처리
+	 * @returns true면 정상 처리, false면 스킵됨 (stale completion)
 	 */
-	async handleComplete(): Promise<void> {
+	async handleComplete(): Promise<boolean> {
 		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete started, waiting for pending operations...');
+
+		// AskUser 응답으로 새 프로세스가 이미 시작된 경우, 이전 프로세스의 handleComplete는 무시
+		// (respondToAskUser가 상태를 이미 리셋하고 새 스트리밍을 시작했으므로 stale 이벤트)
+		if (this._askUserResumeInProgress) {
+			this.logService.info(CLIEventHandler.LOG_CATEGORY,
+				'[AskUser] handleComplete skipped - AskUser resume already in progress (stale completion from previous process)');
+			this._askUserResumeInProgress = false;
+			return false;
+		}
 
 		// 진행 중인 handleData 호출이 완료될 때까지 대기 (race condition 방지)
 		// handleData가 아직 enqueueDataOperation을 호출하기 전일 수 있으므로,
@@ -273,7 +286,7 @@ export class CLIEventHandler extends Disposable {
 
 		if (!message.getCurrentMessageId() || !sessionInteraction.hasCurrentSession()) {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY, '[FileChanges] handleComplete: no message or session, returning');
-			return;
+			return true;
 		}
 
 		// AskUser 대기 중이면 상태 유지
@@ -302,7 +315,7 @@ export class CLIEventHandler extends Disposable {
 			// (setState('idle')을 호출하면 chatStateManager.isWaitingForUser()가 false를 반환하여
 			//  메시지 재렌더링 시 AskUser UI가 사라지는 문제 발생)
 			sessionInteraction.saveSessions();
-			return;
+			return true;
 		}
 
 		// 최종 메시지
@@ -359,6 +372,8 @@ export class CLIEventHandler extends Disposable {
 
 		// 큐에 대기 중인 메시지 처리
 		this.getFileOperation().processQueue();
+
+		return true;
 	}
 
 	/**
@@ -477,11 +492,27 @@ export class CLIEventHandler extends Disposable {
 			this.getState().setState('streaming');
 
 			try {
+				// CLI 프로세스가 아직 실행 중일 수 있음 (AskUserQuestion tool_use 이벤트는
+				// CLI 프로세스가 종료되기 전에 도착할 수 있음)
+				// 현재 프로세스가 완료될 때까지 대기한 후 --resume으로 재개
+				const channel = this.getConnection().getChannel();
+				const isStillRunning = await channel.call<boolean>('isRunning', []);
+				if (isStillRunning) {
+					this.logService.info(CLIEventHandler.LOG_CATEGORY,
+						'[AskUser] CLI process still running, waiting for completion before resume...');
+					await this.waitForProcessCompletion(channel, 30000);
+					this.logService.info(CLIEventHandler.LOG_CATEGORY,
+						'[AskUser] CLI process completed, proceeding with resume');
+				}
+
+				// 이전 프로세스의 stale handleComplete가 도착해도 무시하도록 플래그 설정
+				this._askUserResumeInProgress = true;
+
 				const cliOptions: IClaudeCLIRequestOptions = {
 					resumeSessionId: cliSessionId
 				};
 
-				await this.getConnection().getChannel().call('sendPrompt', [responseText, cliOptions]);
+				await channel.call('sendPrompt', [responseText, cliOptions]);
 
 				// sendPrompt가 resolve된 후 — CLI가 즉시 complete된 경우
 				// handleComplete에서 이미 cliSessionId가 클리어되었을 수 있음
@@ -489,6 +520,7 @@ export class CLIEventHandler extends Disposable {
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed');
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume failed:', error);
+				this._askUserResumeInProgress = false;
 				// 에러 시 상태 복구 — idle로 전환하여 사용자가 다시 시도할 수 있도록
 				this.getState().setState('idle');
 				this.handleError(`AskUser resume failed: ${error}`);
@@ -896,5 +928,26 @@ export class CLIEventHandler extends Disposable {
 		} finally {
 			this._isProcessingDataQueue = false;
 		}
+	}
+
+	/**
+	 * CLI 프로세스 완료 대기
+	 * AskUserQuestion 응답 시 현재 프로세스가 아직 실행 중일 수 있음
+	 * (tool_use 이벤트는 프로세스 종료 전에 도착)
+	 */
+	private async waitForProcessCompletion(channel: IChannel, timeoutMs: number): Promise<void> {
+		const pollInterval = 100;
+		const maxAttempts = Math.ceil(timeoutMs / pollInterval);
+
+		for (let i = 0; i < maxAttempts; i++) {
+			const running = await channel.call<boolean>('isRunning', []);
+			if (!running) {
+				return;
+			}
+			await new Promise(resolve => setTimeout(resolve, pollInterval));
+		}
+
+		this.logService.warn(CLIEventHandler.LOG_CATEGORY,
+			`[AskUser] Timed out waiting for process completion (${timeoutMs}ms), proceeding anyway`);
 	}
 }

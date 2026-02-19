@@ -44,7 +44,6 @@ import { SessionSettingsPanel, ISessionSettings } from '../settings/claudeSessio
 import { SessionTabs } from '../session/claudeSessionTabs.js';
 import { ChangesHistoryPanel } from '../ui/claudeChangesHistoryPanel.js';
 import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
-import { ITerminalService } from '../../../../terminal/browser/terminal.js';
 import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
 import { IQuickInputService } from '../../../../../../platform/quickinput/common/quickInput.js';
@@ -131,7 +130,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@ITextModelService private readonly textModelService: ITextModelService,
 		@ISCMService private readonly scmService: ISCMService,
-		@ITerminalService private readonly terminalService: ITerminalService,
 		@IClaudeCodebaseService private readonly codebaseService: IClaudeCodebaseService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
@@ -368,7 +366,6 @@ export class ClaudeChatViewPane extends ViewPane {
 		this.gitCommitManager = new GitCommitManager(
 			this.claudeService,
 			this.scmService,
-			this.terminalService,
 			this.workspaceContextService,
 			this.notificationService
 		);
