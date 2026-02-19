@@ -45,6 +45,8 @@ export interface IAssistantMessageRendererOptions {
 export class AssistantMessageRenderer {
 
 	private readonly _options: IAssistantMessageRendererOptions;
+	// 이미 submit된 AskUser 요청 ID를 추적 (재렌더링 시에도 submitted 상태 유지)
+	private readonly _submittedAskRequestIds = new Set<string>();
 
 	constructor(options?: IAssistantMessageRendererOptions) {
 		this._options = options || {};
@@ -293,6 +295,15 @@ export class AssistantMessageRenderer {
 	private renderAskUser(askRequest: IClaudeAskUserRequest, container: HTMLElement, disposables: DisposableStore): void {
 		const askContainer = append(container, $('.claude-ask-user'));
 
+		// 이미 submit된 AskUser는 재렌더링하지 않고 "Submitted" 표시만 함
+		if (askRequest.id && this._submittedAskRequestIds.has(askRequest.id)) {
+			console.log('[AskUser] Skipping re-render of already submitted AskUser', { askRequestId: askRequest.id });
+			const submittedElement = append(askContainer, $('.claude-ask-auto-accepted'));
+			append(submittedElement, $('.codicon.codicon-check'));
+			submittedElement.appendChild(document.createTextNode(' ' + localize('alreadySubmitted', "Response submitted")));
+			return;
+		}
+
 		// 자동 승인된 경우
 		if (askRequest.autoAccepted && askRequest.autoAcceptedOption) {
 			const autoElement = append(askContainer, $('.claude-ask-auto-accepted'));
@@ -426,6 +437,10 @@ export class AssistantMessageRenderer {
 				return;
 			}
 			submitted = true;
+			// 클래스 레벨에서 submitted 상태 기록 (재렌더링 시에도 유지)
+			if (askRequest.id) {
+				this._submittedAskRequestIds.add(askRequest.id);
+			}
 
 			// 모든 옵션 버튼 비활성화
 			askContainer.querySelectorAll('.claude-ask-option').forEach(btn => {
