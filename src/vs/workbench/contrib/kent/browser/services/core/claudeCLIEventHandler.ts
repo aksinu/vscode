@@ -290,6 +290,7 @@ export class CLIEventHandler extends Disposable {
 				timestamp: Date.now(),
 				isStreaming: false,
 				toolActions: [...toolAction.getToolActions()],
+				currentToolAction: undefined,  // 명시적으로 제거
 				askUserRequest: sessionInteraction.getCurrentAskUserRequest(),
 				isWaitingForUser: true,
 				cliSessionId: sessionInteraction.getCliSessionId()
@@ -304,15 +305,24 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
-		// 최종 메시지 (currentToolAction을 명시적으로 undefined 설정 — merge 시 기존 값 제거)
+		// 최종 메시지
+		// toolActions에서 아직 running 상태인 도구를 completed로 강제 변경
+		// (tool_result 없이 result가 먼저 온 경우 대비)
+		const finalToolActions = toolAction.getToolActions().map(action => {
+			if (action.status === 'running') {
+				return { ...action, status: 'completed' as const };
+			}
+			return action;
+		});
+
 		const finalMessage: IClaudeMessage = {
 			id: message.getCurrentMessageId()!,
 			role: 'assistant',
 			content: message.getAccumulatedContent(),
 			timestamp: Date.now(),
 			isStreaming: false,
-			toolActions: [...toolAction.getToolActions()],
-			currentToolAction: undefined,
+			toolActions: finalToolActions,
+			currentToolAction: undefined,  // 명시적으로 undefined 설정하여 merge 시 이전 running 상태 제거
 			usage: sessionInteraction.getUsage()
 		};
 
@@ -376,7 +386,9 @@ export class CLIEventHandler extends Disposable {
 			role: 'assistant',
 			content: `Error: ${error}`,
 			timestamp: Date.now(),
-			isError: true
+			isError: true,
+			isStreaming: false,
+			currentToolAction: undefined  // 명시적으로 제거하여 merge 시 이전 running 상태 정리
 		};
 
 		// 기존 스트리밍 메시지가 있으면 업데이트, 없으면 추가
@@ -388,6 +400,11 @@ export class CLIEventHandler extends Disposable {
 		}
 
 		this.getState().setState('error');
+
+		// 도구 상태 정리 (에러 발생 시에도 currentToolAction이 running으로 남으면
+		// 다음 메시지 응답 시 이전 메시지에 스피너가 다시 뜨는 버그 방지)
+		this.getToolAction().setCurrentToolAction(undefined);
+
 		message.setCurrentMessageId(undefined);
 		message.setAccumulatedContent('');
 	}

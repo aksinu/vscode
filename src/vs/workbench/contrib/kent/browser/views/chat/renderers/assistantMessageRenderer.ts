@@ -190,14 +190,23 @@ export class AssistantMessageRenderer {
 		currentState: ChatSessionState,
 		disposables: DisposableStore
 	): void {
-		// 현재 실행 중인 툴 (status가 'running'이고 스트리밍 중인 경우에만 스피너 표시)
+		// 현재 실행 중인 툴 (status가 'running'이고 이 메시지가 스트리밍 중일 때만 스피너 표시)
+		// message.isStreaming을 체크해야 함 — currentState는 세션 전체 상태이므로
+		// 다른 메시지가 responding일 때 이미 완료된 메시지에도 스피너가 뜨는 버그 방지
 		if (message.currentToolAction && message.currentToolAction.status === 'running' && message.isStreaming) {
 			this.renderCurrentTool(message.currentToolAction, container);
 		}
 
 		// 완료된 툴들의 요약 (스트리밍 완료 후 또는 현재 툴이 완료된 경우)
 		if (message.toolActions && message.toolActions.length > 0 && (!message.isStreaming || (message.currentToolAction && message.currentToolAction.status !== 'running'))) {
-			this.renderToolSummary(message.toolActions, container, disposables);
+			// 렌더링 시점에서 running 상태인 도구를 completed로 표시 (방어 코드)
+			const sanitizedActions = message.isStreaming ? message.toolActions : message.toolActions.map(action => {
+				if (action.status === 'running') {
+					return { ...action, status: 'completed' as const };
+				}
+				return action;
+			});
+			this.renderToolSummary(sanitizedActions, container, disposables);
 		}
 	}
 

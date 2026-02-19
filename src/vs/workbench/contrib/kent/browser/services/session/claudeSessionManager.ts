@@ -148,6 +148,10 @@ export class ClaudeSessionManager extends Disposable {
 
 				console.log('[SessionManager] Loaded sessions:', this._sessions.length);
 
+				// 저장된 메시지에서 running 상태의 currentToolAction 정리
+				// (IDE 재시작 시 이전에 실행 중이던 도구 스피너가 계속 표시되는 버그 방지)
+				this.cleanupStaleToolActions();
+
 				// 중복 제거로 인해 변경이 있었다면 저장
 				if (this._sessions.length !== rawSessions.length) {
 					console.log('[SessionManager] Removed duplicate sessions, saving cleaned data');
@@ -197,6 +201,33 @@ export class ClaudeSessionManager extends Disposable {
 
 		} catch (e) {
 			console.error('[SessionManager] Failed to migrate global queue:', e);
+		}
+	}
+
+	/**
+	 * 저장된 메시지에서 stale한 currentToolAction 정리
+	 * IDE 재시작 시 이전에 running 상태로 남아있던 도구 스피너가 계속 표시되는 버그 방지
+	 */
+	private cleanupStaleToolActions(): void {
+		let cleaned = false;
+		for (const session of this._sessions) {
+			for (let i = 0; i < session.messages.length; i++) {
+				const msg = session.messages[i];
+				if (msg.role === 'assistant' && (msg as any).currentToolAction) {
+					// running 상태의 currentToolAction 제거 (IDE 재시작 후에는 실행 불가)
+					const mutable = msg as any;
+					delete mutable.currentToolAction;
+					// isStreaming도 false로 설정 (완료된 메시지)
+					if (mutable.isStreaming) {
+						mutable.isStreaming = false;
+					}
+					cleaned = true;
+				}
+			}
+		}
+		if (cleaned) {
+			console.log('[SessionManager] Cleaned up stale tool actions from saved messages');
+			this.saveSessions();
 		}
 	}
 
@@ -377,11 +408,16 @@ export class ClaudeSessionManager extends Disposable {
 			const preserveIfMissing = new Set(['workStartTime', 'usage', 'workEndTime']);
 			const merged = { ...existing };
 			for (const key of Object.keys(message) as Array<keyof IClaudeMessage>) {
-				if (message[key] !== undefined) {
-					(merged as any)[key] = message[key];
-				} else if (!preserveIfMissing.has(key)) {
-					// 명시적으로 undefined가 설정된 상태성 필드는 제거 (currentToolAction 등)
-					(merged as any)[key] = undefined;
+				const value = message[key];
+				if (value !== undefined) {
+					(merged as any)[key] = value;
+				}
+			}
+			// 명시적으로 undefined로 설정된 키도 반영 (currentToolAction 제거 등)
+			// Object.keys는 값이 undefined인 키도 포함하므로, hasOwnProperty로 확인
+			for (const key of Object.keys(message) as Array<keyof IClaudeMessage>) {
+				if (Object.prototype.hasOwnProperty.call(message, key) && message[key] === undefined && !preserveIfMissing.has(key)) {
+					delete (merged as any)[key];
 				}
 			}
 			(targetSession.messages as IClaudeMessage[])[msgIndex] = merged;
