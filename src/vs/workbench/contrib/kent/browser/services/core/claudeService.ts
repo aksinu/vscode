@@ -454,7 +454,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			const isCurrentSession = event.chatId === currentSessionId;
 
 			if (isCurrentSession) {
-				console.log('[ClaudeService] Received CLI data for session:', event.chatId, event.data.type);
+				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data for session:', event.chatId, event.data.type);
 				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Received CLI data:', event.data.type, event.data);
 				this._cliEventHandler.handleData(event.data).catch(error => {
 					this.logService.error(ClaudeService.LOG_CATEGORY, 'Error handling CLI data:', error);
@@ -462,7 +462,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			} else {
 				// 백그라운드 세션만 accumulateSessionContent 사용
 				this._multiSessionManager.accumulateSessionContent(event.chatId, event.data);
-				console.log('[ClaudeService] Background session data:', event.chatId, event.data.type);
+				this.logService.debug(ClaudeService.LOG_CATEGORY, 'Background session data:', event.chatId, event.data.type);
 			}
 		}));
 
@@ -470,7 +470,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._register(this._multiConnection.onDidCompleteAny(event => {
 			const currentSessionId = this._sessionService.getCurrentSession()?.id;
 			const isCurrentSession = event.chatId === currentSessionId;
-			console.log('[ClaudeService] CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
+			this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI complete for session:', event.chatId, '(current:', currentSessionId, ')');
 
 			if (isCurrentSession) {
 				this._cliEventHandler.handleComplete().then(() => {
@@ -510,13 +510,16 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				this._multiSessionManager.handleBackgroundSessionComplete(event.chatId);
 				// ChatStateManager에도 상태 반영 -> 자동 큐 처리 트리거
 				this._chatStateManager.completeStreaming(event.chatId);
+				// 백그라운드 세션 CLI 인스턴스 즉시 정리 (불필요한 데이터 수신 방지)
+				this._multiConnection.destroySession(event.chatId);
+				this.logService.info(ClaudeService.LOG_CATEGORY, `Background session destroyed: ${event.chatId}`);
 			}
 		}));
 
 		// Error 이벤트
 		this._register(this._multiConnection.onDidErrorAny(event => {
 			const currentSessionId = this._sessionService.getCurrentSession()?.id;
-			console.log('[ClaudeService] CLI error for session:', event.chatId, event.error);
+			this.logService.error(ClaudeService.LOG_CATEGORY, 'CLI error for session:', event.chatId, event.error);
 
 			// AskUser 대기 중이면 에러를 무시하고 대기 상태 유지
 			// (CLI가 AskUser 후 exit code 1로 종료되는 케이스 방어)

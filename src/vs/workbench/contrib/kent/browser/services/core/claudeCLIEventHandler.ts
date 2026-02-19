@@ -466,7 +466,7 @@ export class CLIEventHandler extends Disposable {
 			}
 		} else if (cliSessionId) {
 			// AskUserQuestion (tool_use): --resume 옵션으로 세션 재개
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Resuming session with response:', responseText);
+			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[AskUser] Resuming session with cliSessionId: ${cliSessionId}, response: ${responseText}`);
 
 			// 상태 리셋
 			sessionInteraction.setWaitingForUser(false);
@@ -480,29 +480,30 @@ export class CLIEventHandler extends Disposable {
 				};
 
 				await this.getConnection().getChannel().call('sendPrompt', [responseText, cliOptions]);
+
+				// sendPrompt가 resolve된 후 — CLI가 즉시 complete된 경우
+				// handleComplete에서 이미 cliSessionId가 클리어되었을 수 있음
+				// 정상적인 resume라면 CLI가 새 스트리밍을 시작하며 새 session_id를 설정함
+				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed');
 			} catch (error) {
-				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Resume failed:', error);
+				this.logService.error(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume failed:', error);
 				// 에러 시 상태 복구 — idle로 전환하여 사용자가 다시 시도할 수 있도록
 				this.getState().setState('idle');
 				this.handleError(`AskUser resume failed: ${error}`);
 			}
 		} else {
-			// cliSessionId 없음 — 새 프롬프트로 응답 전송 (세션 복구 실패 fallback)
-			this.logService.warn(CLIEventHandler.LOG_CATEGORY, 'No session ID - sending as new prompt (fallback)');
+			// cliSessionId 없음 — resume 불가
+			// 빈 옵션으로 sendPrompt를 호출하면 CLI가 즉시 거부하므로, 에러로 처리
+			this.logService.error(CLIEventHandler.LOG_CATEGORY,
+				'[AskUser] No cliSessionId available - cannot resume CLI session. User must start a new conversation.');
 
 			sessionInteraction.setWaitingForUser(false);
 			sessionInteraction.setCurrentAskUserRequest(undefined);
 			this.updateCurrentMessage();
-			this.getState().setState('streaming');
+			this.getState().setState('idle');
 
-			try {
-				await this.getConnection().getChannel().call('sendPrompt', [responseText, {}]);
-			} catch (error) {
-				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Fallback sendPrompt failed:', error);
-				// 에러 시 상태 복구
-				this.getState().setState('idle');
-				this.handleError(`Send failed: ${error}`);
-			}
+			// 사용자에게 에러 알림
+			this.handleError('AskUser 응답을 전송할 수 없습니다. CLI 세션이 만료되었습니다. 새 대화를 시작해 주세요.');
 		}
 	}
 
