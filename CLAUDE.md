@@ -38,6 +38,9 @@ ProjectRoot/
 │   ├── Status.md          # 현재 Sprint 상태 (30~50줄) ★ 작업 시작 시 확인
 │   ├── StatusHistory.md   # 완료된 Sprint/작업 히스토리
 │   ├── Backlog.md         # 차세대 기능 백로그
+│   ├── Bugs/              # 🐛 버그 추적 (README.md = 인덱스, 개별 파일 = 상세)
+│   │   ├── README.md      # 버그 인덱스 (목록 + 상태) ★ 버그 발견 시 확인
+│   │   └── BUG_*.md       # 개별 버그 상세 (원인 분석, 수정 내역, 재현 방법)
 │   └── Specs/             # 설계 명세 (핵심 SPEC만 유지)
 │       ├── SPEC_001_ChatArchitecture.md
 │       ├── SPEC_002_ClaudeFeatures.md
@@ -54,9 +57,10 @@ ProjectRoot/
 ### 작업 시작
 ```
 1. _Dev/Status.md → 현재 상태 확인 (30~50줄로 빠르게 파악)
-2. 과거 맥락 필요 시 → _Dev/StatusHistory.md 끝에서부터 읽기
-3. 필요시 관련 가이드/스펙 참조
-4. 기존 VS Code 코드 패턴 파악
+2. _Dev/Bugs/README.md → Active Bugs 확인 (관련 버그 있으면 상세 파일 참조)
+3. 과거 맥락 필요 시 → _Dev/StatusHistory.md 끝에서부터 읽기
+4. 필요시 관련 가이드/스펙 참조
+5. 기존 VS Code 코드 패턴 파악
 ```
 
 ### 작업 중
@@ -70,8 +74,9 @@ ProjectRoot/
 ### 작업 완료
 ```
 1. _Dev/Status.md 업데이트 (30~50줄 유지)
-2. Sprint 완료 시 → Status.md 내용을 StatusHistory.md 맨 아래로 이동
-3. 변경사항 요약 기록
+2. 버그 수정 시 → _Dev/Bugs/ 상세 문서 업데이트 + README.md 상태 변경
+3. Sprint 완료 시 → Status.md 내용을 StatusHistory.md 맨 아래로 이동
+4. 변경사항 요약 기록
 ```
 
 ### 커밋 메시지
@@ -215,6 +220,27 @@ Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
 📊 우선순위: P0(Critical) → P3(Low) 명확히
 💡 복잡도: 구현 방향 및 예상 복잡도 명시
 🔄 정리: 분기별 백로그 리뷰 및 정리
+```
+
+### Bugs/ - 버그 추적 체계
+```
+📋 README.md: 버그 인덱스 (목록 + 상태 + 우선순위)
+  - 작업 시작 시 Active Bugs 확인
+  - 새 버그 발견 시 인덱스에 추가
+
+📝 BUG_[모듈]_[설명].md: 개별 버그 상세
+  - 증상, 에러 로그, 핵심 파일
+  - 원인 분석 (깊은 코드 추적 결과)
+  - 수정 내역 (코드 변경 요약)
+  - 재현 방법
+
+🔄 상태: Open → In Progress → Fixed → Closed
+🏷️ 우선순위: P0 Critical | P1 High | P2 Medium | P3 Low
+
+💡 규칙:
+  - 버그 수정 시 반드시 상세 문서 업데이트
+  - 근본 원인 분석은 상세 문서에 (컨텍스트 재로딩 시 유용)
+  - Fixed 후 재현 테스트 완료 시 Closed로 이동
 ```
 
 ### RefactoringPlan.md - Phase별 관리

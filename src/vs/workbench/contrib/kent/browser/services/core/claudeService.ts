@@ -275,10 +275,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			},
 			(message: IClaudeMessage, session?: IClaudeSession) => this._sessionService.updateMessage(message, session),
 			(sessionId?: string) => {
-				if (sessionId) {
-					return this._sessionService.getSessionQueue(sessionId);
-				}
-				return this._queueService.getQueuedMessages();
+				return this._queueService.getQueuedMessages(sessionId);
 			}
 		);
 
@@ -319,48 +316,28 @@ export class ClaudeService extends Disposable implements IClaudeService {
 					`🔍 STREAMING CHECK - No current session, legacy streaming: ${legacyStreaming}, current state: ${this._state}`);
 				return legacyStreaming;
 			},
-			(content: string, options?: IClaudeSendRequestOptions, sessionId?: string) => {
-				// Add to appropriate queue and return a user message placeholder
-				if (sessionId) {
+			(content: string, options?: IClaudeSendRequestOptions, _sessionId?: string) => {
+				// 항상 queueService를 통해 큐에 추가 (세션 큐/글로벌 큐 일관성 보장)
+				// sessionId가 없으면 현재 세션 ID를 사용하여 세션 큐에 저장
+				const effectiveSessionId = _sessionId || this._sessionService.getCurrentSession()?.id;
+				this.logService.info(ClaudeService.LOG_CATEGORY,
+					`📥 QUEUE ADD - Adding message to queue (session: ${effectiveSessionId || 'global'}): "${content.substring(0, 50)}..."`);
+
+				const { message: queuedMessage, added } = this._queueService.addToQueue(content, options, effectiveSessionId);
+				if (added) {
 					this.logService.info(ClaudeService.LOG_CATEGORY,
-						`📥 QUEUE ADD - Adding message to session queue (${sessionId}): "${content.substring(0, 50)}..."`);
-					const queuedMessage = this._multiSessionManager.addToSessionQueue(sessionId, content, options, ClaudeService.MAX_QUEUE_SIZE);
-					if (queuedMessage) {
-						this.logService.info(ClaudeService.LOG_CATEGORY,
-							`✅ QUEUE SUCCESS - Message added to session queue: ${queuedMessage.id}`);
-						// Return a user message placeholder for immediate UI display
-						return {
-							id: queuedMessage.id,
-							role: 'user' as const,
-							content,
-							timestamp: queuedMessage.timestamp,
-							context: options?.context,
-							isQueued: true
-						};
-					} else {
-						this.logService.error(ClaudeService.LOG_CATEGORY,
-							`❌ QUEUE FAILED - Failed to add message to session queue (${sessionId})`);
-					}
+						`✅ QUEUE SUCCESS - Message added to queue: ${queuedMessage.id}`);
+					return {
+						id: queuedMessage.id,
+						role: 'user' as const,
+						content,
+						timestamp: queuedMessage.timestamp,
+						context: options?.context,
+						isQueued: true
+					};
 				} else {
-					this.logService.info(ClaudeService.LOG_CATEGORY,
-						`📥 QUEUE ADD - Adding message to global queue: "${content.substring(0, 50)}..."`);
-					const { message: queuedMessage, added } = this._queueService.addToQueue(content, options);
-					if (added) {
-						this.logService.info(ClaudeService.LOG_CATEGORY,
-							`✅ QUEUE SUCCESS - Message added to global queue: ${queuedMessage.id}`);
-						// Return a user message placeholder for immediate UI display
-						return {
-							id: queuedMessage.id,
-							role: 'user' as const,
-							content,
-							timestamp: queuedMessage.timestamp,
-							context: options?.context,
-							isQueued: true
-						};
-					} else {
-						this.logService.error(ClaudeService.LOG_CATEGORY,
-							`❌ QUEUE FAILED - Global queue full, message rejected`);
-					}
+					this.logService.error(ClaudeService.LOG_CATEGORY,
+						`❌ QUEUE FAILED - Queue full, message rejected`);
 				}
 
 				// Fallback: create a temporary user message
@@ -609,7 +586,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	private saveSessionQueue(sessionId: string, queue?: IClaudeQueuedMessage[]): void {
-		const queueToSave = queue || this._multiSessionManager.getSessionQueue(sessionId);
+		const queueToSave = queue || this._queueService.getSessionQueue(sessionId);
 		if (!queueToSave) return;
 
 		try {
@@ -899,17 +876,29 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	getQueuedMessages(): IClaudeQueuedMessage[] {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this._queueService.getQueuedMessages(sessionId);
+		const sessionQueue = this._queueService.getQueuedMessages(sessionId);
+		// 글로벌 큐에 잔여 메시지가 있으면 합쳐서 반환 (하위 호환)
+		const globalQueue = this._queueService.getQueuedMessages();
+		if (globalQueue.length > 0) {
+			return [...sessionQueue, ...globalQueue];
+		}
+		return sessionQueue;
 	}
 
 	removeFromQueue(id: string): void {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		this._queueService.removeFromQueue(id, sessionId);
+		// 세션 큐에서 먼저 찾고, 없으면 글로벌 큐에서도 시도 (하위 호환)
+		const removed = this._queueService.removeFromQueue(id, sessionId);
+		if (!removed) {
+			this._queueService.removeFromQueue(id);
+		}
 	}
 
 	clearQueue(): void {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
+		// 세션 큐와 글로벌 큐 모두 비움 (큐 불일치로 인한 잔여 메시지 방지)
 		this._queueService.clearQueue(sessionId);
+		this._queueService.clearQueue();
 	}
 
 	getMaxQueueSize(): number {
@@ -918,7 +907,12 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 	updateQueuedMessage(id: string, newContent: string): boolean {
 		const sessionId = this._sessionService.getCurrentSession()?.id;
-		return this._queueService.updateQueuedMessage(id, newContent, sessionId);
+		// 세션 큐에서 먼저 시도, 실패하면 글로벌 큐에서도 시도 (하위 호환)
+		const updated = this._queueService.updateQueuedMessage(id, newContent, sessionId);
+		if (!updated) {
+			return this._queueService.updateQueuedMessage(id, newContent);
+		}
+		return updated;
 	}
 
 	reorderQueue(fromIndex: number, toIndex: number): boolean {
@@ -1033,9 +1027,10 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	private async addToSessionQueue(sessionId: string, content: string, options?: IClaudeSendRequestOptions): Promise<IClaudeMessage> {
-		const queuedMessage = this._multiSessionManager.addToSessionQueue(sessionId, content, options, ClaudeService.MAX_QUEUE_SIZE);
+		// queueService를 통해 세션 큐에 추가 (큐 저장소 일관성 보장)
+		const { message: queuedMessage, added } = this._queueService.addToQueue(content, options, sessionId);
 
-		if (!queuedMessage) {
+		if (!added) {
 			return {
 				id: generateUuid(),
 				role: 'user',
@@ -1045,9 +1040,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 				queueRejected: true
 			};
 		}
-
-		this.saveSessionQueue(sessionId);
-		this._messageService.fireQueueChange(this._multiSessionManager.getSessionQueue(sessionId));
 
 		return {
 			id: queuedMessage.id,
@@ -1062,7 +1054,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// QueueService가 자동으로 큐 처리를 시작함
 
 	getSessionQueue(sessionId: string): IClaudeQueuedMessage[] {
-		return this._multiSessionManager.getSessionQueue(sessionId);
+		return this._queueService.getQueuedMessages(sessionId);
 	}
 
 	getSessionState(sessionId: string): ClaudeServiceState {
