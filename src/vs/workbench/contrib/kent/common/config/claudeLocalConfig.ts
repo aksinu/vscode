@@ -62,12 +62,6 @@ export interface IClaudeLocalConfig {
 
 	// === 확장 옵션 (Step 2) ===
 
-	/** 에이전트 최대 턴 수 */
-	readonly maxTurns?: number;
-	/** 비용 상한선 (USD) */
-	readonly maxBudgetUsd?: number;
-	/** 최대 출력 토큰 수 */
-	readonly maxTokens?: number;
 	/** 대체 모델 (기본 모델 실패 시 사용) */
 	readonly fallbackModel?: string;
 	/** 금지 도구 목록 */

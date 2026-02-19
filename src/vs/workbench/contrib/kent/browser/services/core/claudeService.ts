@@ -73,9 +73,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	// CLI 이벤트 핸들러
 	private readonly _cliEventHandler: CLIEventHandler;
 
-	// Status 관련
-	private _sessionAutoAcceptOverride: boolean | undefined;
-
 	// Expose _localConfig for ContextProvider (delegate to ConfigManager)
 	get _localConfig(): IClaudeLocalConfig {
 		return this._configManager.getLocalConfig();
@@ -855,15 +852,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		this._uiService.fireStatusInfoChange(this.getStatusInfo());
 	}
 
-	setSessionAutoAccept(enabled: boolean): void {
-		this._sessionAutoAcceptOverride = enabled;
-		this.logService.info(ClaudeService.LOG_CATEGORY, 'Session auto-accept override:', enabled ? 'ON' : 'OFF');
-	}
-
 	isAutoAcceptEnabled(): boolean {
-		return this._sessionAutoAcceptOverride !== undefined
-			? this._sessionAutoAcceptOverride
-			: (this._configManager.getLocalConfig().autoAccept ?? false);
+		return this._configManager.getLocalConfig().autoAccept ?? false;
 	}
 
 	setSessionThinking(enabled: boolean): void {

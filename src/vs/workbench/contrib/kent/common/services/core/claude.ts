@@ -132,12 +132,7 @@ export interface IClaudeService {
 	setSessionModel?(model: string): void;
 
 	/**
-	 * 세션별 Auto Accept 오버라이드 설정
-	 */
-	setSessionAutoAccept?(enabled: boolean): void;
-
-	/**
-	 * Auto Accept 활성화 여부
+	 * Auto Accept 활성화 여부 (글로벌 설정에서 읽음)
 	 */
 	isAutoAcceptEnabled?(): boolean;
 

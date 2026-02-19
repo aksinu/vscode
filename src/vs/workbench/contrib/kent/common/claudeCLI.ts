@@ -91,9 +91,6 @@ export interface IClaudeCLIRequestOptions {
 	/** 시스템 프롬프트 (기존 프롬프트 교체) */
 	readonly systemPrompt?: string;
 
-	/** 최대 출력 토큰 수 */
-	readonly maxTokens?: number;
-
 	/** 허용할 도구 목록 */
 	readonly allowedTools?: string[];
 
@@ -104,18 +101,6 @@ export interface IClaudeCLIRequestOptions {
 	readonly executable?: IClaudeExecutableConfig;
 
 	// ========== 추가된 옵션들 ==========
-
-	/**
-	 * 에이전트 최대 턴 수
-	 * @description 에이전트가 실행할 수 있는 최대 턴(대화 라운드) 수를 제한합니다.
-	 */
-	readonly maxTurns?: number;
-
-	/**
-	 * 비용 상한선 (USD)
-	 * @description API 호출 비용의 상한선을 USD 단위로 설정합니다.
-	 */
-	readonly maxBudgetUsd?: number;
 
 	/**
 	 * 대체 모델

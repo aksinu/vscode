@@ -40,7 +40,6 @@ import { SessionPickerUI } from '../session/claudeSessionPicker.js';
 import { OpenFilesBar } from '../ui/claudeOpenFilesBar.js';
 import { ConnectionOverlay } from '../ui/claudeConnectionOverlay.js';
 import { ClaudeSettingsPanel } from '../settings/claudeSettingsPanel.js';
-import { SessionSettingsPanel, ISessionSettings } from '../settings/claudeSessionSettingsPanel.js';
 import { SessionTabs } from '../session/claudeSessionTabs.js';
 import { ChangesHistoryPanel } from '../ui/claudeChangesHistoryPanel.js';
 import { INotificationService } from '../../../../../../platform/notification/common/notification.js';
@@ -88,8 +87,6 @@ export class ClaudeChatViewPane extends ViewPane {
 	private openFilesBar!: OpenFilesBar;
 	private connectionOverlay!: ConnectionOverlay;
 	private settingsPanel!: ClaudeSettingsPanel;
-	private sessionSettingsPanel!: SessionSettingsPanel;
-	private sessionSettings: ISessionSettings = { name: '' };
 	private sessionTabs!: SessionTabs;
 	private changesHistoryPanel!: ChangesHistoryPanel;
 
@@ -370,17 +367,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			this.notificationService
 		);
 
-		this.sessionSettingsPanel = this._register(new SessionSettingsPanel({
-			getCurrentSettings: () => this.sessionSettings,
-			onSave: (settings) => this.applySessionSettings(settings),
-			getAvailableModels: () => this.getAvailableModels(),
-			onCommit: (message) => this.gitCommitManager.handleCommitChanges(message),
-			hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit(),
-			onPush: () => this.gitCommitManager.handlePush(),
-			hasPushableCommits: () => this.gitCommitManager.hasPushableCommits(),
-			validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
-		}));
-
 		// 상태 바 (입력창 위)
 		this.statusBarContainer = append(this.container, $('.claude-status-bar'));
 		this.statusBarManager = this._register(new StatusBarManager(
@@ -389,7 +375,7 @@ export class ClaudeChatViewPane extends ViewPane {
 				getStatusInfo: () => this.claudeService.getStatusInfo?.(),
 				checkConnection: () => this.claudeService.checkConnection?.() ?? Promise.resolve(false),
 				openLocalSettings: () => this.localSettingsManager.open(),
-				openSessionSettings: () => this.sessionSettingsPanel.open(this.container),
+				openGlobalSettings: () => this.settingsPanel.open(this.container),
 				cyclePermissionMode: () => this.cyclePermissionMode(),
 				getPermissionMode: () => this.getPermissionMode(),
 				toggleThinking: () => this.toggleThinking(),
@@ -454,8 +440,18 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				reloadLocalConfig: () => this.claudeService.reloadLocalConfig?.(),
 				getAvailableModels: () => this.getAvailableModels(),
+				getCurrentModel: async () => {
+					// 글로벌/프로젝트 설정 최신화 후 병합된 모델 반환
+					await this.claudeService.reloadLocalConfig?.();
+					return this.claudeService.getLocalConfig?.()?.model;
+				},
 				onModelSaved: (model) => this.claudeService.saveGlobalModel?.(model),
-				validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true })
+				validateModel: (model) => this.claudeService.validateModel?.(model) ?? Promise.resolve({ valid: true }),
+				// Git 관련
+				onCommit: (message) => this.gitCommitManager.handleCommitChanges(message),
+				hasChangesToCommit: () => this.gitCommitManager.hasChangesToCommit(),
+				onPush: () => this.gitCommitManager.handlePush(),
+				hasPushableCommits: () => this.gitCommitManager.hasPushableCommits()
 			}
 		));
 
@@ -468,28 +464,6 @@ export class ClaudeChatViewPane extends ViewPane {
 	 */
 	private getAvailableModels(): string[] {
 		return getAvailableClaudeModels();
-	}
-
-	/**
-	 * 세션 설정 적용
-	 */
-	private applySessionSettings(settings: ISessionSettings): void {
-		this.sessionSettings = settings;
-
-		// 세션 이름이 있으면 제목 업데이트
-		if (settings.name) {
-			this.updateTitle(settings.name);
-		}
-
-		// 모델 오버라이드 적용 (undefined = 기본 모델로 복원, 빈 문자열로 전달하여 오버라이드 제거)
-		this.claudeService.setSessionModel?.(settings.model || '');
-
-		// Auto Accept 오버라이드 적용
-		if (settings.autoAccept !== undefined) {
-			this.claudeService.setSessionAutoAccept?.(settings.autoAccept);
-		}
-
-		this.notificationService.info(localize('sessionSettingsSaved', "Session settings saved"));
 	}
 
 	/**

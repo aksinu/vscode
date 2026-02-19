@@ -121,9 +121,18 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		// Claude CLI 인자 구성
 		const claudeArgs: string[] = [
 			'--output-format', 'stream-json',
-			'--verbose',
-			'--dangerously-skip-permissions'  // IDE 내에서는 항상 전체 권한 부여
+			'--verbose'
 		];
+
+		// Permission Mode 처리: 설정된 모드에 따라 CLI 인자 결정
+		const normalizedPermMode = normalizePermissionMode(options?.permissionMode);
+		if (normalizedPermMode && normalizedPermMode !== 'bypassPermissions') {
+			// 명시적 모드가 있으면 --permission-mode 전달
+			claudeArgs.push('--permission-mode', normalizedPermMode);
+		} else {
+			// 모드 미지정 또는 bypassPermissions → 전체 권한 부여
+			claudeArgs.push('--dangerously-skip-permissions');
+		}
 
 		// 세션 재개 옵션
 		if (options?.resumeSessionId) {
@@ -144,16 +153,6 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 			claudeArgs.push('--allowedTools', ...options.allowedTools);
 		}
 
-		// 최대 턴 수 제한
-		if (options?.maxTurns !== undefined && options.maxTurns > 0) {
-			claudeArgs.push('--max-turns', String(options.maxTurns));
-		}
-
-		// 비용 상한선 (USD, 소수점 허용)
-		if (options?.maxBudgetUsd !== undefined && options.maxBudgetUsd > 0) {
-			claudeArgs.push('--max-budget-usd', String(options.maxBudgetUsd));
-		}
-
 		// 대체 모델
 		if (options?.fallbackModel) {
 			claudeArgs.push('--fallback-model', options.fallbackModel);
@@ -168,14 +167,6 @@ export class ClaudeCLIService extends Disposable implements IClaudeCLIService {
 		if (options?.disallowedTools && options.disallowedTools.length > 0) {
 			for (const tool of options.disallowedTools) {
 				claudeArgs.push('--disallowedTools', tool);
-			}
-		}
-
-		// 권한 모드
-		if (options?.permissionMode) {
-			const normalizedMode = normalizePermissionMode(options.permissionMode);
-			if (normalizedMode) {
-				claudeArgs.push('--permission-mode', normalizedMode);
 			}
 		}
 

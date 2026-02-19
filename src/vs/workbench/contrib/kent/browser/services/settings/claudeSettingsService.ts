@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
-import { IClaudeSettingsService, ISessionSettings } from '../../../common/types/claudeSettingsService.js';
+import { IClaudeSettingsService } from '../../../common/types/claudeSettingsService.js';
 
 /**
  * Claude Settings Service Implementation
@@ -28,19 +28,6 @@ export class ClaudeSettingsService extends Disposable implements IClaudeSettings
 
 	toggleSettingsPanel(): void {
 		console.log('ClaudeSettingsService: toggleSettingsPanel');
-	}
-
-	// Session Settings 관리
-	showSessionSettingsPanel(): void {
-		console.log('ClaudeSettingsService: showSessionSettingsPanel');
-	}
-
-	hideSessionSettingsPanel(): void {
-		console.log('ClaudeSettingsService: hideSessionSettingsPanel');
-	}
-
-	updateSessionSettings(sessionId: string, settings: ISessionSettings): void {
-		console.log('ClaudeSettingsService: updateSessionSettings', sessionId, settings);
 	}
 
 	// Local Settings 관리

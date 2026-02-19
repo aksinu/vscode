@@ -117,13 +117,6 @@ configurationRegistry.registerConfiguration({
 			],
 			description: localize('claude.model', "Claude model to use for chat")
 		},
-		'claude.maxTokens': {
-			type: 'number',
-			default: 4096,
-			minimum: 1,
-			maximum: 200000,
-			description: localize('claude.maxTokens', "Maximum number of tokens in Claude response")
-		},
 		'claude.systemPrompt': {
 			type: 'string',
 			default: '',  // 빈 문자열 = Claude CLI 자체 시스템 프롬프트 사용
@@ -135,21 +128,6 @@ configurationRegistry.registerConfiguration({
 			minimum: 8,
 			maximum: 24,
 			description: localize('claude.fontSize', "Font size for Claude chat messages")
-		},
-		'claude.maxTurns': {
-			type: 'number',
-			default: 50,
-			minimum: 1,
-			maximum: 1000,
-			description: localize('claude.maxTurns', "Maximum number of conversation turns before stopping"),
-			scope: 1 // ConfigurationScope.APPLICATION
-		},
-		'claude.maxBudgetUsd': {
-			type: 'number',
-			default: 5,
-			minimum: 0.01,
-			description: localize('claude.maxBudgetUsd', "Maximum budget in USD for a single conversation session"),
-			scope: 1 // ConfigurationScope.APPLICATION
 		},
 		'claude.fallbackModel': {
 			type: 'string',

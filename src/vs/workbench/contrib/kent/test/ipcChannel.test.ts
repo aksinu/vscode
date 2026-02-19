@@ -27,7 +27,6 @@ interface IClaudeCLIStreamEvent {
 
 interface IClaudeCLIRequestOptions {
   model?: string;
-  maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
   context?: any;

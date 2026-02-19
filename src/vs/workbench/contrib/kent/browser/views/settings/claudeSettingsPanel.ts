@@ -20,8 +20,14 @@ import { ClaudeModalDialog } from '../ui/claudeModalDialog.js';
 export interface IClaudeSettingsPanelCallbacks {
 	reloadLocalConfig(): void;
 	getAvailableModels(): string[];
+	getCurrentModel?(): Promise<string | undefined>;
 	onModelSaved?(model: string | undefined): void;
 	validateModel?(model: string): Promise<{ valid: boolean; error?: string }>;
+	// Git 관련
+	onCommit?(message: string): Promise<void>;
+	hasChangesToCommit?(): boolean;
+	onPush?(): Promise<void>;
+	hasPushableCommits?(): Promise<boolean>;
 }
 
 /**
@@ -62,8 +68,10 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		// 현재 설정 로드
 		await this.loadConfig();
 
-		// 모델 초기값 설정
-		this.selectedModel = this.currentConfig.model;
+		// 모델 초기값 설정: ConfigManager의 최종 병합 모델 사용 (글로벌 > 로컬 > 프로젝트 우선순위 반영)
+		// 로컬 파일만 읽으면 CLI의 /model 명령으로 설정한 글로벌 모델이 반영되지 않음
+		const resolvedModel = await this.callbacks.getCurrentModel?.();
+		this.selectedModel = resolvedModel ?? this.currentConfig.model;
 
 		// 부모 클래스의 open 메서드 호출 (오버레이 관리는 베이스 클래스가 처리)
 		super.open(parentContainer);
@@ -142,39 +150,11 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxSessions: value }; }
 		});
 
-		// Max Turns 설정
-		this.createNumberSetting(content, {
-			label: localize('maxTurns', "Max Turns"),
-			description: localize('maxTurnsDesc', "Maximum conversation turns per session (CLI --max-turns)"),
-			value: this.currentConfig.maxTurns ?? 1000,
-			min: 1,
-			max: 1000,
-			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxTurns: value }; }
-		});
-
-		// Max Budget (USD) 설정
-		this.createNumberSetting(content, {
-			label: localize('maxBudgetUsd', "Max Budget (USD)"),
-			description: localize('maxBudgetUsdDesc', "Maximum budget in USD per session (CLI --max-budget-usd)"),
-			value: this.currentConfig.maxBudgetUsd ?? 5,
-			min: 0.01,
-			max: 100,
-			step: 0.01,
-			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxBudgetUsd: value }; }
-		});
-
-		// Max Tokens 설정
-		this.createNumberSetting(content, {
-			label: localize('maxTokens', "Max Tokens"),
-			description: localize('maxTokensDesc', "Maximum output tokens per response (CLI --max-tokens)"),
-			value: this.currentConfig.maxTokens ?? 16000,
-			min: 100,
-			max: 128000,
-			onChange: (value) => { this.currentConfig = { ...this.currentConfig, maxTokens: value }; }
-		});
-
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
+
+		// Git 섹션 (커밋 + 푸시)
+		this.createGitSection(footer);
 
 		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));
 		cancelBtn.textContent = localize('cancel', "Cancel");
@@ -441,5 +421,135 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		}));
 
 		return item;
+	}
+
+	/**
+	 * Git 섹션 (커밋 + 푸시) 생성
+	 */
+	private createGitSection(footer: HTMLElement): void {
+		const gitSection = append(footer, $('.claude-git-section'));
+
+		// 커밋 섹션 (변경사항이 있을 때만 표시)
+		if (this.callbacks.onCommit && this.callbacks.hasChangesToCommit?.()) {
+			const commitSection = append(gitSection, $('.claude-commit-section'));
+
+			const commitInput = append(commitSection, $('input.claude-commit-input')) as HTMLInputElement;
+			commitInput.type = 'text';
+			commitInput.placeholder = localize('commitMessagePlaceholder', "Commit message...");
+
+			const commitBtn = append(commitSection, $('button.claude-settings-btn.commit')) as HTMLButtonElement;
+			commitBtn.textContent = localize('commit', "Commit");
+			commitBtn.title = localize('commitTooltip', "Commit modified files to git");
+			commitBtn.disabled = true;
+
+			// 입력값에 따라 버튼 활성화
+			this.modalDisposables.push(addDisposableListener(commitInput, EventType.INPUT, () => {
+				commitBtn.disabled = !commitInput.value.trim();
+			}));
+
+			// Enter 키로 커밋
+			this.modalDisposables.push(addDisposableListener(commitInput, EventType.KEY_DOWN, (e: KeyboardEvent) => {
+				if (e.key === 'Enter' && commitInput.value.trim()) {
+					e.stopPropagation();
+					commitBtn.click();
+				}
+			}));
+
+			const doCommit = async () => {
+				const message = commitInput.value.trim();
+				if (!message) { return; }
+				try {
+					commitBtn.disabled = true;
+					commitInput.disabled = true;
+					commitBtn.textContent = localize('committing', "Committing...");
+					await this.callbacks.onCommit!(message);
+					commitInput.value = '';
+					commitSection.style.display = 'none';
+					commitBtn.textContent = localize('committed', "Committed!");
+				} catch (error) {
+					commitBtn.disabled = false;
+					commitInput.disabled = false;
+					commitBtn.textContent = localize('commit', "Commit");
+					console.error('[SettingsPanel] Commit failed:', error);
+				}
+			};
+
+			this.modalDisposables.push(addDisposableListener(commitBtn, EventType.CLICK, doCommit));
+		}
+
+		// PUSH 버튼
+		if (this.callbacks.onPush) {
+			const pushBtn = append(gitSection, $('button.claude-settings-btn.push')) as HTMLButtonElement;
+			pushBtn.textContent = localize('push', "Push");
+			pushBtn.title = localize('pushTooltip', "Push commits to remote");
+
+			const doPush = async () => {
+				try {
+					const hasPushable = await this.callbacks.hasPushableCommits?.();
+					if (!hasPushable) {
+						this.showPushDialog(gitSection, pushBtn, 'none');
+						return;
+					}
+					this.showPushDialog(gitSection, pushBtn, 'confirm');
+				} catch (error) {
+					console.error('[SettingsPanel] Push check failed:', error);
+				}
+			};
+
+			this.modalDisposables.push(addDisposableListener(pushBtn, EventType.CLICK, doPush));
+		}
+	}
+
+	/**
+	 * Push 확인/알림 다이얼로그 표시
+	 */
+	private showPushDialog(container: HTMLElement, pushBtn: HTMLButtonElement, mode: 'confirm' | 'none'): void {
+		const existing = container.querySelector('.claude-push-dialog');
+		if (existing) { existing.remove(); }
+
+		const dialog = append(container, $('.claude-push-dialog'));
+
+		if (mode === 'none') {
+			const msg = append(dialog, $('.claude-push-dialog-message'));
+			msg.textContent = localize('noPushableCommits', "No commits to push");
+
+			const okBtn = append(dialog, $('button.claude-settings-btn.secondary.small')) as HTMLButtonElement;
+			okBtn.textContent = localize('ok', "OK");
+			this.modalDisposables.push(addDisposableListener(okBtn, EventType.CLICK, () => {
+				dialog.remove();
+			}));
+		} else {
+			const msg = append(dialog, $('.claude-push-dialog-message'));
+			msg.textContent = localize('confirmPush', "Push commits to remote?");
+
+			const btnGroup = append(dialog, $('.claude-push-dialog-buttons'));
+
+			const noBtn = append(btnGroup, $('button.claude-settings-btn.secondary.small')) as HTMLButtonElement;
+			noBtn.textContent = localize('no', "No");
+			this.modalDisposables.push(addDisposableListener(noBtn, EventType.CLICK, () => {
+				dialog.remove();
+			}));
+
+			const yesBtn = append(btnGroup, $('button.claude-settings-btn.primary.small')) as HTMLButtonElement;
+			yesBtn.textContent = localize('yes', "Yes");
+			this.modalDisposables.push(addDisposableListener(yesBtn, EventType.CLICK, async () => {
+				try {
+					yesBtn.disabled = true;
+					noBtn.disabled = true;
+					pushBtn.disabled = true;
+					pushBtn.textContent = localize('pushing', "Pushing...");
+					await this.callbacks.onPush!();
+					dialog.remove();
+					this.close();
+				} catch (error) {
+					yesBtn.disabled = false;
+					noBtn.disabled = false;
+					pushBtn.disabled = false;
+					pushBtn.textContent = localize('push', "Push");
+					msg.textContent = localize('pushError', "Push failed. Try again?");
+					console.error('[SettingsPanel] Push failed:', error);
+				}
+			}));
+		}
 	}
 }

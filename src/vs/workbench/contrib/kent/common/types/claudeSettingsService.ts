@@ -17,14 +17,6 @@ export interface IClaudeSettingsPanelCallbacks {
 	onSettingsUpdated: () => void;
 }
 
-export interface ISessionSettings {
-	model?: string;
-	systemMessage?: string;
-	maxTokens?: number;
-	temperature?: number;
-	customInstructions?: string;
-}
-
 export interface ILocalSettingsManager {
 	getSettings(): any;
 	updateSetting(key: string, value: any): void;
@@ -41,11 +33,6 @@ export interface IClaudeSettingsService {
 	showSettingsPanel(): void;
 	hideSettingsPanel(): void;
 	toggleSettingsPanel(): void;
-
-	// Session Settings 관리
-	showSessionSettingsPanel(): void;
-	hideSessionSettingsPanel(): void;
-	updateSessionSettings(sessionId: string, settings: ISessionSettings): void;
 
 	// Local Settings 관리
 	getLocalSettings(): any;

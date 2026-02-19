@@ -412,7 +412,6 @@ export type ChatSessionState =
 export interface IClaudeConfiguration {
 	readonly apiKey: string;
 	readonly model: string;
-	readonly maxTokens: number;
 	readonly systemPrompt?: string;
 }
 
@@ -422,7 +421,6 @@ export interface IClaudeConfiguration {
 export interface IClaudeSendRequestOptions {
 	readonly context?: IClaudeContext;
 	readonly model?: string;
-	readonly maxTokens?: number;
 	readonly systemPrompt?: string;
 }
 

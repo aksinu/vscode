@@ -304,14 +304,8 @@ export class ChatManager extends Disposable {
 		const effectiveModel = resolveModelName(rawModel);
 
 		// 로컬 설정 > VS Code 설정 우선순위로 옵션 결정
-		const maxTurns = localConfig.maxTurns
-			?? this._configurationService.getValue<number>('claude.maxTurns');
-		const maxBudgetUsd = localConfig.maxBudgetUsd
-			?? this._configurationService.getValue<number>('claude.maxBudgetUsd');
 		const fallbackModel = localConfig.fallbackModel
 			?? this._configurationService.getValue<string>('claude.fallbackModel');
-		const maxTokens = localConfig.maxTokens
-			?? this._configurationService.getValue<number>('claude.maxTokens');
 		const appendSystemPrompt = this._configurationService.getValue<string>('claude.appendSystemPrompt');
 		const disallowedTools = localConfig.disallowedTools
 			?? this._configurationService.getValue<string[]>('claude.disallowedTools');
@@ -334,9 +328,6 @@ export class ChatManager extends Disposable {
 			workingDir: this._configManager.getWorkingDirectory(),
 			executable: localConfig.executable,
 			// 새 옵션들 (로컬 설정 > VS Code 설정 우선순위)
-			maxTokens,
-			maxTurns,
-			maxBudgetUsd,
 			fallbackModel,
 			appendSystemPrompt,
 			disallowedTools,

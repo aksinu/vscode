@@ -118,9 +118,18 @@ export class ClaudeCLIInstance extends Disposable {
 
 		const claudeArgs: string[] = [
 			'--output-format', 'stream-json',
-			'--verbose',
-			'--dangerously-skip-permissions'
+			'--verbose'
 		];
+
+		// Permission Mode 처리: 설정된 모드에 따라 CLI 인자 결정
+		const normalizedPermMode = normalizePermissionMode(options?.permissionMode);
+		if (normalizedPermMode && normalizedPermMode !== 'bypassPermissions') {
+			// 명시적 모드가 있으면 --permission-mode 전달
+			claudeArgs.push('--permission-mode', normalizedPermMode);
+		} else {
+			// 모드 미지정 또는 bypassPermissions → 전체 권한 부여
+			claudeArgs.push('--dangerously-skip-permissions');
+		}
 
 		if (options?.resumeSessionId) {
 			claudeArgs.push('--resume', options.resumeSessionId);
@@ -136,12 +145,6 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.allowedTools && options.allowedTools.length > 0) {
 			claudeArgs.push('--allowedTools', ...options.allowedTools);
 		}
-		if (options?.maxTurns !== undefined && options.maxTurns > 0) {
-			claudeArgs.push('--max-turns', String(options.maxTurns));
-		}
-		if (options?.maxBudgetUsd !== undefined && options.maxBudgetUsd > 0) {
-			claudeArgs.push('--max-budget-usd', String(options.maxBudgetUsd));
-		}
 		if (options?.fallbackModel) {
 			claudeArgs.push('--fallback-model', options.fallbackModel);
 		}
@@ -151,12 +154,6 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.disallowedTools && options.disallowedTools.length > 0) {
 			for (const tool of options.disallowedTools) {
 				claudeArgs.push('--disallowedTools', tool);
-			}
-		}
-		if (options?.permissionMode) {
-			const normalizedMode = normalizePermissionMode(options.permissionMode);
-			if (normalizedMode) {
-				claudeArgs.push('--permission-mode', normalizedMode);
 			}
 		}
 		if (options?.betas && options.betas.length > 0) {
@@ -178,8 +175,6 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.effort) {
 			claudeArgs.push('--effort', options.effort);
 		}
-		// NOTE: --max-tokens는 Claude CLI에서 지원하지 않는 옵션이므로 전달하지 않음
-
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
 		debugLog(`[Instance:${this.chatId}] Spawning:`, spawnCommand, spawnArgs.join(' '));
 
