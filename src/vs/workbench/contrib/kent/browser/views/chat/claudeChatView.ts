@@ -32,7 +32,6 @@ import { ClaudeMessageRenderer } from './claudeMessageRenderer.js';
 import { AutocompleteManager } from '../ui/claudeAutocomplete.js';
 import { StatusBarManager } from '../ui/claudeStatusBar.js';
 import { AttachmentManager } from './claudeAttachmentManager.js';
-import { LocalSettingsManager } from '../settings/claudeLocalSettings.js';
 import { InputEditorManager } from './claudeInputEditor.js';
 import { SessionInputManager } from './sessionInputManager.js';
 import { CodeApplyManager } from '../ui/claudeCodeApply.js';
@@ -79,7 +78,6 @@ export class ClaudeChatViewPane extends ViewPane {
 	private autocompleteManager!: AutocompleteManager;
 	private statusBarManager!: StatusBarManager;
 	private attachmentManager!: AttachmentManager;
-	private localSettingsManager!: LocalSettingsManager;
 	private inputEditorManager!: InputEditorManager;
 	private sessionInputManager!: SessionInputManager;
 	private codeApplyManager!: CodeApplyManager;
@@ -346,19 +344,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			}
 		);
 
-		// 로컬 설정 매니저
-		this.localSettingsManager = new LocalSettingsManager(
-			this.workspaceContextService,
-			this.fileService,
-			this.quickInputService,
-			this.notificationService,
-			this.editorService,
-			{
-				reloadLocalConfig: () => this.claudeService.reloadLocalConfig?.()
-			}
-		);
-
-		// 세션 설정 패널 초기화
 		// GitCommitManager 생성
 		this.gitCommitManager = new GitCommitManager(
 			this.claudeService,
@@ -374,8 +359,6 @@ export class ClaudeChatViewPane extends ViewPane {
 			{
 				getStatusInfo: () => this.claudeService.getStatusInfo?.(),
 				checkConnection: () => this.claudeService.checkConnection?.() ?? Promise.resolve(false),
-				openLocalSettings: () => this.localSettingsManager.open(),
-				openGlobalSettings: () => this.settingsPanel.open(this.container),
 				cyclePermissionMode: () => this.cyclePermissionMode(),
 				getPermissionMode: () => this.getPermissionMode(),
 				toggleThinking: () => this.toggleThinking(),
@@ -722,15 +705,6 @@ export class ClaudeChatViewPane extends ViewPane {
 
 		this._register(addDisposableListener(sessionButton, EventType.CLICK, () => {
 			this.sessionPicker.show();
-		}));
-
-		// 설정 버튼
-		const settingsButton = append(inputFooter, $('button.claude-footer-button'));
-		settingsButton.title = localize('openLocalSettings', "Open local settings (.vscode/claude.local.json)");
-		append(settingsButton, $('.codicon.codicon-settings-gear'));
-
-		this._register(addDisposableListener(settingsButton, EventType.CLICK, () => {
-			this.localSettingsManager.open();
 		}));
 	}
 

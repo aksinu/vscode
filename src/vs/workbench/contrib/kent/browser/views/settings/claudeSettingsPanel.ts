@@ -153,18 +153,21 @@ export class ClaudeSettingsPanel extends ClaudeModalDialog<IClaudeSettingsPanelC
 		// 푸터 (버튼)
 		const footer = append(panel, $('.claude-settings-footer'));
 
-		// Git 섹션 (커밋 + 푸시)
-		this.createGitSection(footer);
+		// 액션 버튼 행 (Save / Cancel)
+		const actionRow = append(footer, $('.claude-settings-action-row'));
 
-		const cancelBtn = append(footer, $('button.claude-settings-btn.secondary'));
+		const cancelBtn = append(actionRow, $('button.claude-settings-btn.secondary'));
 		cancelBtn.textContent = localize('cancel', "Cancel");
 		this.modalDisposables.push(addDisposableListener(cancelBtn, EventType.CLICK, () => this.close()));
 
-		const saveBtn = append(footer, $('button.claude-settings-btn.primary'));
+		const saveBtn = append(actionRow, $('button.claude-settings-btn.primary'));
 		saveBtn.textContent = localize('save', "Save");
 		this.modalDisposables.push(addDisposableListener(saveBtn, EventType.CLICK, async () => {
 			await this.handleSave(saveBtn);
 		}));
+
+		// Git 섹션 (커밋 + 푸시) — 별도 행
+		this.createGitSection(footer);
 
 		// 오버레이 클릭 시 닫기
 		this.modalDisposables.push(addDisposableListener(this.overlay, EventType.CLICK, (e: MouseEvent) => {

@@ -1935,26 +1935,6 @@
 	opacity: 0.3;
 }
 
-.claude-status-settings {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin-left: auto;
-	padding: 2px 6px;
-	background: transparent;
-	border: none;
-	color: var(--vscode-statusBar-foreground);
-	border-radius: 4px;
-	cursor: pointer;
-	opacity: 0.7;
-	transition: opacity 0.15s, background-color 0.15s;
-}
-
-.claude-status-settings:hover {
-	opacity: 1;
-	background-color: var(--vscode-toolbar-hoverBackground);
-}
-
 /* ========== Chat State Styles ========== */
 
 .claude-status-icon.idle {
@@ -2694,11 +2674,16 @@
 /* Footer Buttons */
 .claude-settings-footer {
 	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: 8px;
+	flex-direction: column;
+	gap: 10px;
 	padding: 16px 20px;
 	border-top: 1px solid var(--vscode-widget-border);
+}
+
+.claude-settings-action-row {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
 }
 
 .claude-settings-btn {
@@ -2782,9 +2767,6 @@
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	flex: 1;
-	min-width: 0;
-	order: -1;
 	width: 100%;
 }
 

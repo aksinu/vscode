@@ -15,8 +15,6 @@ import { ClaudeUIManager, IUIManagerCallbacks } from './claudeUIManager.js';
 export interface IStatusBarCallbacks extends IUIManagerCallbacks {
 	getStatusInfo(): IClaudeStatusInfo | undefined;
 	checkConnection(): Promise<boolean>;
-	openLocalSettings(): Promise<void>;
-	openGlobalSettings(): void;
 	cyclePermissionMode(): Promise<void>;
 	getPermissionMode(): ClaudePermissionMode;
 	toggleThinking(): void;
@@ -128,15 +126,6 @@ export class StatusBarManager extends ClaudeUIManager<IStatusBarCallbacks> {
 		append(chatStateItem, $('.claude-status-icon'));  // Icon element (reserved for future use)
 		const chatStateText = append(chatStateItem, $('.claude-status-text'));
 		chatStateText.textContent = 'Idle';
-
-		// 설정 버튼 (오른쪽)
-		const settingsButton = append(this.container, $('button.claude-status-settings'));
-		settingsButton.title = localize('globalSettings', "Global Settings");
-		append(settingsButton, $('.codicon.codicon-settings-gear'));
-
-		this.registerDisposable(addDisposableListener(settingsButton, EventType.CLICK, () => {
-			this.callbacks.openGlobalSettings();
-		}));
 
 		// 초기 상태 업데이트
 		const initialStatus = this.callbacks.getStatusInfo();
