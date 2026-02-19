@@ -92,6 +92,8 @@ export class CLIEventHandler extends Disposable {
 
 	// AskUser 응답으로 새 프로세스가 시작됨 → stale handleComplete 무시용
 	private _askUserResumeInProgress = false;
+	// respondToAskUser 진행 중 여부 (중복 호출 방어 — 즉시 설정)
+	private _respondToAskUserInProgress = false;
 
 	private readonly callbacks?: ICLIEventHandlerCallbacks;
 	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
@@ -431,12 +433,16 @@ export class CLIEventHandler extends Disposable {
 	 * AskUser 질문에 응답
 	 */
 	async respondToAskUser(responses: string[], askRequestFromUI?: IClaudeAskUserRequest): Promise<void> {
-		// 이미 resume 진행 중이면 중복 호출 무시 (더블 클릭 방어)
-		if (this._askUserResumeInProgress) {
+		console.log('[AskUser] respondToAskUser called', { responses, askRequestId: askRequestFromUI?.id, resumeInProgress: this._askUserResumeInProgress, respondInProgress: this._respondToAskUserInProgress });
+
+		// 이미 응답 처리 중이면 중복 호출 무시 (즉시 체크 — UI 더블 클릭 및 재렌더 방어)
+		if (this._respondToAskUserInProgress || this._askUserResumeInProgress) {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY,
-				'[AskUser] respondToAskUser ignored - resume already in progress');
+				`[AskUser] respondToAskUser ignored - already in progress (respond=${this._respondToAskUserInProgress}, resume=${this._askUserResumeInProgress})`);
+			console.log('[AskUser] respondToAskUser BLOCKED - duplicate call');
 			return;
 		}
+		this._respondToAskUserInProgress = true;
 
 		const sessionInteraction = this.getSessionInteraction();
 		let askRequest = sessionInteraction.getCurrentAskUserRequest();
