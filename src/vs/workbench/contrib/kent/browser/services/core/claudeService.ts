@@ -669,7 +669,11 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			}
 		}
 
-		return this._cliEventHandler.respondToAskUser(responses, askRequestFromUI);
+		await this._cliEventHandler.respondToAskUser(responses, askRequestFromUI);
+
+		// 응답 완료 후 서비스 레벨 상태 클리어 (stale 상태 방지)
+		this._currentAskUserRequest = undefined;
+		this._isWaitingForUser = false;
 	}
 
 	/**
