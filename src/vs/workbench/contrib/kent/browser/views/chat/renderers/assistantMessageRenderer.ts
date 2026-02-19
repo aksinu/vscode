@@ -83,6 +83,7 @@ export class AssistantMessageRenderer {
 		// isWaitingForUser가 false여도 askUserRequest가 있으면 렌더링 (타이밍 문제 방어)
 		// 자동 승인된 경우나 이미 응답된 경우는 renderAskUser 내부에서 처리
 		if (message.askUserRequest) {
+			console.log('[AskUser] Rendering AskUser UI', { askRequestId: message.askUserRequest.id, isWaitingForUser: message.isWaitingForUser, isStreaming: message.isStreaming });
 			this.renderAskUser(message.askUserRequest, messageElement, disposables);
 		}
 
@@ -419,7 +420,11 @@ export class AssistantMessageRenderer {
 		submitButton.disabled = true;
 
 		const submitHandler = () => {
-			if (submitted || !submitButton || submitButton.disabled) { return; }
+			console.log('[AskUser] Submit button clicked', { submitted, disabled: submitButton?.disabled, askRequestId: askRequest.id });
+			if (submitted || !submitButton || submitButton.disabled) {
+				console.log('[AskUser] Submit blocked - already submitted or disabled');
+				return;
+			}
 			submitted = true;
 
 			// 모든 옵션 버튼 비활성화
@@ -444,6 +449,7 @@ export class AssistantMessageRenderer {
 				responses.push(sel.join(', '));
 			}
 
+			console.log('[AskUser] Calling onRespondToAskUser with responses:', responses, 'askRequestId:', askRequest.id);
 			if (this._options.onRespondToAskUser) {
 				this._options.onRespondToAskUser(responses, askRequest);
 			}
