@@ -339,6 +339,8 @@ export class CLIEventHandler extends Disposable {
 			isStreaming: false,
 			toolActions: finalToolActions,
 			currentToolAction: undefined,  // 명시적으로 undefined 설정하여 merge 시 이전 running 상태 제거
+			askUserRequest: undefined,  // 명시적으로 undefined 설정하여 merge 시 이전 AskUser 상태 제거
+			isWaitingForUser: false,
 			usage: sessionInteraction.getUsage(),
 			cliSessionId: sessionInteraction.getCliSessionId()  // 세션 복원 시 --resume에 필요
 		};
