@@ -121,12 +121,20 @@ export class ChatManager extends Disposable {
 		// 사용자 메시지 저장
 		this._sessionService.saveSessions();
 
-		// 프롬프트 구성 - 이전 대화 컨텍스트 포함
-		const prompt = this._contextBuilder.buildPromptWithContext(
-			content,
-			this._sessionService.getMessages(),
-			options?.context
-		);
+		// 세션 내 CLI 세션 ID 확인 — 있으면 후속 턴 (--resume 사용)
+		const existingCliSessionId = this._sessionService.getCliSessionId();
+		const isResumeTurn = !!existingCliSessionId;
+
+		// 프롬프트 구성
+		// 후속 턴(--resume)에서는 히스토리를 포함하지 않음 — CLI가 내부적으로 관리
+		// 첫 턴에서만 이전 대화 컨텍스트 포함
+		const prompt = isResumeTurn
+			? this._contextBuilder.buildPromptWithContext(content, [], options?.context)
+			: this._contextBuilder.buildPromptWithContext(
+				content,
+				this._sessionService.getMessages(),
+				options?.context
+			);
 
 		// 스트리밍 메시지 생성 (헬퍼 메서드로 중복 제거)
 		const messageId = generateUuid();
@@ -172,7 +180,24 @@ export class ChatManager extends Disposable {
 			this._logService.debug(ChatManager.LOG_CATEGORY, 'Calling sendPrompt...');
 
 			// CLI 옵션 빌드
-			const cliOptions = this.buildCLIOptions(options);
+			let cliOptions: IClaudeCLIRequestOptions;
+
+			// 후속 턴이면 --resume으로 CLI 세션 이어가기
+			// (터미널 CLI와 동일한 방식 — 히스토리는 CLI가 관리)
+			if (isResumeTurn && existingCliSessionId) {
+				// --resume 시에는 최소 옵션만 전달 (세션 설정은 첫 턴에서 이미 적용됨)
+				cliOptions = {
+					resumeSessionId: existingCliSessionId,
+					workingDir: this._configManager.getWorkingDirectory(),
+					executable: this._configManager.getLocalConfig().executable
+				};
+				this._logService.info(ChatManager.LOG_CATEGORY,
+					`🔄 RESUME TURN - Using --resume with cliSessionId: ${existingCliSessionId}`);
+			} else {
+				cliOptions = this.buildCLIOptions(options);
+				this._logService.info(ChatManager.LOG_CATEGORY,
+					'🆕 FIRST TURN - Starting new CLI session');
+			}
 
 			// 15분 타임아웃 (복잡한 작업은 시간이 오래 걸릴 수 있음)
 			const currentSessionId = this._sessionService.getCurrentSession()?.id;

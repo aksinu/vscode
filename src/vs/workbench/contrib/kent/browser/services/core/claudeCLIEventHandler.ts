@@ -323,7 +323,8 @@ export class CLIEventHandler extends Disposable {
 			isStreaming: false,
 			toolActions: finalToolActions,
 			currentToolAction: undefined,  // 명시적으로 undefined 설정하여 merge 시 이전 running 상태 제거
-			usage: sessionInteraction.getUsage()
+			usage: sessionInteraction.getUsage(),
+			cliSessionId: sessionInteraction.getCliSessionId()  // 세션 복원 시 --resume에 필요
 		};
 
 		message.updateSessionMessage(finalMessage);
@@ -349,7 +350,8 @@ export class CLIEventHandler extends Disposable {
 		this.getMessage().setCurrentMessageId(undefined);
 		this.getMessage().setAccumulatedContent('');
 		this.getToolAction().setCurrentToolAction(undefined);
-		this.getSessionInteraction().setCliSessionId(undefined);
+		// cliSessionId는 보존! 후속 턴에서 --resume으로 세션 연속성 유지를 위해 필요
+		// (이전: setCliSessionId(undefined) → 매 턴마다 새 세션 시작 → 토큰 낭비)
 		this.getSessionInteraction().setUsage(undefined);
 		// 큐 리셋 (새로운 큐 시스템)
 		this._dataOperationQueue = [];
