@@ -457,6 +457,7 @@ export class CLIEventHandler extends Disposable {
 
 		if (!askRequest) {
 			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'No askRequest available - cannot respond');
+			this._respondToAskUserInProgress = false;
 			return;
 		}
 
@@ -494,6 +495,8 @@ export class CLIEventHandler extends Disposable {
 				// 에러 시 상태 복구
 				this.getState().setState('idle');
 				this.handleError(`User input failed: ${error}`);
+			} finally {
+				this._respondToAskUserInProgress = false;
 			}
 		} else if (cliSessionId) {
 			// AskUserQuestion (tool_use): --resume 옵션으로 세션 재개
@@ -534,11 +537,13 @@ export class CLIEventHandler extends Disposable {
 				// onDidComplete 이벤트는 이미 도착했지만 flag으로 스킵되었으므로,
 				// flag을 리셋하고 직접 handleComplete를 호출하여 최종 상태 정리
 				this._askUserResumeInProgress = false;
+				this._respondToAskUserInProgress = false;
 				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed, calling handleComplete');
 				await this.handleComplete();
 			} catch (error) {
 				this.logService.error(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume failed:', error);
 				this._askUserResumeInProgress = false;
+				this._respondToAskUserInProgress = false;
 				// 에러 시 상태 복구 — idle로 전환하여 사용자가 다시 시도할 수 있도록
 				this.getState().setState('idle');
 				this.handleError(`AskUser resume failed: ${error}`);
@@ -556,6 +561,7 @@ export class CLIEventHandler extends Disposable {
 
 			// 사용자에게 에러 알림
 			this.handleError('AskUser 응답을 전송할 수 없습니다. CLI 세션이 만료되었습니다. 새 대화를 시작해 주세요.');
+			this._respondToAskUserInProgress = false;
 		}
 	}
 
