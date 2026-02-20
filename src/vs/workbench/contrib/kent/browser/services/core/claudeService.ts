@@ -40,7 +40,6 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	declare readonly _serviceBrand: undefined;
 
 	private static readonly LOG_CATEGORY = 'ClaudeService';
-	private static readonly MAX_QUEUE_SIZE = 10;
 	private static readonly QUEUE_STORAGE_KEY = 'claude.messageQueue';
 
 	// ========== Managers ==========
@@ -586,7 +585,7 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	}
 
 	private saveSessionQueue(sessionId: string, queue?: IClaudeQueuedMessage[]): void {
-		const queueToSave = queue || this._queueService.getSessionQueue(sessionId);
+		const queueToSave = queue || this._queueService.getQueuedMessages(sessionId);
 		if (!queueToSave) return;
 
 		try {
