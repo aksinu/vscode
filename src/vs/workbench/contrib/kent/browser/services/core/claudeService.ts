@@ -650,6 +650,19 @@ export class ClaudeService extends Disposable implements IClaudeService {
 		// 응답 완료 후 서비스 레벨 상태 클리어 (stale 상태 방지)
 		this._currentAskUserRequest = undefined;
 		this._isWaitingForUser = false;
+
+		// Resume 경로에서는 onDidCompleteAny의 handleComplete가 stale로 스킵되므로
+		// ClaudeService 레벨의 상태 전환이 누락됨 → 여기서 직접 수행
+		// (CLIEventHandler.handleComplete()는 이미 내부 상태를 idle로 전환했지만,
+		//  ClaudeService._state, _uiService, _chatStateManager는 아직 streaming 상태)
+		const currentSessionId = this._sessionService.getCurrentSession()?.id;
+		if (currentSessionId && this._state !== 'idle') {
+			this.logService.info(ClaudeService.LOG_CATEGORY,
+				'[AskUser] Post-respondToAskUser: completing service-level state transition to idle');
+			this._state = 'idle';
+			this._uiService.fireStateChange('idle');
+			this._chatStateManager.completeStreaming(currentSessionId);
+		}
 	}
 
 	/**

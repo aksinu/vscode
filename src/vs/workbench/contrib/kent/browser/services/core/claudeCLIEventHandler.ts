@@ -511,6 +511,13 @@ export class CLIEventHandler extends Disposable {
 			this.getState().setState('streaming');
 
 			try {
+				// 이전 프로세스의 stale handleComplete가 도착해도 무시하도록 플래그 설정
+				// ★ waitForProcessCompletion 전에 설정해야 함!
+				// 대기 중에 CLI 프로세스가 종료되면 handleComplete가 호출되는데,
+				// 이 플래그가 없으면 handleComplete가 상태를 idle로 전환하고
+				// currentMessageId를 정리해버려서 이후 resume이 실패함
+				this._askUserResumeInProgress = true;
+
 				// CLI 프로세스가 아직 실행 중일 수 있음 (AskUserQuestion tool_use 이벤트는
 				// CLI 프로세스가 종료되기 전에 도착할 수 있음)
 				// 현재 프로세스가 완료될 때까지 대기한 후 --resume으로 재개
@@ -523,11 +530,6 @@ export class CLIEventHandler extends Disposable {
 					this.logService.info(CLIEventHandler.LOG_CATEGORY,
 						'[AskUser] CLI process completed, proceeding with resume');
 				}
-
-				// 이전 프로세스의 stale handleComplete가 도착해도 무시하도록 플래그 설정
-				// handleComplete에서는 이 flag을 리셋하지 않음 — sendPrompt resolve 후에만 리셋
-				// → resume 중 발생하는 모든 handleComplete를 확실히 무시
-				this._askUserResumeInProgress = true;
 
 				const cliOptions: IClaudeCLIRequestOptions = {
 					resumeSessionId: cliSessionId

@@ -933,6 +933,22 @@ export class AssistantMessageRenderer {
 			append(cacheElement, $('.codicon.codicon-database'));
 			append(cacheElement, $('span')).textContent = this.formatNumber(usage.cacheReadTokens);
 		}
+
+		// 서브에이전트 사용 정보
+		if (usage.subagents && usage.subagents.length > 0) {
+			for (const subagent of usage.subagents) {
+				const subagentElement = append(tokensElement, $('.token-item.subagent'));
+				const tooltip = subagent.description
+					? `${subagent.type}: ${subagent.description}`
+					: subagent.type;
+				subagentElement.title = tooltip;
+				append(subagentElement, $('.codicon.codicon-symbol-method'));
+				append(subagentElement, $('span')).textContent = subagent.type;
+				if (subagent.status === 'error') {
+					subagentElement.classList.add('error');
+				}
+			}
+		}
 	}
 
 	private formatNumber(num: number): string {
@@ -951,7 +967,7 @@ export class AssistantMessageRenderer {
 			'Glob': 'Finding files',
 			'WebFetch': 'Fetching URL',
 			'WebSearch': 'Searching web',
-			'Task': 'Running task',
+			'Task': 'Running agent',
 			'AskUser': 'Asking question'
 		};
 		return toolNames[tool] || tool;
@@ -973,6 +989,14 @@ export class AssistantMessageRenderer {
 			case 'WebFetch':
 			case 'WebSearch':
 				return String(input['url'] || input['query'] || '');
+			case 'Task': {
+				const agentType = String(input['subagent_type'] || input['subagentType'] || '');
+				const desc = String(input['description'] || '');
+				if (agentType && desc) {
+					return `${agentType}: ${desc.length > 40 ? desc.substring(0, 40) + '...' : desc}`;
+				}
+				return agentType || desc || '';
+			}
 			default:
 				return '';
 		}
