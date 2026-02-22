@@ -69,6 +69,19 @@ function parseRateLimitError(errorText: string): IClaudeRateLimitInfo | null {
 }
 
 /**
+ * CLI stderr에서 치명적 에러 감지
+ * exit code 0이어도 실질적 실패인 경우 (prompt too long 등)
+ */
+function isFatalCLIError(stderrText: string): boolean {
+	const lower = stderrText.toLowerCase();
+	return lower.includes('prompt is too long') ||
+		lower.includes('too many tokens') ||
+		lower.includes('context length exceeded') ||
+		lower.includes('content_too_large') ||
+		lower.includes('maximum context length');
+}
+
+/**
  * 단일 Claude CLI 프로세스 인스턴스
  * 하나의 채팅창(chatId)에 대응하는 CLI 프로세스를 관리
  */
@@ -248,6 +261,7 @@ export class ClaudeCLIInstance extends Disposable {
 			});
 
 			let stderrBuffer = '';
+			let hasFatalStderrError = false;
 			this._process.stderr?.on('data', (data: Buffer) => {
 				this.updateActivityTime();
 				const errorText = data.toString();
@@ -264,6 +278,11 @@ export class ClaudeCLIInstance extends Disposable {
 						content: rateLimitInfo.message
 					});
 				}
+
+				// 치명적 에러 감지 (exit code 0으로 종료되어도 에러로 처리해야 함)
+				if (isFatalCLIError(stderrBuffer)) {
+					hasFatalStderrError = true;
+				}
 			});
 
 			this._process.on('close', (code, signal) => {
@@ -273,6 +292,16 @@ export class ClaudeCLIInstance extends Disposable {
 				this._stdinOpen = false;
 				this._process = undefined;
 				this.cleanupPromptFile();
+
+				// stderr에 치명적 에러가 있고 result를 못 받았으면 에러 처리
+				// (CLI가 exit code 0으로 종료해도 실질적 실패)
+				if (hasFatalStderrError && !this._receivedResult) {
+					const errorMsg = stderrBuffer.trim();
+					debugLog(`[Instance:${this.chatId}] Fatal stderr error detected (code=${code}):`, errorMsg);
+					this._onDidError.fire(errorMsg);
+					reject(new Error(errorMsg));
+					return;
+				}
 
 				// result 이벤트를 이미 받았으면 exit code와 무관하게 정상 종료로 처리
 				// Claude CLI가 AskUser 등의 이유로 code 1로 종료되더라도

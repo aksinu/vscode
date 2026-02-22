@@ -126,15 +126,10 @@ export class ChatManager extends Disposable {
 		const isResumeTurn = !!existingCliSessionId;
 
 		// 프롬프트 구성
-		// 후속 턴(--resume)에서는 히스토리를 포함하지 않음 — CLI가 내부적으로 관리
-		// 첫 턴에서만 이전 대화 컨텍스트 포함
-		const prompt = isResumeTurn
-			? this._contextBuilder.buildPromptWithContext(content, [], options?.context)
-			: this._contextBuilder.buildPromptWithContext(
-				content,
-				this._sessionService.getMessages(),
-				options?.context
-			);
+		// CLI가 대화 히스토리를 내부적으로 관리하므로 히스토리를 포함하지 않음
+		// (첫 턴/후속 턴 모두 — 이전에 첫 턴에서 히스토리를 포함했으나
+		//  CLI의 CLAUDE.md + 시스템 프롬프트와 중복되어 "prompt is too long" 에러 유발)
+		const prompt = this._contextBuilder.buildPromptWithContext(content, [], options?.context);
 
 		// 스트리밍 메시지 생성 (헬퍼 메서드로 중복 제거)
 		const messageId = generateUuid();

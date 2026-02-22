@@ -403,10 +403,13 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
+		// 사용자 친화적 에러 메시지 변환
+		const displayError = this.formatUserFriendlyError(error);
+
 		const errorMessage: IClaudeMessage = {
 			id: message.getCurrentMessageId() || generateUuid(),
 			role: 'assistant',
-			content: `Error: ${error}`,
+			content: displayError,
 			timestamp: Date.now(),
 			isError: true,
 			isStreaming: false,
@@ -429,6 +432,25 @@ export class CLIEventHandler extends Disposable {
 
 		message.setCurrentMessageId(undefined);
 		message.setAccumulatedContent('');
+	}
+
+	/**
+	 * CLI 에러를 사용자 친화적 메시지로 변환
+	 */
+	private formatUserFriendlyError(error: string): string {
+		const lowerError = error.toLowerCase();
+
+		// Prompt too long / context window 초과
+		if (lowerError.includes('prompt is too long') ||
+			lowerError.includes('too many tokens') ||
+			lowerError.includes('context length exceeded') ||
+			lowerError.includes('content_too_large') ||
+			lowerError.includes('maximum context length')) {
+			return '대화가 너무 길어져서 처리할 수 없습니다.\n새 세션을 시작해 주세요. (세션 관리 버튼 → 새 세션)';
+		}
+
+		// 기본: 원본 에러
+		return `Error: ${error}`;
 	}
 
 	/**
