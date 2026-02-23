@@ -32,6 +32,12 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 
 	// ========== 상태 관리 ==========
 	readonly state: IStateContext = {
+		getEffectivePermissionMode: () => {
+			const localConfig = this.claudeService._configManager.getLocalConfig();
+			return localConfig.permissionMode
+				?? this.claudeService.configurationService?.getValue('claude.permissionMode')
+				?? 'default';
+		},
 		setState: (state: ClaudeServiceState) => {
 			// ChatStateManager에도 상태 반영 (중앙 집중 상태 관리)
 			const sessionId = this.claudeService._sessionService.getCurrentSession()?.id;

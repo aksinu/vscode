@@ -34,6 +34,8 @@ export interface IStateContext {
 	setState(state: 'idle' | 'sending' | 'streaming' | 'error'): void;
 	getLocalConfig(): IClaudeLocalConfig;
 	isAutoAcceptEnabled(): boolean;
+	/** 유효 권한 모드 반환 (localConfig > VS Code 설정 > 'default' 순) */
+	getEffectivePermissionMode(): string | undefined;
 }
 
 /**

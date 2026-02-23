@@ -23,6 +23,7 @@ export interface ICLIEventHandlerCallbacks {
 	setState(state: 'idle' | 'sending' | 'streaming' | 'error'): void;
 	getLocalConfig(): IClaudeLocalConfig;
 	isAutoAcceptEnabled(): boolean;
+	getEffectivePermissionMode?(): string | undefined;
 
 	// 메시지
 	getCurrentMessageId(): string | undefined;
@@ -187,6 +188,14 @@ export class CLIEventHandler extends Disposable {
 			return;
 		}
 
+		// 일반 에러 이벤트 처리 (rate_limit 외 — prompt too long 등)
+		if (event.type === 'error') {
+			const errorContent = event.content || 'Unknown error';
+			this.logService.warn(CLIEventHandler.LOG_CATEGORY, 'CLI error event:', errorContent);
+			this.handleError(errorContent);
+			return;
+		}
+
 		// system 이벤트 처리 (초기화)
 		if (event.type === 'system') {
 			this.handleSystemEvent(event);
@@ -318,6 +327,16 @@ export class CLIEventHandler extends Disposable {
 			// (setState('idle')을 호출하면 chatStateManager.isWaitingForUser()가 false를 반환하여
 			//  메시지 재렌더링 시 AskUser UI가 사라지는 문제 발생)
 			sessionInteraction.saveSessions();
+			return true;
+		}
+
+		// 데이터 없이 완료된 경우 (prompt too long 등 CLI가 아무 응답 없이 종료)
+		const hasContent = message.getAccumulatedContent().trim().length > 0;
+		const hasToolActions = toolAction.getToolActions().length > 0;
+		if (!hasContent && !hasToolActions) {
+			this.logService.warn(CLIEventHandler.LOG_CATEGORY,
+				'[EmptyResponse] CLI completed with no content and no tool actions - likely prompt too long or context exceeded');
+			this.handleError('대화가 너무 길어져서 처리할 수 없습니다.\n새 세션을 시작해 주세요. (세션 관리 버튼 → 새 세션)');
 			return true;
 		}
 
@@ -553,8 +572,10 @@ export class CLIEventHandler extends Disposable {
 						'[AskUser] CLI process completed, proceeding with resume');
 				}
 
+				const effectivePermMode = this.getState().getEffectivePermissionMode?.();
 				const cliOptions: IClaudeCLIRequestOptions = {
-					resumeSessionId: cliSessionId
+					resumeSessionId: cliSessionId,
+					permissionMode: effectivePermMode as IClaudeCLIRequestOptions['permissionMode']
 				};
 
 				await channel.call('sendPrompt', [responseText, cliOptions]);

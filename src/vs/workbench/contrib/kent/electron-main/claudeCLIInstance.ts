@@ -188,6 +188,16 @@ export class ClaudeCLIInstance extends Disposable {
 		if (options?.effort) {
 			claudeArgs.push('--effort', options.effort);
 		}
+
+		// 프롬프트 전달 방식 결정:
+		// - 프롬프트를 임시 파일에 저장하고 -p 플래그로 파일 내용을 전달
+		// - stdin은 input_request 응답(권한 프롬프트 등)을 위해 열어둠
+		// - Windows cmd.exe 명령줄 제한(~8000자)을 피하기 위해 임시 파일 사용
+		const promptTempFile = path.join(process.env.TEMP || '/tmp', `claude-prompt-${this.chatId}-${Date.now()}.txt`);
+		fs.writeFileSync(promptTempFile, prompt, 'utf8');
+		this._promptFile = promptTempFile;
+		debugLog(`[Instance:${this.chatId}] Prompt written to temp file: ${promptTempFile} (${prompt.length} chars)`);
+
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
 		debugLog(`[Instance:${this.chatId}] Spawning:`, spawnCommand, spawnArgs.join(' '));
 
@@ -336,17 +346,47 @@ export class ClaudeCLIInstance extends Disposable {
 				reject(error);
 			});
 
+			// 프롬프트를 임시 파일에서 읽어 stdin으로 전송
+			// stdin은 닫지 않고 열어둠 → input_request 응답용
 			if (this._process.stdin) {
-				debugLog(`[Instance:${this.chatId}] Writing prompt to stdin...`);
 				this._stdinOpen = true;
-				this._process.stdin.write(prompt + '\n', 'utf8', (err) => {
-					if (err) {
-						debugLog(`[Instance:${this.chatId}] ERROR: stdin write failed:`, err.message);
+				try {
+					const promptContent = fs.readFileSync(promptTempFile, 'utf8');
+					debugLog(`[Instance:${this.chatId}] Writing prompt from temp file to stdin (${promptContent.length} chars)...`);
+					this._process.stdin.write(promptContent + '\n', 'utf8', (err) => {
+						if (err) {
+							debugLog(`[Instance:${this.chatId}] ERROR: stdin write failed:`, err.message);
+							this._stdinOpen = false;
+						} else {
+							debugLog(`[Instance:${this.chatId}] Prompt written to stdin, keeping open for input_request`);
+							// stdin을 닫지 않음 — input_request 응답을 위해 열어둠
+							// CLI가 줄 단위(\n)로 읽으면 프롬프트가 즉시 처리됨
+							// CLI가 EOF를 기다리면 stdinFallbackTimer가 닫아줌
+						}
+					});
+				} catch (readErr) {
+					debugLog(`[Instance:${this.chatId}] ERROR: Failed to read prompt file:`, readErr);
+					this._stdinOpen = false;
+				}
+
+				// 안전 장치: CLI가 EOF를 기다리는 경우를 대비한 폴백 타이머
+				// 10초 내에 CLI로부터 아무 데이터도 안 오면 stdin을 닫아서 EOF를 보냄
+				// (이 경우 input_request 지원은 불가하지만, 기본 동작은 보장)
+				let hasReceivedAnyData = false;
+				const stdinFallbackTimer = setTimeout(() => {
+					dataListener.dispose();
+					if (!hasReceivedAnyData && this._stdinOpen && this._process?.stdin) {
+						debugLog(`[Instance:${this.chatId}] No data from CLI after 10s — closing stdin (EOF fallback)`);
+						this._process.stdin.end();
 						this._stdinOpen = false;
-					} else {
-						debugLog(`[Instance:${this.chatId}] Prompt written, ending stdin`);
-						this._process?.stdin?.end();
-						this._stdinOpen = false;
+					}
+				}, 10000);
+				const dataListener = this._onDidReceiveData.event(() => {
+					if (!hasReceivedAnyData) {
+						hasReceivedAnyData = true;
+						clearTimeout(stdinFallbackTimer);
+						dataListener.dispose();
+						debugLog(`[Instance:${this.chatId}] CLI responded — stdin stays open for input_request`);
 					}
 				});
 			}

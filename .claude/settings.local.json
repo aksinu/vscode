@@ -67,7 +67,10 @@
       "Bash(cmd /c \"tasklist /FI \"\"IMAGENAME eq Code*\"\" /FO TABLE 2>nul\")",
       "Bash(cmd /c \"rmdir /s /q D:\\\\_______________Kent\\\\vscode\\\\.build\\\\electron 2>&1\")",
       "Bash(npm show:*)",
-      "Bash(npm update:*)"
+      "Bash(npm update:*)",
+      "Bash(python3:*)",
+      "Bash(xxd:*)",
+      "Bash(git add:*)"
     ]
   }
 }

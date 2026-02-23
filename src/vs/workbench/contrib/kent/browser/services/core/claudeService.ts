@@ -647,21 +647,42 @@ export class ClaudeService extends Disposable implements IClaudeService {
 
 		await this._cliEventHandler.respondToAskUser(responses, askRequestFromUI);
 
-		// 응답 완료 후 서비스 레벨 상태 클리어 (stale 상태 방지)
-		this._currentAskUserRequest = undefined;
-		this._isWaitingForUser = false;
+		// 응답 완료 후 서비스 레벨 상태 클리어
+		// 단, resume 중에 새 AskUser가 설정되었으면 보존해야 함
+		// (Claude가 resume 후 연속으로 AskUser를 보내는 시나리오)
+		const postSessionState = this._sessionService.getCurrentSessionState();
+		const newAskRequest = postSessionState?.currentAskUserRequest;
+
+		if (newAskRequest) {
+			// Resume 중 새 AskUser가 설정됨 → 해당 상태 보존
+			this.logService.info(ClaudeService.LOG_CATEGORY,
+				'[AskUser] Post-respondToAskUser: new AskUser detected during resume, preserving asking state');
+			this._currentAskUserRequest = newAskRequest;
+			this._isWaitingForUser = true;
+		} else {
+			this._currentAskUserRequest = undefined;
+			this._isWaitingForUser = false;
+		}
 
 		// Resume 경로에서는 onDidCompleteAny의 handleComplete가 stale로 스킵되므로
 		// ClaudeService 레벨의 상태 전환이 누락됨 → 여기서 직접 수행
-		// (CLIEventHandler.handleComplete()는 이미 내부 상태를 idle로 전환했지만,
-		//  ClaudeService._state, _uiService, _chatStateManager는 아직 streaming 상태)
+		// 단, 다음 조건을 모두 만족해야 함:
+		//   1. 현재 상태가 idle이 아님 (handleComplete가 이미 idle로 전환하지 않은 경우)
+		//   2. CLI가 아직 실행 중이지 않음 (input_request 경로에서는 CLI가 계속 실행 중)
+		//   3. 새 AskUser가 없음 (resume 중 연속 AskUser 시나리오)
 		const currentSessionId = this._sessionService.getCurrentSession()?.id;
-		if (currentSessionId && this._state !== 'idle') {
-			this.logService.info(ClaudeService.LOG_CATEGORY,
-				'[AskUser] Post-respondToAskUser: completing service-level state transition to idle');
-			this._state = 'idle';
-			this._uiService.fireStateChange('idle');
-			this._chatStateManager.completeStreaming(currentSessionId);
+		if (currentSessionId && this._state !== 'idle' && !newAskRequest) {
+			const isStillRunning = await this._multiConnection.isRunning(currentSessionId);
+			if (!isStillRunning) {
+				this.logService.info(ClaudeService.LOG_CATEGORY,
+					'[AskUser] Post-respondToAskUser: completing service-level state transition to idle');
+				this._state = 'idle';
+				this._uiService.fireStateChange('idle');
+				this._chatStateManager.completeStreaming(currentSessionId);
+			} else {
+				this.logService.info(ClaudeService.LOG_CATEGORY,
+					'[AskUser] Post-respondToAskUser: CLI still running (input_request path), skipping idle transition');
+			}
 		}
 	}
 

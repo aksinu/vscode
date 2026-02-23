@@ -180,11 +180,16 @@ export class ChatManager extends Disposable {
 			// 후속 턴이면 --resume으로 CLI 세션 이어가기
 			// (터미널 CLI와 동일한 방식 — 히스토리는 CLI가 관리)
 			if (isResumeTurn && existingCliSessionId) {
-				// --resume 시에는 최소 옵션만 전달 (세션 설정은 첫 턴에서 이미 적용됨)
+				// --resume 시에도 permissionMode는 전달해야 함
+				// (미전달 시 --dangerously-skip-permissions가 사용되어 권한 프롬프트 무시됨)
+				const resumeLocalConfig = this._configManager.getLocalConfig();
+				const resumePermissionMode = resumeLocalConfig.permissionMode
+					?? this._configurationService.getValue<'default' | 'plan' | 'accept-edits'>('claude.permissionMode');
 				cliOptions = {
 					resumeSessionId: existingCliSessionId,
 					workingDir: this._configManager.getWorkingDirectory(),
-					executable: this._configManager.getLocalConfig().executable
+					executable: resumeLocalConfig.executable,
+					permissionMode: resumePermissionMode
 				};
 				this._logService.info(ChatManager.LOG_CATEGORY,
 					`🔄 RESUME TURN - Using --resume with cliSessionId: ${existingCliSessionId}`);
