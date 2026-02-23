@@ -135,12 +135,15 @@ export class ClaudeCLIInstance extends Disposable {
 		];
 
 		// Permission Mode 처리: 설정된 모드에 따라 CLI 인자 결정
+		// stream-json 모드에서는 인터랙티브 권한 프롬프트(input_request)를 처리할 수 없으므로
+		// 'default' 모드는 --dangerously-skip-permissions로 대체 (향후 자체 권한 UI 구현 예정)
+		// 'acceptEdits', 'plan' 등 비-인터랙티브 모드만 --permission-mode로 전달
 		const normalizedPermMode = normalizePermissionMode(options?.permissionMode);
-		if (normalizedPermMode && normalizedPermMode !== 'bypassPermissions') {
-			// 명시적 모드가 있으면 --permission-mode 전달
+		const nonInteractiveModes = ['acceptEdits', 'plan', 'dontAsk'];
+		if (normalizedPermMode && nonInteractiveModes.includes(normalizedPermMode)) {
 			claudeArgs.push('--permission-mode', normalizedPermMode);
 		} else {
-			// 모드 미지정 또는 bypassPermissions → 전체 권한 부여
+			// 모드 미지정, 'default', 'bypassPermissions' → 전체 권한 부여
 			claudeArgs.push('--dangerously-skip-permissions');
 		}
 

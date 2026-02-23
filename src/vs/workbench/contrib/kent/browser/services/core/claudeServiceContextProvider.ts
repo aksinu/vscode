@@ -167,7 +167,13 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 				if (waiting) {
 					this.claudeService._chatStateManager.waitForUser(sessionId);
 				} else {
-					this.claudeService._chatStateManager.resumeFromUserResponse(sessionId);
+					// 'asking' 상태에서만 resumeFromUserResponse 호출
+					// (handleComplete 정리 시 이미 idle인 상태에서 호출하면
+					//  idle → responding 바운스가 발생하여 UI가 깜빡임)
+					const currentChatState = this.claudeService._chatStateManager.getSessionState(sessionId);
+					if (currentChatState?.state === 'asking') {
+						this.claudeService._chatStateManager.resumeFromUserResponse(sessionId);
+					}
 				}
 			}
 			// Legacy 상태도 동기화
