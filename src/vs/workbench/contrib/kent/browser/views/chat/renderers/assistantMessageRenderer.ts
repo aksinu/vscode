@@ -48,6 +48,15 @@ export class AssistantMessageRenderer {
 	// 이미 submit된 AskUser 요청 ID를 추적 (재렌더링 시에도 submitted 상태 유지)
 	private readonly _submittedAskRequestIds = new Set<string>();
 
+	// ★ AskUser DOM 보존: re-render 시 선택 상태를 유지하기 위해
+	// AskUser 영역의 DOM 요소와 이벤트 핸들러를 별도 관리
+	// (메시지 전체가 clearNode → 재생성되어도 AskUser만 보존)
+	private _preservedAskUser: {
+		requestId: string;
+		element: HTMLElement;
+		disposables: DisposableStore;
+	} | undefined;
+
 	constructor(options?: IAssistantMessageRendererOptions) {
 		this._options = options || {};
 	}
@@ -63,6 +72,20 @@ export class AssistantMessageRenderer {
 	): DisposableStore {
 		const disposables = new DisposableStore();
 		const readOnly = options?.readOnly ?? false;
+
+		// ★ AskUser DOM 보존: clearNode 전에 보존된 요소를 detach
+		// 같은 askRequest.id이고 아직 submit되지 않았으면 DOM을 재사용
+		const reuseAskRequestId = message.askUserRequest?.id;
+		let canReuseAskUser = false;
+		if (reuseAskRequestId &&
+			this._preservedAskUser?.requestId === reuseAskRequestId &&
+			!this._submittedAskRequestIds.has(reuseAskRequestId)) {
+			// clearNode가 파괴하기 전에 DOM에서 분리
+			if (this._preservedAskUser.element.parentElement) {
+				this._preservedAskUser.element.remove();
+			}
+			canReuseAskUser = true;
+		}
 
 		clearNode(container);
 
@@ -82,11 +105,33 @@ export class AssistantMessageRenderer {
 		this.renderToolInfo(message, messageElement, currentState, disposables);
 
 		// Ask 질문 (사용자 선택 대기 중일 때)
-		// isWaitingForUser가 false여도 askUserRequest가 있으면 렌더링 (타이밍 문제 방어)
-		// 자동 승인된 경우나 이미 응답된 경우는 renderAskUser 내부에서 처리
 		if (message.askUserRequest) {
-			console.log('[AskUser] Rendering AskUser UI', { askRequestId: message.askUserRequest.id, isWaitingForUser: message.isWaitingForUser, isStreaming: message.isStreaming });
-			this.renderAskUser(message.askUserRequest, messageElement, disposables);
+			if (canReuseAskUser && this._preservedAskUser) {
+				// ★ 보존된 AskUser DOM 재사용 — 선택 상태 + 이벤트 핸들러 그대로 유지
+				console.log('[AskUser] Reusing preserved AskUser DOM', { askRequestId: reuseAskRequestId });
+				messageElement.appendChild(this._preservedAskUser.element);
+			} else {
+				// 새 AskUser 생성 — 별도 DisposableStore로 이벤트 핸들러 관리
+				// (메인 disposables와 분리해야 메시지 re-render 시 이벤트 핸들러가 살아남음)
+				console.log('[AskUser] Creating new AskUser UI', { askRequestId: message.askUserRequest.id });
+				this._cleanupPreservedAskUser();
+				const askDisposables = new DisposableStore();
+				this.renderAskUser(message.askUserRequest, messageElement, askDisposables);
+				const askElement = messageElement.querySelector('.claude-ask-user') as HTMLElement;
+				if (askElement && message.askUserRequest.id) {
+					this._preservedAskUser = {
+						requestId: message.askUserRequest.id,
+						element: askElement,
+						disposables: askDisposables,
+					};
+				} else {
+					// id 없으면 보존 불가 → 메인 disposables에 추가
+					disposables.add(askDisposables);
+				}
+			}
+		} else {
+			// AskUser 없음 — 보존된 요소 정리
+			this._cleanupPreservedAskUser();
 		}
 
 		// 토큰 사용량 (완료 후)
@@ -292,6 +337,17 @@ export class AssistantMessageRenderer {
 	 * - 단일 선택: 라디오 방식 (하나만 선택)
 	 * - Submit 버튼으로 모든 답변 한 번에 전송
 	 */
+
+	/**
+	 * 보존된 AskUser DOM 정리
+	 */
+	private _cleanupPreservedAskUser(): void {
+		if (this._preservedAskUser) {
+			this._preservedAskUser.disposables.dispose();
+			this._preservedAskUser = undefined;
+		}
+	}
+
 	private renderAskUser(askRequest: IClaudeAskUserRequest, container: HTMLElement, disposables: DisposableStore): void {
 		const askContainer = append(container, $('.claude-ask-user'));
 

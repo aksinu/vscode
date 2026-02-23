@@ -192,17 +192,39 @@ export class ClaudeCLIInstance extends Disposable {
 			claudeArgs.push('--effort', options.effort);
 		}
 
-		// 프롬프트 전달 방식 결정:
-		// - 프롬프트를 임시 파일에 저장하고 -p 플래그로 파일 내용을 전달
-		// - stdin은 input_request 응답(권한 프롬프트 등)을 위해 열어둠
+		// 프롬프트 전달 방식:
+		// - 프롬프트를 임시 파일에 저장
+		// - Normal: 임시 파일 내용을 Node.js stdin으로 전달 (input_request 응답 가능)
+		// - Resume: Windows 셸 파이프로 전달 (type tempfile | claude --resume ...)
+		//   → Node.js stdin 파이프가 --resume 모드에서 신뢰성 없어 셸 파이프 사용
 		// - Windows cmd.exe 명령줄 제한(~8000자)을 피하기 위해 임시 파일 사용
+		const isResuming = !!options?.resumeSessionId;
 		const promptTempFile = path.join(process.env.TEMP || '/tmp', `claude-prompt-${this.chatId}-${Date.now()}.txt`);
 		fs.writeFileSync(promptTempFile, prompt, 'utf8');
 		this._promptFile = promptTempFile;
-		debugLog(`[Instance:${this.chatId}] Prompt written to temp file: ${promptTempFile} (${prompt.length} chars)`);
+		debugLog(`[Instance:${this.chatId}] Prompt written to temp file: ${promptTempFile} (${prompt.length} chars, resume=${isResuming})`);
 
 		const { spawnCommand, spawnArgs } = this.resolveExecutable(options?.executable, claudeArgs, options?.workingDir);
-		debugLog(`[Instance:${this.chatId}] Spawning:`, spawnCommand, spawnArgs.join(' '));
+
+		// Resume: 셸 파이프로 프롬프트 전달 (Node.js stdin 대신)
+		// type "tempfile" | claude --resume <id> --output-format stream-json ...
+		let finalCommand: string;
+		let finalArgs: string[];
+		let useStdin: boolean;
+
+		if (isResuming) {
+			// Windows: type, Unix: cat
+			const catCmd = process.platform === 'win32' ? 'type' : 'cat';
+			finalCommand = `${catCmd} "${promptTempFile}" | ${spawnCommand} ${spawnArgs.join(' ')}`;
+			finalArgs = [];
+			useStdin = false;
+			debugLog(`[Instance:${this.chatId}] Resume: using shell pipe: ${finalCommand}`);
+		} else {
+			finalCommand = spawnCommand;
+			finalArgs = spawnArgs;
+			useStdin = true;
+			debugLog(`[Instance:${this.chatId}] Normal: using stdin, spawning: ${spawnCommand} ${spawnArgs.join(' ')}`);
+		}
 
 		return new Promise((resolve, reject) => {
 			try {
@@ -211,11 +233,11 @@ export class ClaudeCLIInstance extends Disposable {
 				delete cleanEnv.ELECTRON_RUN_AS_NODE;
 				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
 
-				this._process = spawn(spawnCommand, spawnArgs, {
+				this._process = spawn(finalCommand, finalArgs, {
 					cwd: options?.workingDir || process.cwd(),
 					shell: true,
 					env: cleanEnv,
-					stdio: ['pipe', 'pipe', 'pipe'],
+					stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
 					windowsHide: true
 				});
 			} catch (spawnError) {
@@ -349,9 +371,9 @@ export class ClaudeCLIInstance extends Disposable {
 				reject(error);
 			});
 
-			// 프롬프트를 임시 파일에서 읽어 stdin으로 전송
-			// stdin은 닫지 않고 열어둠 → input_request 응답용
-			if (this._process.stdin) {
+			// 프롬프트를 stdin으로 전송 (normal case만)
+			// Resume는 셸 파이프로 전달하므로 stdin 불필요 (stdio: 'ignore')
+			if (useStdin && this._process.stdin) {
 				this._stdinOpen = true;
 				try {
 					const promptContent = fs.readFileSync(promptTempFile, 'utf8');
@@ -362,9 +384,6 @@ export class ClaudeCLIInstance extends Disposable {
 							this._stdinOpen = false;
 						} else {
 							debugLog(`[Instance:${this.chatId}] Prompt written to stdin, keeping open for input_request`);
-							// stdin을 닫지 않음 — input_request 응답을 위해 열어둠
-							// CLI가 줄 단위(\n)로 읽으면 프롬프트가 즉시 처리됨
-							// CLI가 EOF를 기다리면 stdinFallbackTimer가 닫아줌
 						}
 					});
 				} catch (readErr) {
@@ -373,25 +392,25 @@ export class ClaudeCLIInstance extends Disposable {
 				}
 
 				// 안전 장치: CLI가 EOF를 기다리는 경우를 대비한 폴백 타이머
-				// 10초 내에 CLI로부터 아무 데이터도 안 오면 stdin을 닫아서 EOF를 보냄
-				// (이 경우 input_request 지원은 불가하지만, 기본 동작은 보장)
-				let hasReceivedAnyData = false;
-				const stdinFallbackTimer = setTimeout(() => {
-					dataListener.dispose();
-					if (!hasReceivedAnyData && this._stdinOpen && this._process?.stdin) {
-						debugLog(`[Instance:${this.chatId}] No data from CLI after 10s — closing stdin (EOF fallback)`);
-						this._process.stdin.end();
-						this._stdinOpen = false;
-					}
-				}, 10000);
-				const dataListener = this._onDidReceiveData.event(() => {
-					if (!hasReceivedAnyData) {
-						hasReceivedAnyData = true;
-						clearTimeout(stdinFallbackTimer);
+				{
+					let hasReceivedAnyData = false;
+					const stdinFallbackTimer = setTimeout(() => {
 						dataListener.dispose();
-						debugLog(`[Instance:${this.chatId}] CLI responded — stdin stays open for input_request`);
-					}
-				});
+						if (!hasReceivedAnyData && this._stdinOpen && this._process?.stdin) {
+							debugLog(`[Instance:${this.chatId}] No data from CLI after 10s — closing stdin (EOF fallback)`);
+							this._process.stdin.end();
+							this._stdinOpen = false;
+						}
+					}, 10000);
+					const dataListener = this._onDidReceiveData.event(() => {
+						if (!hasReceivedAnyData) {
+							hasReceivedAnyData = true;
+							clearTimeout(stdinFallbackTimer);
+							dataListener.dispose();
+							debugLog(`[Instance:${this.chatId}] CLI responded — stdin stays open for input_request`);
+						}
+					});
+				}
 			}
 		});
 	}

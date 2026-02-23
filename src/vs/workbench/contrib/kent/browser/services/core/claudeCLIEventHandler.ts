@@ -322,7 +322,11 @@ export class CLIEventHandler extends Disposable {
 			};
 
 			message.updateSessionMessage(waitingMessage);
-			message.fireMessageUpdate(waitingMessage);
+			// ★ fireMessageUpdate를 호출하지 않음!
+			// fireMessageUpdate는 UI 전체 re-render를 트리거하는데,
+			// renderAskUser에서 selections Map이 로컬로 생성되므로
+			// re-render 시 사용자가 선택 중인 옵션이 모두 초기화됨.
+			// updateSessionMessage만으로 세션 데이터는 저장됨.
 			// AskUser 대기 중이므로 setState('idle') 호출하지 않음 — 'asking' 상태 유지
 			// (setState('idle')을 호출하면 chatStateManager.isWaitingForUser()가 false를 반환하여
 			//  메시지 재렌더링 시 AskUser UI가 사라지는 문제 발생)

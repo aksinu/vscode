@@ -23,6 +23,7 @@
 | 2 | CLI exit code 1 에러 (Windows shell) | Open | P2 Medium | — |
 | 3 | Pending 메시지 큐 저장소 불일치 (edit/X 미동작, 삭제 메시지 재등장) | Fixed | P1 High | [BUG_Queue_Pending_Inconsistency.md](BUG_Queue_Pending_Inconsistency.md) |
 | 4 | AskUser Submit 후 진행 안 됨 (Resume 타이밍 Race) | Fixed | P1 High | [BUG_AskUser_ResumeTimingRace.md](BUG_AskUser_ResumeTimingRace.md) |
+| 5 | AskUser 선택 리셋 + Submit 후 응답 없음 | In Progress | P1 High | [BUG_AskUser_SelectionResetAndNoResponse.md](BUG_AskUser_SelectionResetAndNoResponse.md) |
 
 ---
 
