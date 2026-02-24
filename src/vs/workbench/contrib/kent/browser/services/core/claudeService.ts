@@ -22,7 +22,7 @@ import { IWorkspaceContextService } from '../../../../../../platform/workspace/c
 import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
 import { ClaudeConnection, ClaudeMultiConnection } from './claudeConnection.js';
 import { CLIEventHandler } from './claudeCLIEventHandler.js';
-import { ClaudeServiceContextProvider } from './claudeServiceContextProvider.js';
+import { ICLIEventHandlerUnifiedContext } from './cliEventHandlerContext.js';
 import { IMainProcessService } from '../../../../../../platform/ipc/common/mainProcessService.js';
 import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
@@ -195,9 +195,8 @@ export class ClaudeService extends Disposable implements IClaudeService {
 			this._fileService.cleanupInvalidSnapshots();
 		}, 1000);
 
-		// CLI 이벤트 핸들러 생성
-		const contextProvider = new ClaudeServiceContextProvider(this);
-		this._cliEventHandler = this._register(new CLIEventHandler(contextProvider, this.logService));
+		// CLI 이벤트 핸들러 생성 (ContextProvider 없이 직접 컨텍스트 전달)
+		this._cliEventHandler = this._register(new CLIEventHandler(this._buildEventHandlerContext(), this.logService));
 		this.logService.info(ClaudeService.LOG_CATEGORY, 'CLI event handler created');
 
 		// CLI 이벤트 구독
@@ -1327,6 +1326,189 @@ export class ClaudeService extends Disposable implements IClaudeService {
 	 */
 	get fileService(): IClaudeFileService {
 		return this._fileService;
+	}
+
+	/**
+	 * CLI 이벤트 핸들러에 전달할 통합 컨텍스트 생성
+	 * (ClaudeServiceContextProvider 클래스를 대체 — any 타이핑 제거, 직접 참조)
+	 */
+	private _buildEventHandlerContext(): ICLIEventHandlerUnifiedContext {
+		return {
+			connection: {
+				confirmConnected: () => this._multiConnection.confirmConnected(),
+				getChannel: () => this._createMultiSessionChannelWrapper()
+			},
+			state: {
+				getEffectivePermissionMode: () => {
+					const localConfig = this._configManager.getLocalConfig();
+					return localConfig.permissionMode
+						?? this.configurationService?.getValue<string>('claude.permissionMode')
+						?? 'default';
+				},
+				setState: (state: ClaudeServiceState) => {
+					const sessionId = this._sessionService.getCurrentSession()?.id;
+					if (sessionId && this._chatStateManager) {
+						switch (state) {
+							case 'idle':
+								if (!this._chatStateManager.isWaitingForUser(sessionId)) {
+									this._chatStateManager.completeStreaming(sessionId);
+								}
+								break;
+							case 'streaming':
+								break;
+							case 'error':
+								this._chatStateManager.setError(sessionId, 'Unknown error');
+								break;
+						}
+					}
+					this.setState(state);
+				},
+				getLocalConfig: () => this._localConfig,
+				isAutoAcceptEnabled: () => this.isAutoAcceptEnabled(),
+				getWorkingDirectory: () => this._configManager.getWorkingDirectory()
+			},
+			message: {
+				getCurrentMessageId: () => this._sessionService.getCurrentMessageId() ?? this._currentMessageId,
+				setCurrentMessageId: (id: string | undefined) => {
+					this._sessionService.setCurrentMessageId(id);
+					this._currentMessageId = id;
+				},
+				getAccumulatedContent: () => this._sessionService.getAccumulatedContent() ?? this._accumulatedContent,
+				setAccumulatedContent: (content: string) => {
+					this._sessionService.setAccumulatedContent(content);
+					this._accumulatedContent = content;
+				},
+				appendContent: (text: string) => {
+					this._sessionService.appendToAccumulatedContent(text);
+					if (this._accumulatedContent) {
+						this._accumulatedContent += '\n' + text;
+					} else {
+						this._accumulatedContent = text;
+					}
+				},
+				createAssistantMessage: (id) => {
+					const assistantMessage = this._messageService.createAssistantMessage(id);
+					this._sessionService.addMessage(assistantMessage);
+					this._messageService.fireMessageReceive(assistantMessage);
+				},
+				updateSessionMessage: (message) => this._sessionService.updateMessage(message),
+				fireMessageUpdate: (message) => this._messageService.fireMessageUpdate(message),
+				fireMessageReceive: (message) => {
+					this._sessionService.addMessage(message);
+					this._messageService.fireMessageReceive(message);
+				}
+			},
+			toolAction: {
+				getToolActions: () => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.toolActions ?? this._toolActions;
+				},
+				addToolAction: (action) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.toolActions.push(action);
+					}
+					this._toolActions.push(action);
+				},
+				updateToolAction: (id, update) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						const idx = sessionState.toolActions.findIndex((a: IClaudeToolAction) => a.id === id);
+						if (idx !== -1) {
+							sessionState.toolActions[idx] = { ...sessionState.toolActions[idx], ...update };
+						}
+					}
+					const idx = this._toolActions.findIndex((a: IClaudeToolAction) => a.id === id);
+					if (idx !== -1) {
+						this._toolActions[idx] = { ...this._toolActions[idx], ...update };
+					}
+				},
+				getCurrentToolAction: () => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.currentToolAction ?? this._currentToolAction;
+				},
+				setCurrentToolAction: (action) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.currentToolAction = action;
+					}
+					this._currentToolAction = action;
+					this._uiService.fireToolActionChange(action);
+				}
+			},
+			sessionInteraction: {
+				getCurrentAskUserRequest: () => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.currentAskUserRequest ?? this._currentAskUserRequest;
+				},
+				setCurrentAskUserRequest: (request) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.currentAskUserRequest = request;
+					}
+					this._currentAskUserRequest = request;
+				},
+				isWaitingForUser: () => {
+					const sessionId = this._sessionService.getCurrentSession()?.id;
+					if (sessionId && this._chatStateManager) {
+						return this._chatStateManager.isWaitingForUser(sessionId);
+					}
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.isWaitingForUser ?? this._isWaitingForUser;
+				},
+				setWaitingForUser: (waiting) => {
+					const sessionId = this._sessionService.getCurrentSession()?.id;
+					if (sessionId && this._chatStateManager) {
+						if (waiting) {
+							this._chatStateManager.waitForUser(sessionId);
+						} else {
+							const currentChatState = this._chatStateManager.getSessionState(sessionId);
+							if (currentChatState?.state === 'asking') {
+								this._chatStateManager.resumeFromUserResponse(sessionId);
+							}
+						}
+					}
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.isWaitingForUser = waiting;
+					}
+					this._isWaitingForUser = waiting;
+				},
+				getCliSessionId: () => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.cliSessionId ?? this._cliSessionId;
+				},
+				setCliSessionId: (id) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.cliSessionId = id;
+					}
+					this._cliSessionId = id;
+				},
+				hasCurrentSession: () => this._sessionService.hasCurrentSession(),
+				saveSessions: () => this._sessionService.saveSessions(),
+				getUsage: () => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					return sessionState?.usage ?? this._usage;
+				},
+				setUsage: (usage) => {
+					const sessionState = this._sessionService.getCurrentSessionState();
+					if (sessionState) {
+						sessionState.usage = usage;
+					}
+					this._usage = usage;
+				}
+			},
+			fileOperation: {
+				startRateLimitHandling: (retryAfterSeconds, message) => this.startRateLimitHandling(retryAfterSeconds, message),
+				isRateLimitError: (error) => this._rateLimitService.isRateLimitError(error),
+				parseRetrySeconds: (error) => this._rateLimitService.parseRetrySeconds(error) ?? undefined,
+				processQueue: () => this.processQueue(),
+				captureFileBeforeEdit: (filePath) => this._fileService.captureBeforeEdit(filePath),
+				captureFileAfterEdit: (filePath) => this._fileService.captureAfterEdit(filePath),
+				onCommandComplete: () => this.handleCommandComplete()
+			}
+		};
 	}
 
 	/**

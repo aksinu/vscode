@@ -5,77 +5,11 @@
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
-import { IChannel } from '../../../../../../base/parts/ipc/common/ipc.js';
-import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeAskUserQuestion, IClaudeUsageInfo, IClaudeSubagentUsage } from '../../../common/types/claudeTypes.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../../../common/claudeCLI.js';
-import { IClaudeLocalConfig } from '../../../common/config/claudeLocalConfig.js';
+import { IClaudeMessage, IClaudeToolAction, IClaudeAskUserRequest, IClaudeSubagentUsage } from '../../../common/types/claudeTypes.js';
+import { IClaudeCLIStreamEvent } from '../../../common/claudeCLI.js';
 import { IClaudeLogService } from '../../../common/claudeLogService.js';
-import { ICLIEventHandlerUnifiedContext, ICLIEventHandlerContext } from './cliEventHandlerContext.js';
-
-/**
- * CLI 이벤트 핸들러 콜백 인터페이스
- */
-export interface ICLIEventHandlerCallbacks {
-	// 연결
-	confirmConnected(): void;
-
-	// 상태
-	setState(state: 'idle' | 'sending' | 'streaming' | 'error'): void;
-	getLocalConfig(): IClaudeLocalConfig;
-	isAutoAcceptEnabled(): boolean;
-	getEffectivePermissionMode?(): string | undefined;
-	getWorkingDirectory?(): string | undefined;
-
-	// 메시지
-	getCurrentMessageId(): string | undefined;
-	setCurrentMessageId(id: string | undefined): void;
-	getAccumulatedContent(): string;
-	setAccumulatedContent(content: string): void;
-	appendContent(text: string): void;
-
-	// 도구 액션
-	getToolActions(): IClaudeToolAction[];
-	addToolAction(action: IClaudeToolAction): void;
-	updateToolAction(id: string, update: Partial<IClaudeToolAction>): void;
-	getCurrentToolAction(): IClaudeToolAction | undefined;
-	setCurrentToolAction(action: IClaudeToolAction | undefined): void;
-
-	// AskUser
-	getCurrentAskUserRequest(): IClaudeAskUserRequest | undefined;
-	setCurrentAskUserRequest(request: IClaudeAskUserRequest | undefined): void;
-	isWaitingForUser(): boolean;
-	setWaitingForUser(waiting: boolean): void;
-
-	// 세션
-	getCliSessionId(): string | undefined;
-	setCliSessionId(id: string | undefined): void;
-	hasCurrentSession(): boolean;
-	createAssistantMessage(id: string): void;
-	updateSessionMessage(message: IClaudeMessage): void;
-	fireMessageUpdate(message: IClaudeMessage): void;
-	fireMessageReceive(message: IClaudeMessage): void;
-	saveSessions(): void;
-
-	// Rate limit
-	startRateLimitHandling(retryAfterSeconds: number, message?: string): void;
-	isRateLimitError(error: string): boolean;
-	parseRetrySeconds(error: string): number | undefined;
-
-	// 큐
-	processQueue(): void;
-
-	// 채널
-	getChannel(): IChannel;
-
-	// Usage
-	getUsage(): IClaudeUsageInfo | undefined;
-	setUsage(usage: IClaudeUsageInfo | undefined): void;
-
-	// File Snapshot (Diff 용)
-	captureFileBeforeEdit(filePath: string): Promise<void>;
-	captureFileAfterEdit(filePath: string): Promise<void>;
-	onCommandComplete(): Promise<void>;
-}
+import { ICLIEventHandlerUnifiedContext } from './cliEventHandlerContext.js';
+import { AskUserHandler } from './askUserHandler.js';
 
 /**
  * CLI 이벤트 핸들러
@@ -92,75 +26,30 @@ export class CLIEventHandler extends Disposable {
 	// handleData 호출 추적 (handleComplete가 모든 handleData 완료를 기다리기 위함)
 	private _pendingHandleDataPromises: Set<Promise<void>> = new Set();
 
-	// AskUser 응답으로 새 프로세스가 시작됨 → stale handleComplete 무시용
-	private _askUserResumeInProgress = false;
-	// respondToAskUser 진행 중 여부 (중복 호출 방어 — 즉시 설정)
-	private _respondToAskUserInProgress = false;
+	private readonly context: ICLIEventHandlerUnifiedContext;
+	private readonly askUserHandler: AskUserHandler;
 
-	private readonly callbacks?: ICLIEventHandlerCallbacks;
-	private readonly unifiedContext?: ICLIEventHandlerUnifiedContext;
-	private readonly _context?: ICLIEventHandlerContext;
-
-	/**
-	 * Legacy 생성자 (47개 개별 콜백)
-	 */
-	constructor(callbacks: ICLIEventHandlerCallbacks, logService: IClaudeLogService);
-	/**
-	 * 새로운 생성자 (6개 그룹화된 컨텍스트)
-	 */
-	constructor(unifiedContext: ICLIEventHandlerUnifiedContext, logService: IClaudeLogService);
-	/**
-	 * 최신 생성자 (통합 컨텍스트 패턴)
-	 */
-	constructor(context: ICLIEventHandlerContext, logService: IClaudeLogService);
 	constructor(
-		callbacksOrContext: ICLIEventHandlerCallbacks | ICLIEventHandlerUnifiedContext | ICLIEventHandlerContext,
+		context: ICLIEventHandlerUnifiedContext,
 		private readonly logService: IClaudeLogService
 	) {
 		super();
-
-		// 타입 구분
-		if ('getConnection' in callbacksOrContext) {
-			// 최신 통합 컨텍스트 (메모리 최적화)
-			this._context = callbacksOrContext;
-			void this._context; // Reserved for future use
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using optimized context pattern (memory efficient)');
-		} else if ('connection' in callbacksOrContext) {
-			// 6개 그룹 컨텍스트
-			this.unifiedContext = callbacksOrContext;
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using unified context pattern (6 groups)');
-		} else {
-			// Legacy 개별 콜백
-			this.callbacks = callbacksOrContext;
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Using legacy callback pattern (47 individual callbacks)');
-		}
+		this.context = context;
+		this.askUserHandler = new AskUserHandler(context, logService, {
+			handleComplete: () => this.handleComplete(),
+			handleError: (error: string) => this.handleError(error),
+			updateCurrentMessage: () => this.updateCurrentMessage()
+		});
 	}
 
-	// ========== 통합 접근 헬퍼 메서드들 ==========
+	// ========== 컨텍스트 접근 헬퍼 ==========
 
-	private getState() {
-		return this.unifiedContext?.state || this.callbacks!;
-	}
-
-	private getMessage() {
-		return this.unifiedContext?.message || this.callbacks!;
-	}
-
-	private getToolAction() {
-		return this.unifiedContext?.toolAction || this.callbacks!;
-	}
-
-	private getSessionInteraction() {
-		return this.unifiedContext?.sessionInteraction || this.callbacks!;
-	}
-
-	private getFileOperation() {
-		return this.unifiedContext?.fileOperation || this.callbacks!;
-	}
-
-	private getConnection() {
-		return this.unifiedContext?.connection || this.callbacks!;
-	}
+	private getState() { return this.context.state; }
+	private getMessage() { return this.context.message; }
+	private getToolAction() { return this.context.toolAction; }
+	private getSessionInteraction() { return this.context.sessionInteraction; }
+	private getFileOperation() { return this.context.fileOperation; }
+	private getConnection() { return this.context.connection; }
 
 	/**
 	 * CLI 데이터 이벤트 처리
@@ -293,7 +182,7 @@ export class CLIEventHandler extends Disposable {
 		// (respondToAskUser가 상태를 이미 리셋하고 새 스트리밍을 시작했으므로 stale 이벤트)
 		// flag은 respondToAskUser에서 sendPrompt가 resolve된 후에만 리셋됨
 		// → 이렇게 해야 resume 중 발생하는 모든 stale handleComplete를 확실히 무시
-		if (this._askUserResumeInProgress) {
+		if (this.askUserHandler.isResumeInProgress()) {
 			this.logService.info(CLIEventHandler.LOG_CATEGORY,
 				'[AskUser] handleComplete skipped - AskUser resume already in progress (stale completion from previous process)');
 			return false;
@@ -514,147 +403,10 @@ export class CLIEventHandler extends Disposable {
 	}
 
 	/**
-	 * AskUser 질문에 응답
+	 * AskUser 질문에 응답 (askUserHandler에 위임)
 	 */
 	async respondToAskUser(responses: string[], askRequestFromUI?: IClaudeAskUserRequest): Promise<void> {
-		console.log('[AskUser] respondToAskUser called', { responses, askRequestId: askRequestFromUI?.id, resumeInProgress: this._askUserResumeInProgress, respondInProgress: this._respondToAskUserInProgress });
-
-		// 이미 응답 처리 중이면 중복 호출 무시 (즉시 체크 — UI 더블 클릭 및 재렌더 방어)
-		if (this._respondToAskUserInProgress || this._askUserResumeInProgress) {
-			this.logService.info(CLIEventHandler.LOG_CATEGORY,
-				`[AskUser] respondToAskUser ignored - already in progress (respond=${this._respondToAskUserInProgress}, resume=${this._askUserResumeInProgress})`);
-			console.log('[AskUser] respondToAskUser BLOCKED - duplicate call');
-			return;
-		}
-		this._respondToAskUserInProgress = true;
-
-		const sessionInteraction = this.getSessionInteraction();
-		let askRequest = sessionInteraction.getCurrentAskUserRequest();
-
-		// 세션 복원 후에는 런타임 상태가 초기화되어 있을 수 있음
-		// UI에서 전달받은 askRequest로 복구 시도
-		if (!askRequest && askRequestFromUI) {
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Restoring askRequest from UI (session was restored)');
-			askRequest = askRequestFromUI;
-			sessionInteraction.setCurrentAskUserRequest(askRequest);
-		}
-
-		if (!askRequest) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'No askRequest available - cannot respond');
-			this._respondToAskUserInProgress = false;
-			return;
-		}
-
-		// isWaitingForUser가 false인 경우 (세션 복원 등) 자동 복구
-		if (!sessionInteraction.isWaitingForUser()) {
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, 'Auto-restoring waitingForUser state (was false, askRequest exists)');
-			sessionInteraction.setWaitingForUser(true);
-		}
-
-		this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] respondToAskUser called with responses:', responses);
-
-		const isInputRequest = askRequest.isInputRequest === true;
-		const cliSessionId = sessionInteraction.getCliSessionId();
-		const currentMessageId = this.getMessage().getCurrentMessageId();
-		this.logService.info(CLIEventHandler.LOG_CATEGORY,
-			`[AskUser] isInputRequest: ${isInputRequest}, cliSessionId: ${cliSessionId}, currentMessageId: ${currentMessageId}`);
-
-		// 응답 텍스트
-		const responseText = responses.join(', ');
-
-		if (isInputRequest) {
-			// input_request: 기존 CLI 프로세스의 stdin으로 응답 전송
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Sending user input via stdin:', responseText);
-
-			// 상태 리셋
-			sessionInteraction.setWaitingForUser(false);
-			sessionInteraction.setCurrentAskUserRequest(undefined);
-			this.updateCurrentMessage();
-			this.getState().setState('streaming');
-
-			try {
-				await this.getConnection().getChannel().call('sendUserInput', [responseText]);
-			} catch (error) {
-				this.logService.error(CLIEventHandler.LOG_CATEGORY, 'sendUserInput failed:', error);
-				// 에러 시 상태 복구
-				this.getState().setState('idle');
-				this.handleError(`User input failed: ${error}`);
-			} finally {
-				this._respondToAskUserInProgress = false;
-			}
-		} else if (cliSessionId) {
-			// AskUserQuestion (tool_use): --resume 옵션으로 세션 재개
-			this.logService.info(CLIEventHandler.LOG_CATEGORY, `[AskUser] Resuming session with cliSessionId: ${cliSessionId}, response: ${responseText}`);
-
-			// 상태 리셋
-			sessionInteraction.setWaitingForUser(false);
-			sessionInteraction.setCurrentAskUserRequest(undefined);
-			this.updateCurrentMessage();
-			this.getState().setState('streaming');
-
-			try {
-				// 이전 프로세스의 stale handleComplete가 도착해도 무시하도록 플래그 설정
-				// ★ waitForProcessCompletion 전에 설정해야 함!
-				// 대기 중에 CLI 프로세스가 종료되면 handleComplete가 호출되는데,
-				// 이 플래그가 없으면 handleComplete가 상태를 idle로 전환하고
-				// currentMessageId를 정리해버려서 이후 resume이 실패함
-				this._askUserResumeInProgress = true;
-
-				// CLI 프로세스가 아직 실행 중일 수 있음 (AskUserQuestion tool_use 이벤트는
-				// CLI 프로세스가 종료되기 전에 도착할 수 있음)
-				// 현재 프로세스가 완료될 때까지 대기한 후 --resume으로 재개
-				const channel = this.getConnection().getChannel();
-				const isStillRunning = await channel.call<boolean>('isRunning', []);
-				if (isStillRunning) {
-					this.logService.info(CLIEventHandler.LOG_CATEGORY,
-						'[AskUser] CLI process still running, waiting for completion before resume...');
-					await this.waitForProcessCompletion(channel, 30000);
-					this.logService.info(CLIEventHandler.LOG_CATEGORY,
-						'[AskUser] CLI process completed, proceeding with resume');
-				}
-
-				const stateCtx = this.getState();
-				const effectivePermMode = stateCtx.getEffectivePermissionMode?.();
-				const localConfig = stateCtx.getLocalConfig();
-				const cliOptions: IClaudeCLIRequestOptions = {
-					resumeSessionId: cliSessionId,
-					permissionMode: effectivePermMode as IClaudeCLIRequestOptions['permissionMode'],
-					workingDir: stateCtx.getWorkingDirectory?.(),
-					executable: localConfig.executable
-				};
-
-				await channel.call('sendPrompt', [responseText, cliOptions]);
-
-				// sendPrompt가 resolve된 후 — resume 프로세스가 완료됨
-				// onDidComplete 이벤트는 이미 도착했지만 flag으로 스킵되었으므로,
-				// flag을 리셋하고 직접 handleComplete를 호출하여 최종 상태 정리
-				this._askUserResumeInProgress = false;
-				this._respondToAskUserInProgress = false;
-				this.logService.info(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume sendPrompt completed, calling handleComplete');
-				await this.handleComplete();
-			} catch (error) {
-				this.logService.error(CLIEventHandler.LOG_CATEGORY, '[AskUser] Resume failed:', error);
-				this._askUserResumeInProgress = false;
-				this._respondToAskUserInProgress = false;
-				// 에러 시 상태 복구 — idle로 전환하여 사용자가 다시 시도할 수 있도록
-				this.getState().setState('idle');
-				this.handleError(`AskUser resume failed: ${error}`);
-			}
-		} else {
-			// cliSessionId 없음 — resume 불가
-			// 빈 옵션으로 sendPrompt를 호출하면 CLI가 즉시 거부하므로, 에러로 처리
-			this.logService.error(CLIEventHandler.LOG_CATEGORY,
-				'[AskUser] No cliSessionId available - cannot resume CLI session. User must start a new conversation.');
-
-			sessionInteraction.setWaitingForUser(false);
-			sessionInteraction.setCurrentAskUserRequest(undefined);
-			this.updateCurrentMessage();
-			this.getState().setState('idle');
-
-			// 사용자에게 에러 알림
-			this.handleError('AskUser 응답을 전송할 수 없습니다. CLI 세션이 만료되었습니다. 새 대화를 시작해 주세요.');
-			this._respondToAskUserInProgress = false;
-		}
+		return this.askUserHandler.respondToAskUser(responses, askRequestFromUI);
 	}
 
 	// ========== Private Methods ==========
@@ -747,128 +499,11 @@ export class CLIEventHandler extends Disposable {
 	}
 
 	private handleAskUserQuestion(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'AskUserQuestion received:', event.tool_input);
-
-		const input = event.tool_input as {
-			questions?: Array<{
-				question: string;
-				header?: string;
-				options: Array<{ label: string; description?: string }>;
-				multiSelect?: boolean
-			}>
-		} | undefined;
-
-		if (!input?.questions) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'AskUserQuestion missing questions');
-			return;
-		}
-
-		const questions: IClaudeAskUserQuestion[] = input.questions.map(q => ({
-			question: q.question,
-			header: q.header,
-			options: q.options.map((o: { label: string; description?: string }) => ({ label: o.label, description: o.description })),
-			multiSelect: q.multiSelect
-		}));
-
-		const sessionInteraction = this.getSessionInteraction();
-
-		// Auto Accept 모드: 첫 번째 옵션 자동 선택 (세션 설정 > 로컬 설정)
-		if (this.getState().isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
-			const firstOption = questions[0].options[0].label;
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled, selecting:', firstOption);
-
-			sessionInteraction.setCurrentAskUserRequest({
-				id: event.tool_use_id || generateUuid(),
-				questions,
-				autoAccepted: true,
-				autoAcceptedOption: firstOption
-			} as IClaudeAskUserRequest & { autoAccepted?: boolean; autoAcceptedOption?: string });
-
-			// AutoAccept 모드에서도 사용자에게 질문과 자동 선택된 답변을 표시하기 위해 필요
-			sessionInteraction.setWaitingForUser(true);
-			this.updateCurrentMessage();
-
-			setTimeout(() => {
-				this.respondToAskUser([firstOption]).catch(error => {
-					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
-					// 에러 시 대기 상태 해제
-					sessionInteraction.setWaitingForUser(false);
-					this.updateCurrentMessage();
-				});
-			}, 500);
-			return;
-		}
-
-		sessionInteraction.setCurrentAskUserRequest({
-			id: event.tool_use_id || generateUuid(),
-			questions
-		});
-		sessionInteraction.setWaitingForUser(true);
-
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response...');
-		this.updateCurrentMessage();
+		this.askUserHandler.handleAskUserQuestion(event);
 	}
 
 	private handleInputRequest(event: IClaudeCLIStreamEvent): void {
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'InputRequest received:', event.questions);
-
-		if (!event.questions || event.questions.length === 0) {
-			this.logService.error(CLIEventHandler.LOG_CATEGORY, 'InputRequest missing questions');
-			return;
-		}
-
-		const message = this.getMessage();
-		const sessionInteraction = this.getSessionInteraction();
-
-		// 현재 메시지가 없으면 생성
-		if (!message.getCurrentMessageId()) {
-			const newId = generateUuid();
-			message.setCurrentMessageId(newId);
-			message.setAccumulatedContent('');
-			message.createAssistantMessage(newId);
-		}
-
-		const questions: IClaudeAskUserQuestion[] = event.questions.map((q: { question: string; header?: string; options: Array<{ label: string; description?: string }>; multiSelect?: boolean }) => ({
-			question: q.question,
-			header: q.header,
-			options: q.options.map((o: { label: string; description?: string }) => ({ label: o.label, description: o.description })),
-			multiSelect: q.multiSelect
-		}));
-
-		// Auto Accept 모드 (세션 설정 > 로컬 설정)
-		if (this.getState().isAutoAcceptEnabled() && questions.length > 0 && questions[0].options.length > 0) {
-			const firstOption = questions[0].options[0].label;
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Auto-accept enabled (input_request), selecting:', firstOption);
-
-			sessionInteraction.setCurrentAskUserRequest({
-				id: generateUuid(),
-				questions,
-				autoAccepted: true,
-				autoAcceptedOption: firstOption,
-				isInputRequest: true
-			} as IClaudeAskUserRequest & { autoAccepted?: boolean; autoAcceptedOption?: string });
-			this.updateCurrentMessage();
-
-			setTimeout(() => {
-				this.respondToAskUser([firstOption]).catch(error => {
-					this.logService.error(CLIEventHandler.LOG_CATEGORY, 'Failed to auto-respond to AskUser:', error);
-					// 에러 시 대기 상태 해제
-					sessionInteraction.setWaitingForUser(false);
-					this.updateCurrentMessage();
-				});
-			}, 500);
-			return;
-		}
-
-		sessionInteraction.setCurrentAskUserRequest({
-			id: generateUuid(),
-			questions,
-			isInputRequest: true
-		});
-		sessionInteraction.setWaitingForUser(true);
-
-		this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Waiting for user response (input_request)...');
-		this.updateCurrentMessage();
+		this.askUserHandler.handleInputRequest(event);
 	}
 
 	private async handleToolResult(event: IClaudeCLIStreamEvent): Promise<void> {
@@ -1046,24 +681,4 @@ export class CLIEventHandler extends Disposable {
 		}
 	}
 
-	/**
-	 * CLI 프로세스 완료 대기
-	 * AskUserQuestion 응답 시 현재 프로세스가 아직 실행 중일 수 있음
-	 * (tool_use 이벤트는 프로세스 종료 전에 도착)
-	 */
-	private async waitForProcessCompletion(channel: IChannel, timeoutMs: number): Promise<void> {
-		const pollInterval = 100;
-		const maxAttempts = Math.ceil(timeoutMs / pollInterval);
-
-		for (let i = 0; i < maxAttempts; i++) {
-			const running = await channel.call<boolean>('isRunning', []);
-			if (!running) {
-				return;
-			}
-			await new Promise(resolve => setTimeout(resolve, pollInterval));
-		}
-
-		this.logService.warn(CLIEventHandler.LOG_CATEGORY,
-			`[AskUser] Timed out waiting for process completion (${timeoutMs}ms), proceeding anyway`);
-	}
 }

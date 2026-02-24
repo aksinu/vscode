@@ -35,6 +35,7 @@ export interface IClaudeRateLimitService {
 
 	// Rate Limit Detection
 	isRateLimitError(error: any): boolean;
+	parseRetrySeconds(error: string): number | null;
 
 	// Rate Limit Handling
 	handleRateLimit(retryAfterSeconds: number, pendingRequest: IRateLimitPendingRequest, message?: string): void;

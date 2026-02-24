@@ -8,9 +8,9 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | Phase 9 완료 — CLI 기능 확장 + 에디터 통합 + Agent 모드 |
+| **Phase** | 리팩토링 Phase 1-3A 완료 — God Class 분할 + 중복 제거 |
 | **Build** | ⚠️ 컴파일 필요 |
-| **Updated** | 2026-02-23 |
+| **Updated** | 2026-02-24 |
 
 ---
 
@@ -18,30 +18,41 @@
 
 ```
 src/vs/workbench/contrib/kent/
-├── browser/services/          # 핵심 서비스 (5개 + 5개 매니저)
-├── browser/views/            # UI 컴포넌트 (19개 모듈)
-├── common/                   # 인터페이스 & 타입
-└── electron-main/            # CLI 프로세스 관리
+├── browser/services/core/     # 핵심 서비스 + askUserHandler
+├── browser/views/chat/        # ChatView + renderers/ + managers/
+├── common/                    # 인터페이스 & 타입
+└── electron-main/             # CLI 프로세스 관리 + claudeCLIUtils
 ```
+
+---
+
+## Refactoring Summary (Phase 1-3A)
+
+**~601줄 순 감소, God Class 4개 분할, `any` 타이핑 제거**
+
+| Phase | 내용 | 결과 |
+|-------|------|------|
+| 1A | 레거시 콜백 패턴 제거 | CLIEventHandler 단일 생성자 |
+| 1B | AskUser 메서드 병합 | _processUserQuestion 헬퍼 |
+| 1C | electron-main CLI 중복 통합 | claudeCLIUtils.ts + 위임 패턴 |
+| 2A | CLIEventHandler → AskUserHandler 추출 | 1,069→684줄 |
+| 2B | AssistantMessageRenderer → 3 서브 렌더러 | 1,102→490줄 |
+| 2C | ClaudeServiceContextProvider 제거 | 삭제, any 타이핑 제거 |
+| 3A | ChatView → SlashCommandHandler 추출 | 1,777→1,184줄 |
 
 ---
 
 ## Active Issues
 
-- [x] AskUser 선택지 클릭 안됨 + Submit 버튼 사라짐 — CLI 완료 시 asking 상태가 idle로 덮어써지는 타이밍 문제 (4파일 수정)
-- [x] AskUser 응답 후 무응답 — input_request 경로 조기 idle 전환 + resume 중 새 AskUser 상태 파괴 (claudeService.ts 수정)
-- [x] 권한 프롬프트 미표시 — stdin 유지 + permissionMode 전달 + stream-json 모드 호환 (6파일 수정)
-- [x] CLI 완료 후 상태 바운스 (idle→streaming→idle) — setWaitingForUser(false)가 resumeFromUserResponse 호출하는 문제 수정
-- [x] AskUser 선택 리셋 + Submit 후 응답 없음 — DOM 보존 + resume workingDir 누락 수정 (6파일 수정, 테스트 필요)
-- [ ] 자체 권한 UI 구현 — stream-json에서 input_request 미지원, 현재 --dangerously-skip-permissions 사용 (차기)
+- [ ] 자체 권한 UI 구현 — stream-json에서 input_request 미지원 (차기)
 - [ ] CLI exit code 1 에러 — Windows에서 `shell: true` + 긴 인자 문제 (조사 중)
 
 ---
 
 ## Next Steps
 
-- 안정화 및 버그 수정 (CLI 에러 해결 우선)
-- 사용자 피드백 기반 개선
+- `yarn compile` 검증 후 기능 테스트
+- 안정화 및 버그 수정
 - MCP 서버 연동 (차기)
 
 ---

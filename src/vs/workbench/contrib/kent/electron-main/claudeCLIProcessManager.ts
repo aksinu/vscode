@@ -4,20 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { spawn } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeCLIMultiService, IClaudeCLIMultiEvent } from '../common/claudeCLI.js';
 import { ClaudeCLIInstance } from './claudeCLIInstance.js';
-
-// 디버그용 파일 로그
-const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
-function debugLog(...args: unknown[]) {
-	const timestamp = new Date().toISOString();
-	const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-	fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
-}
+import { debugLog, createCleanEnv, checkClaudeConnection } from './claudeCLIUtils.js';
 
 /**
  * 다중 CLI 프로세스 관리자
@@ -177,65 +168,7 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 	 * CLI 연결 체크 (전역)
 	 */
 	async checkConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
-		debugLog('[ProcessManager] checkConnection');
-
-		return new Promise((resolve) => {
-			try {
-				const cleanEnv = { ...process.env };
-				delete cleanEnv.NODE_OPTIONS;
-				delete cleanEnv.ELECTRON_RUN_AS_NODE;
-				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
-
-				const proc = spawn('claude', ['--version'], {
-					shell: true,
-					env: cleanEnv,
-					timeout: 10000
-				});
-
-				let stdout = '';
-				let stderr = '';
-
-				proc.stdout?.on('data', (data: Buffer) => {
-					stdout += data.toString();
-				});
-
-				proc.stderr?.on('data', (data: Buffer) => {
-					stderr += data.toString();
-				});
-
-				proc.on('close', (code) => {
-					debugLog('[ProcessManager] checkConnection closed, code:', code);
-
-					if (code === 0) {
-						const versionMatch = stdout.match(/(\d+\.\d+\.\d+)/);
-						resolve({
-							success: true,
-							version: versionMatch ? versionMatch[1] : stdout.trim()
-						});
-					} else {
-						resolve({
-							success: false,
-							error: stderr || `Exit code: ${code}`
-						});
-					}
-				});
-
-				proc.on('error', (error) => {
-					debugLog('[ProcessManager] checkConnection error:', error.message);
-					resolve({
-						success: false,
-						error: error.message
-					});
-				});
-
-			} catch (error) {
-				debugLog('[ProcessManager] checkConnection exception:', error);
-				resolve({
-					success: false,
-					error: String(error)
-				});
-			}
-		});
+		return checkClaudeConnection('ProcessManager');
 	}
 
 	/**
@@ -247,11 +180,6 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 
 		return new Promise((resolve) => {
 			try {
-				const cleanEnv = { ...process.env };
-				delete cleanEnv.NODE_OPTIONS;
-				delete cleanEnv.ELECTRON_RUN_AS_NODE;
-				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
-
 				const proc = spawn('claude', [
 					'-p', 'hi',
 					'--model', model,
@@ -259,7 +187,7 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 					'--output-format', 'stream-json'
 				], {
 					shell: true,
-					env: cleanEnv,
+					env: createCleanEnv(),
 					timeout: 15000
 				});
 
@@ -301,11 +229,6 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 
 		return new Promise((resolve) => {
 			try {
-				const cleanEnv = { ...process.env };
-				delete cleanEnv.NODE_OPTIONS;
-				delete cleanEnv.ELECTRON_RUN_AS_NODE;
-				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
-
 				const args = ['-p', prompt, '--max-turns', '1'];
 				if (model) {
 					args.push('--model', model);
@@ -313,7 +236,7 @@ export class ClaudeCLIProcessManager extends Disposable implements IClaudeCLIMul
 
 				const proc = spawn('claude', args, {
 					shell: true,
-					env: cleanEnv,
+					env: createCleanEnv(),
 					timeout: 30000
 				});
 

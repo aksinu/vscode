@@ -99,6 +99,24 @@ export class ClaudeRateLimitService extends Disposable implements IClaudeRateLim
 	}
 
 	/**
+	 * 에러 메시지에서 재시도 시간 파싱
+	 */
+	parseRetrySeconds(error: string): number | null {
+		const match = error.match(/(?:retry|try again|wait).*?(\d+)\s*(second|minute|hour|sec|min|hr)/i);
+		if (match) {
+			const value = parseInt(match[1], 10);
+			const unit = match[2].toLowerCase();
+			if (unit.startsWith('min')) {
+				return value * 60;
+			} else if (unit.startsWith('hour') || unit.startsWith('hr')) {
+				return value * 3600;
+			}
+			return value;
+		}
+		return null;
+	}
+
+	/**
 	 * Start countdown timer
 	 */
 	private _startCountdown(): void {

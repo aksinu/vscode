@@ -8,3 +8,4 @@ export { QueueUIManager, IQueueUIManagerCallbacks } from './queueUIManager.js';
 export { ClipboardManager } from './clipboardManager.js';
 export { MessageListManager } from './messageListManager.js';
 export { ViewConnectionManager, IViewConnectionManagerCallbacks } from './viewConnectionManager.js';
+export { SlashCommandHandler, ISlashCommandUI } from './slashCommandHandler.js';

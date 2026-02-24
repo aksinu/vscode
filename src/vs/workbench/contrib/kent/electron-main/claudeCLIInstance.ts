@@ -8,78 +8,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
-import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions, IClaudeRateLimitInfo } from '../common/claudeCLI.js';
+import { IClaudeCLIStreamEvent, IClaudeCLIRequestOptions } from '../common/claudeCLI.js';
 import { IClaudeExecutableConfig, normalizePermissionMode } from '../common/config/claudeLocalConfig.js';
-
-// 디버그용 파일 로그
-const logFile = path.join(process.env.TEMP || '/tmp', 'claude-cli-debug.log');
-function debugLog(...args: unknown[]) {
-	const timestamp = new Date().toISOString();
-	const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-	fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
-}
-
-/**
- * Rate limit 에러 메시지 파싱
- */
-function parseRateLimitError(errorText: string): IClaudeRateLimitInfo | null {
-	const isRateLimited = /rate[_\s]?limit/i.test(errorText) ||
-		/too many requests/i.test(errorText) ||
-		/429/i.test(errorText) ||
-		/quota exceeded/i.test(errorText) ||
-		/token.*exhaust/i.test(errorText);
-
-	if (!isRateLimited) {
-		return null;
-	}
-
-	let retryAfterSeconds = 60;
-
-	const retryMatch = errorText.match(/(?:retry|try again|wait).*?(\d+)\s*(second|minute|hour|sec|min|hr)/i);
-	if (retryMatch) {
-		const value = parseInt(retryMatch[1], 10);
-		const unit = retryMatch[2].toLowerCase();
-		if (unit.startsWith('min')) {
-			retryAfterSeconds = value * 60;
-		} else if (unit.startsWith('hour') || unit.startsWith('hr')) {
-			retryAfterSeconds = value * 3600;
-		} else {
-			retryAfterSeconds = value;
-		}
-	}
-
-	const resetMatch = errorText.match(/reset.*?(\d{1,2}:\d{2}(?::\d{2})?)/i);
-	let resetTime: Date | undefined;
-	if (resetMatch) {
-		const now = new Date();
-		const [hours, minutes] = resetMatch[1].split(':').map(Number);
-		resetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
-		if (resetTime < now) {
-			resetTime.setDate(resetTime.getDate() + 1);
-		}
-		retryAfterSeconds = Math.ceil((resetTime.getTime() - now.getTime()) / 1000);
-	}
-
-	return {
-		isRateLimited: true,
-		retryAfterSeconds,
-		resetTime,
-		message: errorText.substring(0, 200)
-	};
-}
-
-/**
- * CLI stderr에서 치명적 에러 감지
- * exit code 0이어도 실질적 실패인 경우 (prompt too long 등)
- */
-function isFatalCLIError(stderrText: string): boolean {
-	const lower = stderrText.toLowerCase();
-	return lower.includes('prompt is too long') ||
-		lower.includes('too many tokens') ||
-		lower.includes('context length exceeded') ||
-		lower.includes('content_too_large') ||
-		lower.includes('maximum context length');
-}
+import { debugLog, parseRateLimitError, isFatalCLIError, createCleanEnv } from './claudeCLIUtils.js';
 
 /**
  * 단일 Claude CLI 프로세스 인스턴스
@@ -207,15 +138,10 @@ export class ClaudeCLIInstance extends Disposable {
 
 		return new Promise((resolve, reject) => {
 			try {
-				const cleanEnv = { ...process.env };
-				delete cleanEnv.NODE_OPTIONS;
-				delete cleanEnv.ELECTRON_RUN_AS_NODE;
-				delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
-
 				this._process = spawn(spawnCommand, spawnArgs, {
 					cwd: options?.workingDir || process.cwd(),
 					shell: true,
-					env: cleanEnv,
+					env: createCleanEnv(),
 					stdio: ['pipe', 'pipe', 'pipe'],
 					windowsHide: true
 				});
