@@ -237,19 +237,19 @@ export class CLIEventHandler extends Disposable {
 		}
 
 		// result 이벤트에서 usage 정보 추출
+		// ★ subagent 정보는 여기서 추출하지 않음!
+		// tool_use/tool_result 이벤트가 아직 데이터 큐에서 처리 중일 수 있어
+		// getToolActions()가 불완전한 결과를 반환함.
+		// subagent 추출은 handleComplete()에서 큐 완료 후 수행.
 		if (event.type === 'result' && event.usage) {
-			// 서브에이전트 정보 추출 (Task 도구 사용 내역)
-			const subagents = this.extractSubagentUsage();
-
 			this.getSessionInteraction().setUsage({
 				inputTokens: event.usage.input_tokens || 0,
 				outputTokens: event.usage.output_tokens || 0,
 				cacheReadTokens: event.usage.cache_read_input_tokens,
 				cacheCreationTokens: event.usage.cache_creation_input_tokens,
-				totalCostUsd: event.total_cost_usd,
-				subagents: subagents.length > 0 ? subagents : undefined
+				totalCostUsd: event.total_cost_usd
 			});
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage, 'subagents:', subagents);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage);
 		}
 
 		// assistant 이벤트의 tool_use 블록을 큐를 통해 처리 (race condition 방지)
@@ -354,6 +354,21 @@ export class CLIEventHandler extends Disposable {
 				'[EmptyResponse] CLI completed with no content and no tool actions - likely prompt too long or context exceeded');
 			this.handleError('대화가 너무 길어져서 처리할 수 없습니다.\n새 세션을 시작해 주세요. (세션 관리 버튼 → 새 세션)');
 			return true;
+		}
+
+		// ★ 서브에이전트 정보 추출 (큐 완료 후 — toolActions가 완전한 상태)
+		// handleData의 result 이벤트 시점에서는 tool_use/tool_result가 아직 큐에 있을 수 있어
+		// 여기서 추출해야 모든 Task 도구 사용 내역이 포함됨
+		const currentUsage = sessionInteraction.getUsage();
+		if (currentUsage) {
+			const subagents = this.extractSubagentUsage();
+			if (subagents.length > 0) {
+				sessionInteraction.setUsage({
+					...currentUsage,
+					subagents
+				});
+				this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Subagent usage extracted in handleComplete:', subagents);
+			}
 		}
 
 		// 최종 메시지
