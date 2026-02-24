@@ -60,7 +60,8 @@ export class ClaudeServiceContextProvider implements ICLIEventHandlerUnifiedCont
 			this.claudeService.setState(state);
 		},
 		getLocalConfig: () => this.claudeService._localConfig,
-		isAutoAcceptEnabled: () => this.claudeService.isAutoAcceptEnabled()
+		isAutoAcceptEnabled: () => this.claudeService.isAutoAcceptEnabled(),
+		getWorkingDirectory: () => this.claudeService._configManager.getWorkingDirectory()
 	};
 
 	// ========== 메시지 관리 ==========

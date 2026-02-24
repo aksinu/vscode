@@ -24,6 +24,7 @@ export interface ICLIEventHandlerCallbacks {
 	getLocalConfig(): IClaudeLocalConfig;
 	isAutoAcceptEnabled(): boolean;
 	getEffectivePermissionMode?(): string | undefined;
+	getWorkingDirectory?(): string | undefined;
 
 	// 메시지
 	getCurrentMessageId(): string | undefined;
@@ -221,6 +222,17 @@ export class CLIEventHandler extends Disposable {
 		// 도구 결과 이벤트 처리 (파일 캡처를 위해 await 필수, 순서 보장을 위해 큐 사용)
 		if (event.type === 'tool_result') {
 			await this.enqueueDataOperation(() => this.handleToolResult(event));
+			return;
+		}
+
+		// result 이벤트에서 에러 감지 (error_during_execution 등)
+		// CLI가 result 이벤트를 보내지만 is_error=true인 경우 (예: --resume 실패)
+		if (event.type === 'result' && event.is_error) {
+			const errorContent = event.result || event.subtype || 'CLI execution error';
+			this.logService.warn(CLIEventHandler.LOG_CATEGORY, '[ResultError] CLI result with is_error=true:', event.subtype, errorContent);
+			console.warn('[CLIEventHandler] Error result received:', { subtype: event.subtype, result: errorContent, numTurns: event.num_turns });
+			// 에러 결과를 handleError로 전달하여 사용자에게 표시
+			this.handleError(`CLI 오류: ${errorContent}`);
 			return;
 		}
 
@@ -576,10 +588,14 @@ export class CLIEventHandler extends Disposable {
 						'[AskUser] CLI process completed, proceeding with resume');
 				}
 
-				const effectivePermMode = this.getState().getEffectivePermissionMode?.();
+				const stateCtx = this.getState();
+				const effectivePermMode = stateCtx.getEffectivePermissionMode?.();
+				const localConfig = stateCtx.getLocalConfig();
 				const cliOptions: IClaudeCLIRequestOptions = {
 					resumeSessionId: cliSessionId,
-					permissionMode: effectivePermMode as IClaudeCLIRequestOptions['permissionMode']
+					permissionMode: effectivePermMode as IClaudeCLIRequestOptions['permissionMode'],
+					workingDir: stateCtx.getWorkingDirectory?.(),
+					executable: localConfig.executable
 				};
 
 				await channel.call('sendPrompt', [responseText, cliOptions]);

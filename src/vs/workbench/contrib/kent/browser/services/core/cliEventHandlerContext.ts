@@ -36,6 +36,8 @@ export interface IStateContext {
 	isAutoAcceptEnabled(): boolean;
 	/** 유효 권한 모드 반환 (localConfig > VS Code 설정 > 'default' 순) */
 	getEffectivePermissionMode(): string | undefined;
+	/** 워크스페이스 작업 디렉토리 반환 (CLI cwd로 사용 — 세션 파일 경로 결정에 필수) */
+	getWorkingDirectory(): string | undefined;
 }
 
 /**

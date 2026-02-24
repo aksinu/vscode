@@ -32,7 +32,7 @@ src/vs/workbench/contrib/kent/
 - [x] AskUser 응답 후 무응답 — input_request 경로 조기 idle 전환 + resume 중 새 AskUser 상태 파괴 (claudeService.ts 수정)
 - [x] 권한 프롬프트 미표시 — stdin 유지 + permissionMode 전달 + stream-json 모드 호환 (6파일 수정)
 - [x] CLI 완료 후 상태 바운스 (idle→streaming→idle) — setWaitingForUser(false)가 resumeFromUserResponse 호출하는 문제 수정
-- [~] AskUser 선택 리셋 + Submit 후 응답 없음 — handleComplete re-render 방지 + resume stdin EOF 전송 (2파일 수정, 테스트 필요)
+- [x] AskUser 선택 리셋 + Submit 후 응답 없음 — DOM 보존 + resume workingDir 누락 수정 (6파일 수정, 테스트 필요)
 - [ ] 자체 권한 UI 구현 — stream-json에서 input_request 미지원, 현재 --dangerously-skip-permissions 사용 (차기)
 - [ ] CLI exit code 1 에러 — Windows에서 `shell: true` + 긴 인자 문제 (조사 중)
 
