@@ -988,9 +988,20 @@ export class AssistantMessageRenderer {
 	private renderTokenInfo(usage: IClaudeUsageInfo, container: HTMLElement): void {
 		const tokensElement = append(container, $('.claude-usage-tokens'));
 
-		// 입력 토큰
+		// 입력 토큰 (총합: 비캐시 + 캐시 읽기 + 캐시 생성)
 		const inputItem = append(tokensElement, $('.token-item'));
-		inputItem.title = localize('inputTokens', 'Input tokens');
+		const cacheTotal = (usage.cacheReadTokens || 0) + (usage.cacheCreationTokens || 0);
+		if (cacheTotal > 0) {
+			const cachePercent = Math.round((cacheTotal / usage.inputTokens) * 100);
+			inputItem.title = localize('inputTokensWithCache',
+				'Input tokens: {0} (cache {1}%: read {2}, create {3})',
+				this.formatNumber(usage.inputTokens),
+				cachePercent,
+				this.formatNumber(usage.cacheReadTokens || 0),
+				this.formatNumber(usage.cacheCreationTokens || 0));
+		} else {
+			inputItem.title = localize('inputTokens', 'Input tokens');
+		}
 		append(inputItem, $('.codicon.codicon-arrow-right'));
 		append(inputItem, $('span')).textContent = this.formatNumber(usage.inputTokens);
 
@@ -1000,10 +1011,12 @@ export class AssistantMessageRenderer {
 		append(outputItem, $('.codicon.codicon-arrow-left'));
 		append(outputItem, $('span')).textContent = this.formatNumber(usage.outputTokens);
 
-		// 캐시 토큰
+		// 캐시 토큰 (읽기가 있을 때만 — 캐시 활용률 표시)
 		if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
 			const cacheElement = append(tokensElement, $('.token-item.cache'));
-			cacheElement.title = localize('cacheTokens', 'Cache tokens');
+			cacheElement.title = localize('cacheReadTokens',
+				'Cache read: {0} (included in input total)',
+				this.formatNumber(usage.cacheReadTokens));
 			append(cacheElement, $('.codicon.codicon-database'));
 			append(cacheElement, $('span')).textContent = this.formatNumber(usage.cacheReadTokens);
 		}

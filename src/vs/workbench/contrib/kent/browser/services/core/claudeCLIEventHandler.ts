@@ -242,14 +242,24 @@ export class CLIEventHandler extends Disposable {
 		// getToolActions()가 불완전한 결과를 반환함.
 		// subagent 추출은 handleComplete()에서 큐 완료 후 수행.
 		if (event.type === 'result' && event.usage) {
+			// ★ input_tokens는 비캐시 input만 포함!
+			// 총 input = input_tokens + cache_read + cache_creation
+			// CLI 출력 예: input_tokens=2, cache_read=19265, cache_creation=15646 → 총 34913
+			const rawInput = event.usage.input_tokens || 0;
+			const cacheRead = event.usage.cache_read_input_tokens || 0;
+			const cacheCreation = event.usage.cache_creation_input_tokens || 0;
+			const totalInput = rawInput + cacheRead + cacheCreation;
+
 			this.getSessionInteraction().setUsage({
-				inputTokens: event.usage.input_tokens || 0,
+				inputTokens: totalInput,
 				outputTokens: event.usage.output_tokens || 0,
-				cacheReadTokens: event.usage.cache_read_input_tokens,
-				cacheCreationTokens: event.usage.cache_creation_input_tokens,
+				cacheReadTokens: cacheRead || undefined,
+				cacheCreationTokens: cacheCreation || undefined,
 				totalCostUsd: event.total_cost_usd
 			});
-			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:', event.usage);
+			this.logService.debug(CLIEventHandler.LOG_CATEGORY, 'Usage extracted:',
+				`input=${rawInput}+cache_read=${cacheRead}+cache_create=${cacheCreation}=${totalInput}`,
+				`output=${event.usage.output_tokens || 0}`);
 		}
 
 		// assistant 이벤트의 tool_use 블록을 큐를 통해 처리 (race condition 방지)

@@ -1330,11 +1330,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		html += `───────────────<br>`;
 		html += `Input tokens: ${formatTokens(totalInputTokens)}<br>`;
 		html += `Output tokens: ${formatTokens(totalOutputTokens)}<br>`;
-		if (totalCacheReadTokens > 0) {
-			html += `Cache read: ${formatTokens(totalCacheReadTokens)}<br>`;
-		}
-		if (totalCacheCreationTokens > 0) {
-			html += `Cache creation: ${formatTokens(totalCacheCreationTokens)}<br>`;
+		if (totalCacheReadTokens > 0 || totalCacheCreationTokens > 0) {
+			html += `<span style="opacity:0.7">  ↳ cache read: ${formatTokens(totalCacheReadTokens)}, create: ${formatTokens(totalCacheCreationTokens)} (included in input)</span><br>`;
 		}
 		html += `───────────────<br>`;
 		if (totalCostUsd > 0) {
@@ -1559,11 +1556,8 @@ export class ClaudeChatViewPane extends ViewPane {
 		html += `[${bar}] ${usagePercent.toFixed(1)}%<br>`;
 		html += `Input: ${formatTokens(totalInputTokens)} / ${formatTokens(maxContext)}<br>`;
 		html += `Output: ${formatTokens(totalOutputTokens)}<br>`;
-		if (totalCacheReadTokens > 0) {
-			html += `Cache read: ${formatTokens(totalCacheReadTokens)}<br>`;
-		}
-		if (totalCacheCreationTokens > 0) {
-			html += `Cache creation: ${formatTokens(totalCacheCreationTokens)}<br>`;
+		if (totalCacheReadTokens > 0 || totalCacheCreationTokens > 0) {
+			html += `<span style="opacity:0.7">  ↳ cache read: ${formatTokens(totalCacheReadTokens)}, create: ${formatTokens(totalCacheCreationTokens)} (included in input)</span><br>`;
 		}
 		html += `Total: ${formatTokens(totalTokens)}<br>`;
 		html += `Messages: ${messages.length}`;
