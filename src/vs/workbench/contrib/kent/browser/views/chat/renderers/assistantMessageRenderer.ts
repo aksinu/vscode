@@ -134,6 +134,13 @@ export class AssistantMessageRenderer {
 			this._cleanupPreservedAskUser();
 		}
 
+		// Thinking 인디케이터 (스트리밍 중이지만 도구/AskUser가 없을 때)
+		// AskUser Submit 후 ~ Claude 응답 시작까지의 대기 시간에 시각적 피드백 제공
+		if (message.isStreaming && !message.askUserRequest &&
+			(!message.currentToolAction || message.currentToolAction.status !== 'running')) {
+			this.renderThinkingIndicator(messageElement);
+		}
+
 		// 토큰 사용량 (완료 후)
 		if (!message.isStreaming && message.usage) {
 			this.renderUsageInfo(message, messageElement);
@@ -738,6 +745,17 @@ export class AssistantMessageRenderer {
 			append(systemContainer, $(`.codicon.${iconClass}.claude-system-icon`));
 			append(systemContainer, $('span.claude-system-text')).textContent = message.systemMessage.message;
 		}
+	}
+
+	/**
+	 * Thinking 인디케이터 (스트리밍 중 대기 상태 표시)
+	 * - AskUser Submit 후 Claude 응답 시작 전
+	 * - 도구 실행 사이 대기 시간
+	 */
+	private renderThinkingIndicator(container: HTMLElement): void {
+		const thinkingEl = append(container, $('.claude-thinking-indicator'));
+		append(thinkingEl, $('.codicon.codicon-loading.codicon-modifier-spin'));
+		thinkingEl.appendChild(document.createTextNode(' ' + localize('thinkingIndicator', "Working...")));
 	}
 
 	// ==================== 헬퍼 메서드들 ====================

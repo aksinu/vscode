@@ -195,6 +195,18 @@
 	font-style: italic;
 }
 
+/* Thinking 인디케이터 (스트리밍 중 대기 표시) */
+.claude-thinking-indicator {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	margin: 8px 0 4px 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	font-style: italic;
+}
+
 /* 현재 실행 중인 툴 */
 .claude-current-tool {
 	display: flex;

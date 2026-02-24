@@ -230,7 +230,7 @@ export class CLIEventHandler extends Disposable {
 		if (event.type === 'result' && event.is_error) {
 			const errorContent = event.result || event.subtype || 'CLI execution error';
 			this.logService.warn(CLIEventHandler.LOG_CATEGORY, '[ResultError] CLI result with is_error=true:', event.subtype, errorContent);
-			console.warn('[CLIEventHandler] Error result received:', { subtype: event.subtype, result: errorContent, numTurns: event.num_turns });
+			console.warn('[CLIEventHandler] Error result received:', { subtype: event.subtype, result: errorContent });
 			// 에러 결과를 handleError로 전달하여 사용자에게 표시
 			this.handleError(`CLI 오류: ${errorContent}`);
 			return;
